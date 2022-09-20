@@ -25,7 +25,7 @@ impl<'t> Statement<'t> {
     alt((
       map(
         delimited(token("{"), many0(preceded(meta, Self::parse)), pair(meta, token("}"))),
-        |statements| Self::Block(statements),
+        Self::Block,
       ),
       map(
         tuple((

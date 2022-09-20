@@ -3,7 +3,7 @@ use quote::TokenStreamExt;
 use super::*;
 
 pub(crate) fn identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
-  if let Some(token) = tokens.get(0) {
+  if let Some(token) = tokens.first() {
     let mut it = token.chars();
     if let Some('a'..='z' | 'A'..='Z' | '_') = it.next() {
       if it.all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9')) {
@@ -16,7 +16,7 @@ pub(crate) fn identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str]
 }
 
 fn concat_identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
-  if let Some(token) = tokens.get(0) {
+  if let Some(token) = tokens.first() {
     let mut it = token.chars();
     if it.all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9')) {
       return Ok((&tokens[1..], token))
@@ -51,7 +51,7 @@ impl Identifier {
       move || Self::Literal(id.to_owned()),
       |acc, item| {
         match acc {
-          Self::Literal(id) => Self::Concat(vec![id.to_owned(), item.to_owned()]),
+          Self::Literal(id) => Self::Concat(vec![id, item.to_owned()]),
           Self::Concat(mut ids) => {
             ids.push(item.to_owned());
             Self::Concat(ids)

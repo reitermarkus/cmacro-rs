@@ -50,8 +50,16 @@ mod stringify;
 pub(crate) use stringify::*;
 
 fn comment<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
-  if let Some(token) = tokens.get(0) {
-    if token.starts_with("/*") && token.ends_with("*/") {
+  use nom::bytes::complete::tag;
+  use nom::combinator::all_consuming;
+  use nom::bytes::complete::take_until;
+
+  if let Some(token) = tokens.first() {
+    let token: &str = token;
+
+    let res: IResult<&str, &str> = all_consuming(delimited(tag("/*"), take_until("*/"), tag("*/")))(token);
+
+    if let Ok((_, token)) = res {
       return Ok((&tokens[1..], token))
     }
   }
@@ -68,10 +76,10 @@ where
   't: 'i,
 {
   move |tokens: &[&str]| {
-    if let Some(token2) = tokens.get(0).as_deref() {
-      let token2 = if token2.starts_with("\\\n") {
+    if let Some(token2) = tokens.first() {
+      let token2 = if let Some(token2) = token2.strip_prefix("\\\n") {
         // TODO: Fix in tokenizer/lexer.
-        &token2[2..]
+        token2
       } else {
         token2
       };
@@ -126,7 +134,7 @@ impl<'t> FnMacro<'t> {
       args.insert(arg, MacroArgType::Unknown);
     }
 
-    let (_, mut body) = MacroBody::parse(&body).unwrap();
+    let (_, mut body) = MacroBody::parse(body).unwrap();
 
     let mut ctx = Context { args, export_as_macro: false, functions: HashMap::new() };
     body.visit(&mut ctx);
@@ -144,11 +152,7 @@ impl<'t> FnMacro<'t> {
     let mut export_as_macro = !self.args.iter().all(|&(_, ty)| ty == MacroArgType::Unknown);
     let func_args = self.args.iter().filter_map(|&(arg, _)| {
       let id = Ident::new(arg, Span::call_site());
-      if let Some(ty) = variable_type(self.name, arg) {
-        Some(quote! { #id: #ty })
-      } else {
-        None
-      }
+      variable_type(self.name, arg).map(|ty| quote! { #id: #ty })
     }).collect::<Vec<_>>();
 
     if func_args.len() != self.args.len() {
@@ -188,7 +192,7 @@ impl<'t> FnMacro<'t> {
         }
       })
     } else {
-      let return_type = return_type(&self.name).map(|ty| {
+      let return_type = return_type(self.name).map(|ty| {
         quote! { -> #ty }
       });
 

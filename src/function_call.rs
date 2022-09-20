@@ -24,7 +24,7 @@ impl FunctionCall<'_> {
       }
 
       arg
-    }).collect::<Vec<_>>();
+    });
 
     tokens.append_all(quote! {
       #name(#(#args),*)

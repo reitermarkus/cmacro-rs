@@ -76,7 +76,7 @@ impl<'t> Expr<'t> {
                 separated_list0(tuple((meta, token(","), meta)), Self::parse),
                 pair(meta, token(")")),
               ),
-              |args| Access::Fn(args)
+              Access::Fn,
             ),
             map(
               pair(alt((token("."), token("->"))), Identifier::parse),
@@ -326,7 +326,7 @@ impl<'t> Expr<'t> {
           )
         })
       },
-      Self::UnaryOp { ref op, ref expr, prefix } => {
+      Self::UnaryOp { op, ref expr, prefix } => {
         let expr = expr.to_token_stream(ctx);
 
         tokens.append_all(match (*op, prefix) {
@@ -343,7 +343,7 @@ impl<'t> Expr<'t> {
           (op, _) => todo!("op = {:?}", op),
         })
       },
-      Self::BinOp(ref lhs, ref op, ref rhs) => {
+      Self::BinOp(ref lhs, op, ref rhs) => {
         let lhs = lhs.to_token_stream(ctx);
         let rhs = rhs.to_token_stream(ctx);
 

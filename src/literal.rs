@@ -38,63 +38,56 @@ impl ToTokens for Lit {
   }
 }
 
+fn escaped_char(input: &[u8]) -> IResult<&[u8], char> {
+  alt((
+    map(char('a'), |_| '\x07'),
+    map(char('b'), |_| '\x08'),
+    map(char('e'), |_| '\x1b'),
+    map(char('f'), |_| '\x0c'),
+    map(char('n'), |_| '\n'),
+    map(char('r'), |_| '\r'),
+    map(char('t'), |_| '\t'),
+    map(char('v'), |_| '\x0b'),
+    one_of(r#"\'"?"#),
+    map_res(take_while_m_n(1, 3, is_oct_digit), |n| {
+      let s = str::from_utf8(n).unwrap();
+      u8::from_str_radix(s, 8).map(|b| b as char)
+    }),
+    preceded(tag_no_case("x"), map_res(take_while(is_hex_digit), |n: &[u8]| {
+      let start = n.len().max(2) - 2;
+      let s = str::from_utf8(&n[start..]).unwrap();
+      u8::from_str_radix(s, 16).map(|b| b as char)
+    })),
+    preceded(tag_no_case("u"), map_opt(take_while_m_n(4, 4, is_hex_digit), |n: &[u8]| {
+      let s = str::from_utf8(n).unwrap();
+      u32::from_str_radix(s, 16).ok().and_then(char::from_u32)
+    })),
+    preceded(tag_no_case("U"), map_opt(take_while_m_n(8, 8, is_hex_digit), |n: &[u8]| {
+      let s = str::from_utf8(n).unwrap();
+      u32::from_str_radix(s, 16).ok().and_then(char::from_u32)
+    })),
+  ))(input)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitChar {
   repr: char,
 }
 
 impl LitChar {
-  fn unescaped_char(input: &[u8]) -> IResult<&[u8], char> {
-    map_opt(anychar, |c| if c == '\\' { None } else { Some(c) })(input)
-  }
-
-  fn escaped_char(input: &[u8]) -> IResult<&[u8], char> {
-    preceded(
-      char('\\'),
-      alt((
-        map(char('a'), |_| '\x07'),
-        map(char('b'), |_| '\x08'),
-        map(char('e'), |_| '\x1b'),
-        map(char('f'), |_| '\x0c'),
-        map(char('n'), |_| '\n'),
-        map(char('r'), |_| '\r'),
-        map(char('t'), |_| '\t'),
-        map(char('v'), |_| '\x0b'),
-        one_of(r#"\'"?"#),
-        map_res(take_while_m_n(1, 3, is_oct_digit), |n| {
-          let s = str::from_utf8(n).unwrap();
-          u8::from_str_radix(s, 8).map(|b| b as char)
-        }),
-        preceded(tag_no_case("x"), map_res(take_while(is_hex_digit), |n: &[u8]| {
-          let start = n.len().max(2) - 2;
-          let s = str::from_utf8(&n[start..]).unwrap();
-          u8::from_str_radix(s, 16).map(|b| b as char)
-        })),
-        preceded(tag_no_case("u"), map_opt(take_while_m_n(4, 4, is_hex_digit), |n: &[u8]| {
-          let s = str::from_utf8(n).unwrap();
-          u32::from_str_radix(s, 16).ok().and_then(|b| char::from_u32(b))
-        })),
-        preceded(tag_no_case("U"), map_opt(take_while_m_n(8, 8, is_hex_digit), |n: &[u8]| {
-          let s = str::from_utf8(n).unwrap();
-          u32::from_str_radix(s, 16).ok().and_then(|b| char::from_u32(b))
-        })),
-      )
-    ))(input)
-  }
-
   fn from_str(input: &str) -> IResult<&[u8], char> {
     all_consuming(delimited(
       char('\''),
       alt((
-        Self::escaped_char,
-        Self::unescaped_char,
+        preceded(char('\\'), escaped_char),
+        map_opt(anychar, |c| if c == '\\' || c == '\'' { None } else { Some(c) }),
       )),
       char('\''),
     ))(input.as_bytes())
   }
 
   pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    if let Some(token) = input.get(0) {
+    if let Some(token) = input.first() {
       let input = &input[1..];
 
       if let Ok((_, c)) = Self::from_str(token) {
@@ -119,11 +112,29 @@ pub struct LitString {
 
 impl LitString {
   pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    if let Some(token) = input.get(0) {
+    if let Some(token) = input.first() {
       let input = &input[1..];
 
-      if token.starts_with("\"") && token.ends_with("\"") {
-        return Ok((input, Self { repr: token[1..(token.len() - 1)].to_owned() }))
+      let res: IResult<&[u8], String> = all_consuming(
+        delimited(
+          char('"'),
+          fold_many0(
+            alt((
+              preceded(char('\\'), escaped_char),
+              map_opt(anychar, |c| if c == '\\' || c == '"' { None } else { Some(c) }),
+            )),
+            String::new,
+            |mut acc, c| {
+              acc.push(c);
+              acc
+            },
+          ),
+          char('"'),
+        )
+      )(token.as_bytes());
+
+      if let Ok((_, s)) = res {
+        return Ok((input, Self { repr: s }))
       }
     }
 
@@ -166,7 +177,7 @@ impl LitFloat {
   }
 
   pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    if let Some(Ok((_, (repr, size1)))) = tokens.get(0).copied().map(Self::from_str) {
+    if let Some(Ok((_, (repr, size1)))) = tokens.first().copied().map(Self::from_str) {
       let tokens = &tokens[1..];
 
       let suffix_f = alt((token("f"), token("F")));
@@ -175,13 +186,13 @@ impl LitFloat {
       let mut suffix = map(
         alt((
           cond(size1.is_none(), opt(preceded(delimited(meta, token("##"), meta), suffix_f))),
-          cond(size1.is_none() && repr.contains("."), opt(preceded(delimited(meta, token("##"), meta), suffix_long))),
+          cond(size1.is_none() && repr.contains('.'), opt(preceded(delimited(meta, token("##"), meta), suffix_long))),
         )),
         |size| size.flatten(),
       );
 
       let (tokens, size2) = suffix(tokens)?;
-      let _size = size1.or_else(|| size2);
+      let _size = size1.or(size2);
 
       // TODO: Handle suffix.
       return Ok((tokens, Self { repr }))
@@ -244,7 +255,7 @@ impl LitInt {
   }
 
   pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    if let Some(Ok((_, (repr, unsigned1, size1)))) = tokens.get(0).copied().map(Self::from_str) {
+    if let Some(Ok((_, (repr, unsigned1, size1)))) = tokens.first().copied().map(Self::from_str) {
       let tokens = &tokens[1..];
 
       let suffix_unsigned = alt((token("u"), token("U")));
@@ -265,8 +276,8 @@ impl LitInt {
       );
 
       let (tokens, (unsigned2, size2)) = suffix(tokens)?;
-      let _unsigned = unsigned1.is_some() || unsigned2.is_some();
-      let _size = size1.or_else(|| size2);
+      let _unsigned = unsigned1.or(unsigned2).is_some();
+      let _size = size1.or(size2);
 
       // TODO: Handle suffix.
       return Ok((tokens, Self { repr }))
@@ -279,5 +290,16 @@ impl LitInt {
 impl ToTokens for LitInt {
   fn to_tokens(&self, tokens: &mut TokenStream) {
     tokens.append_all(self.repr.parse::<TokenStream>().unwrap())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn parse_string() {
+    let (_, id) = LitString::parse(&[r#""asdf""#]).unwrap();
+    assert_eq!(id, LitString { repr: "asdf".into() });
   }
 }
