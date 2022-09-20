@@ -1,9 +1,12 @@
 use std::str;
 
-use nom::combinator::{all_consuming, cond, map_res, map_opt};
-use nom::character::complete::{char, anychar, one_of, digit1, hex_digit1, oct_digit1};
+use nom::combinator::{all_consuming, cond, map_opt};
+use nom::character::complete::{char, one_of, digit1, hex_digit1, oct_digit1};
 use nom::character::{is_hex_digit, is_oct_digit};
 use nom::bytes::complete::{is_a, tag, tag_no_case, take_while, take_while_m_n};
+use nom::character::complete::none_of;
+use nom::multi::fold_many1;
+use nom::bytes::complete::is_not;
 use quote::{ToTokens, TokenStreamExt};
 
 use super::*;
@@ -38,50 +41,62 @@ impl ToTokens for Lit {
   }
 }
 
-fn escaped_char(input: &[u8]) -> IResult<&[u8], char> {
+fn escaped_char(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
   alt((
-    map(char('a'), |_| '\x07'),
-    map(char('b'), |_| '\x08'),
-    map(char('e'), |_| '\x1b'),
-    map(char('f'), |_| '\x0c'),
-    map(char('n'), |_| '\n'),
-    map(char('r'), |_| '\r'),
-    map(char('t'), |_| '\t'),
-    map(char('v'), |_| '\x0b'),
-    one_of(r#"\'"?"#),
-    map_res(take_while_m_n(1, 3, is_oct_digit), |n| {
-      let s = str::from_utf8(n).unwrap();
-      u8::from_str_radix(s, 8).map(|b| b as char)
+    map(char('a'), |_| vec![b'\x07']),
+    map(char('b'), |_| vec![b'\x08']),
+    map(char('e'), |_| vec![b'\x1b']),
+    map(char('f'), |_| vec![b'\x0c']),
+    map(char('n'), |_| vec![b'\n']),
+    map(char('r'), |_| vec![b'\r']),
+    map(char('t'), |_| vec![b'\t']),
+    map(char('v'), |_| vec![b'\x0b']),
+    map(one_of([b'\\', b'\'', b'"', b'?']), |c| vec![c as u8]),
+    map_opt(take_while_m_n(1, 3, is_oct_digit), |n| {
+      str::from_utf8(n).ok()
+        .and_then(|s| u8::from_str_radix(s, 8).ok())
+        .map(|b| vec![b])
     }),
-    preceded(tag_no_case("x"), map_res(take_while(is_hex_digit), |n: &[u8]| {
+    preceded(tag_no_case("x"), map_opt(take_while(is_hex_digit), |n: &[u8]| {
       let start = n.len().max(2) - 2;
-      let s = str::from_utf8(&n[start..]).unwrap();
-      u8::from_str_radix(s, 16).map(|b| b as char)
+      str::from_utf8(&n[start..]).ok()
+        .and_then(|s| u8::from_str_radix(s, 16).ok())
+        .map(|b| vec![b])
     })),
-    preceded(tag_no_case("u"), map_opt(take_while_m_n(4, 4, is_hex_digit), |n: &[u8]| {
-      let s = str::from_utf8(n).unwrap();
-      u32::from_str_radix(s, 16).ok().and_then(char::from_u32)
+    preceded(char('u'), map_opt(take_while_m_n(4, 4, is_hex_digit), |n: &[u8]| {
+      str::from_utf8(n).ok()
+        .and_then(|s| u16::from_str_radix(s, 16).ok())
+        .map(|n| n.to_be_bytes().to_vec())
     })),
-    preceded(tag_no_case("U"), map_opt(take_while_m_n(8, 8, is_hex_digit), |n: &[u8]| {
-      let s = str::from_utf8(n).unwrap();
-      u32::from_str_radix(s, 16).ok().and_then(char::from_u32)
+    preceded(char('U'), map_opt(take_while_m_n(8, 8, is_hex_digit), |n: &[u8]| {
+      str::from_utf8(n).ok()
+        .and_then(|s| u32::from_str_radix(s, 16).ok())
+        .map(|n| n.to_be_bytes().to_vec())
     })),
   ))(input)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitChar {
-  repr: char,
+  repr: Vec<u8>,
 }
 
 impl LitChar {
-  fn from_str(input: &str) -> IResult<&[u8], char> {
+  fn from_str(input: &str) -> IResult<&[u8], Vec<u8>> {
     all_consuming(delimited(
-      char('\''),
-      alt((
-        preceded(char('\\'), escaped_char),
-        map_opt(anychar, |c| if c == '\\' || c == '\'' { None } else { Some(c) }),
-      )),
+      preceded(opt(char('L')), char('\'')),
+      fold_many1(
+        alt((
+          preceded(char('\\'), escaped_char),
+          map(none_of(r#"\'"#), |b| vec![b as u8]),
+        )),
+        Vec::new,
+        |mut acc, c| {
+          acc.clear();
+          acc.extend(c);
+          acc
+        }
+      ),
       char('\''),
     ))(input.as_bytes())
   }
@@ -101,13 +116,24 @@ impl LitChar {
 
 impl ToTokens for LitChar {
   fn to_tokens(&self, tokens: &mut TokenStream) {
-    self.repr.to_tokens(tokens)
+    tokens.append_all(match *self.repr.as_slice() {
+      [c] => quote! { #c as ::core::ffi::c_char },
+      [c1, c2] => {
+        let c = u16::from_be_bytes([c1, c2]);
+        quote ! { #c as c_wchar }
+      },
+      [c1, c2, c3, c4] => {
+        let c = u32::from_be_bytes([c1, c2, c3, c4]);
+        quote! { #c as c_wchar }
+      },
+      _ => unreachable!(),
+    })
   }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitString {
-  pub(crate) repr: String,
+  pub(crate) repr: Vec<u8>,
 }
 
 impl LitString {
@@ -115,17 +141,20 @@ impl LitString {
     if let Some(token) = input.first() {
       let input = &input[1..];
 
-      let res: IResult<&[u8], String> = all_consuming(
+      let res: IResult<&[u8], Vec<u8>> = all_consuming(
         delimited(
-          char('"'),
+          preceded(
+            opt(alt((terminated(char('u'), char('8')), char('U'), char('L')))),
+            char('"'),
+          ),
           fold_many0(
             alt((
               preceded(char('\\'), escaped_char),
-              map_opt(anychar, |c| if c == '\\' || c == '"' { None } else { Some(c) }),
+              map(is_not([b'\\', b'"']), |b: &[u8]| b.to_vec()),
             )),
-            String::new,
+            Vec::new,
             |mut acc, c| {
-              acc.push(c);
+              acc.extend(c);
               acc
             },
           ),
@@ -144,13 +173,22 @@ impl LitString {
 
 impl PartialEq<&str> for LitString {
   fn eq(&self, other: &&str) -> bool {
-    self.repr == *other
+    self.repr == other.as_bytes()
   }
 }
 
 impl ToTokens for LitString {
   fn to_tokens(&self, tokens: &mut TokenStream) {
-    self.repr.to_tokens(tokens)
+    let mut bytes = self.repr.clone();
+    bytes.push(0);
+    let bytes = syn::LitByteStr::new(&bytes, Span::call_site());
+
+    tokens.append_all(quote! {
+      {
+        const CSTR: &::core::ffi::CStr = ::core::ffi::CStr::from_bytes_with_nul_unchecked(&#bytes);
+        CSTR.as_ptr()
+      }
+    })
   }
 }
 
@@ -172,7 +210,7 @@ impl LitFloat {
       ),
     ));
 
-    let (input, (repr, size)) = terminated(float, eof)(input)?;
+    let (input, (repr, size)) = all_consuming(float)(input)?;
     Ok((input, (repr, size)))
   }
 
@@ -234,23 +272,37 @@ impl LitInt {
       map(digit1, |n: &str| n.to_owned()),
     ));
 
-    let suffix_unsigned = tag_no_case("u");
-    let suffix_long = tag_no_case("l");
-    let suffix_long_long = tag_no_case("ll");
-    let suffix_size_t = tag_no_case("z");
+    dbg!(input);
 
-    let suffix = permutation((
-      opt(map(suffix_unsigned, |_| "u")),
-      opt(
-        alt((
-          suffix_long_long,
-          suffix_long,
-          suffix_size_t,
-        ))
-      )
+    let suffix = alt((
+      map(
+        pair(
+          tag_no_case("u"),
+          opt(
+            alt((
+              tag_no_case("ll"),
+              tag_no_case("l"),
+              tag_no_case("z"),
+            )),
+          ),
+        ),
+        |(unsigned, size)| (Some(unsigned), size)
+      ),
+      map(
+        pair(
+          alt((
+            tag_no_case("ll"),
+            tag_no_case("l"),
+            tag_no_case("z"),
+          )),
+          opt(tag_no_case("u")),
+        ),
+        |(size, unsigned)| (unsigned, Some(size)),
+      ),
+      map(eof, |_| (None, None))
     ));
 
-    let (input, (repr, (unsigned, size))) = terminated(pair(digits, suffix), eof)(input)?;
+    let (input, (repr, (unsigned, size))) = all_consuming(pair(digits, suffix))(input)?;
     Ok((input, (repr, unsigned, size)))
   }
 
@@ -298,8 +350,68 @@ mod tests {
   use super::*;
 
   #[test]
+  fn parse_char() {
+    let (_, id) = LitChar::parse(&[r#"'a'"#]).unwrap();
+    assert_eq!(id, LitChar { repr: vec![b'a'] });
+
+    let (_, id) = LitChar::parse(&[r#"'abc'"#]).unwrap();
+    assert_eq!(id, LitChar { repr: vec![b'c'] });
+
+    let (_, id) = LitChar::parse(&[r#"'\n'"#]).unwrap();
+    assert_eq!(id, LitChar { repr: vec![b'\n'] });
+
+    let (_, id) = LitChar::parse(&[r#"'\uFFee'"#]).unwrap();
+    assert_eq!(id, LitChar { repr: vec![0xff, 0xee] });
+
+    let (_, id) = LitChar::parse(&[r#"'\UCAFEbabe'"#]).unwrap();
+    assert_eq!(id, LitChar { repr: vec![0xca, 0xfe, 0xba, 0xbe] });
+  }
+
+  #[test]
   fn parse_string() {
     let (_, id) = LitString::parse(&[r#""asdf""#]).unwrap();
     assert_eq!(id, LitString { repr: "asdf".into() });
+
+    let (_, id) = LitString::parse(&[r#""abc\ndef""#]).unwrap();
+    assert_eq!(id, LitString { repr: "abc\ndef".into() });
+  }
+
+  #[test]
+  fn parse_float() {
+    let (_, id) = LitFloat::parse(&[r#"1234f"#]).unwrap();
+    assert_eq!(id, LitFloat { repr: "1234".into() });
+
+    let (_, id) = LitFloat::parse(&[r#"12.34f"#]).unwrap();
+    assert_eq!(id, LitFloat { repr: "12.34".into() });
+
+    let (_, id) = LitFloat::parse(&[r#"12.34L"#]).unwrap();
+    assert_eq!(id, LitFloat { repr: "12.34".into() });
+  }
+
+  #[test]
+  fn parse_int() {
+    let (_, id) = LitInt::parse(&[r#"777"#]).unwrap();
+    assert_eq!(id, LitInt { repr: "777".into() });
+
+    let (_, id) = LitInt::parse(&[r#"0777"#]).unwrap();
+    assert_eq!(id, LitInt { repr: "0o777".into() });
+
+    let (_, id) = LitInt::parse(&[r#"8718937817238719"#]).unwrap();
+    assert_eq!(id, LitInt { repr: "8718937817238719".into() });
+
+    let (_, id) = LitInt::parse(&[r#"1U"#]).unwrap();
+    assert_eq!(id, LitInt { repr: "1".into() });
+
+    let (_, id) = LitInt::parse(&[r#"1ULL"#]).unwrap();
+    assert_eq!(id, LitInt { repr: "1".into() });
+
+    let (_, id) = LitInt::parse(&[r#"1UL"#]).unwrap();
+    assert_eq!(id, LitInt { repr: "1".into() });
+
+    let (_, id) = LitInt::parse(&[r#"1LLU"#]).unwrap();
+    assert_eq!(id, LitInt { repr: "1".into() });
+
+    let (_, id) = LitInt::parse(&[r#"1z"#]).unwrap();
+    assert_eq!(id, LitInt { repr: "1".into() });
   }
 }
