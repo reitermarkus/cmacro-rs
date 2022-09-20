@@ -84,7 +84,10 @@ pub struct LitChar {
 impl LitChar {
   fn from_str(input: &str) -> IResult<&[u8], Vec<u8>> {
     all_consuming(delimited(
-      preceded(opt(char('L')), char('\'')),
+      preceded(
+        opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))),
+        char('\''),
+      ),
       fold_many1(
         alt((
           preceded(char('\\'), escaped_char),
@@ -144,7 +147,7 @@ impl LitString {
       let res: IResult<&[u8], Vec<u8>> = all_consuming(
         delimited(
           preceded(
-            opt(alt((terminated(char('u'), char('8')), char('U'), char('L')))),
+            opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))),
             char('"'),
           ),
           fold_many0(
