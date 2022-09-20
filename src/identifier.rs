@@ -64,7 +64,7 @@ impl Identifier {
   pub fn visit<'s, 't>(&mut self, ctx: &mut Context<'s, 't>) {
     if let Self::Concat(ref ids) = self {
       for id in ids {
-        if let Some(arg_ty) = ctx.args.get_mut(id.as_str()) {
+        if let Some(arg_ty) = ctx.arg_type_mut(id.as_str()) {
           *arg_ty = MacroArgType::Ident;
           ctx.export_as_macro = true;
         }

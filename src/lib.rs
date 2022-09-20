@@ -19,6 +19,9 @@ use nom::sequence::terminated;
 use nom::sequence::tuple;
 use nom::IResult;
 
+mod context;
+pub use context::*;
+
 mod asm;
 pub use asm::*;
 
@@ -93,29 +96,6 @@ where
   }
 }
 
-/// Type of a macro argument.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MacroArgType {
-  /// `ident` type
-  Ident,
-  /// `expr` type
-  Expr,
-  Unknown,
-}
-
-#[derive(Debug)]
-pub struct Context<'s, 'f> {
-  args: HashMap<&'s str, MacroArgType>,
-  export_as_macro: bool,
-  functions: HashMap<&'f str, Vec<String>>,
-}
-
-impl<'s, 't> Context<'s, 't> {
-  pub fn is_macro_arg(&self, name: &str) -> bool {
-    self.args.get(name).map(|&ty| self.export_as_macro || ty != MacroArgType::Unknown).unwrap_or(false)
-  }
-}
-
 #[derive(Debug)]
 pub struct FnMacro<'t> {
   pub name: &'t str,
@@ -124,33 +104,31 @@ pub struct FnMacro<'t> {
 }
 
 impl<'t> FnMacro<'t> {
-  pub fn parse<'i>(sig: &'t str, body: &'i [&'t str]) -> Result<Self, ()> {
-    let sig = tokenize_name(sig.as_bytes());
+  pub fn parse<'i>(sig: &'t str, body: &'i [&'t str]) -> Result<Self, nom::Err<nom::error::Error<&'i [&'t str]>>> {
+    let (_, sig) = MacroSig::parse(&tokenize_name(sig.as_bytes())).unwrap();
 
-    let (_, sig) = MacroSig::parse(&sig).unwrap();
+    let (_, body) = MacroBody::parse(body)?;
 
-    let mut args = HashMap::new();
-    for &arg in &sig.arguments {
-      args.insert(arg, MacroArgType::Unknown);
-    }
-
-    let (_, mut body) = MacroBody::parse(body).unwrap();
-
-    let mut ctx = Context { args, export_as_macro: false, functions: HashMap::new() };
-    body.visit(&mut ctx);
-
-    let args = sig.arguments.into_iter().map(|a| (a, ctx.args.remove(a).unwrap())).collect();
+    let args = sig.args.into_iter().map(|arg| (arg, MacroArgType::Unknown)).collect();
     Ok(Self { name: sig.name, args, body })
   }
 
   pub fn write(
-    &self,
+    &mut self,
     f: &mut String,
     mut variable_type: impl FnMut(&str, &str) -> Option<syn::Type>,
     mut return_type: impl FnMut(&str) -> Option<syn::Type>,
   ) -> fmt::Result {
-    let mut export_as_macro = !self.args.iter().all(|&(_, ty)| ty == MacroArgType::Unknown);
-    let func_args = self.args.iter().filter_map(|&(arg, _)| {
+    let mut args = HashMap::new();
+    for (arg, ty) in self.args.clone() {
+      args.insert(arg, ty);
+    }
+
+    let mut ctx = Context { args, export_as_macro: false, functions: HashMap::new() };
+    self.body.visit(&mut ctx);
+
+    let mut export_as_macro = !ctx.args.iter().all(|(_, ty)| *ty == MacroArgType::Unknown);
+    let func_args = self.args.iter().filter_map(|(arg, _)| {
       let id = Ident::new(arg, Span::call_site());
       variable_type(self.name, arg).map(|ty| quote! { #id: #ty })
     }).collect::<Vec<_>>();
@@ -159,11 +137,6 @@ impl<'t> FnMacro<'t> {
       export_as_macro = true;
     }
 
-    let mut args = HashMap::new();
-    for &(arg, ty) in &self.args {
-      args.insert(arg, ty);
-    }
-    let mut ctx = Context { args, export_as_macro, functions: HashMap::new() };
 
     let name = Ident::new(self.name, Span::call_site());
 
@@ -174,10 +147,10 @@ impl<'t> FnMacro<'t> {
     }
 
     if export_as_macro {
-      let args = self.args.iter().map(|&(arg, ty)| {
+      let args = self.args.iter().map(|(arg, ty)| {
         let id = Ident::new(arg, Span::call_site());
 
-        if ty == MacroArgType::Ident {
+        if *ty == MacroArgType::Ident {
           quote! { $#id:ident }
         } else {
           quote! { $#id:expr }
@@ -218,7 +191,7 @@ impl<'t> FnMacro<'t> {
 #[derive(Debug)]
 pub struct MacroSig<'t> {
   pub name: &'t str,
-  pub arguments: Vec<&'t str>,
+  pub args: Vec<&'t str>,
 }
 
 fn tokenize_name(input: &[u8]) -> Vec<&str> {
@@ -277,7 +250,7 @@ impl<'t> MacroSig<'t> {
   pub fn parse<'i>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (input, name) = identifier(input)?;
 
-    let (input, arguments) = terminated(
+    let (input, args) = terminated(
       delimited(
         pair(token("("), meta),
         alt((
@@ -307,7 +280,7 @@ impl<'t> MacroSig<'t> {
     )(input)?;
     assert!(input.is_empty());
 
-    Ok((input, MacroSig { name, arguments }))
+    Ok((input, MacroSig { name, args }))
   }
 }
 
