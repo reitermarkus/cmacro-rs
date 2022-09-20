@@ -1,0 +1,10 @@
+[package]
+name = "cmacro"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nom = "7"
+syn = "1"
+proc-macro2 = "1"
+quote = "1"
