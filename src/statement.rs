@@ -92,7 +92,7 @@ impl<'t> Statement<'t> {
         }
 
         condition.visit(ctx);
-      }
+      },
     }
   }
 
@@ -142,7 +142,7 @@ impl<'t> Statement<'t> {
             }
           }
         })
-      }
+      },
     }
   }
 

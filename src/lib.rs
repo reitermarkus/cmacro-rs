@@ -1,23 +1,23 @@
-use std::fmt::{self, Write};
 use std::collections::HashMap;
+use std::fmt::{self, Write};
 use std::str;
 
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
-use proc_macro2::{TokenStream, Ident, Span};
 
-use nom::multi::{separated_list0};
 use nom::branch::alt;
+use nom::branch::permutation;
 use nom::combinator::map;
+use nom::combinator::{eof, opt};
+use nom::multi::many0_count;
+use nom::multi::separated_list0;
+use nom::multi::{fold_many0, many0};
 use nom::sequence::delimited;
-use nom::sequence::terminated;
-use nom::combinator::{opt, eof};
-use nom::sequence::tuple;
-use nom::IResult;
-use nom::multi::{many0, fold_many0};
 use nom::sequence::pair;
 use nom::sequence::preceded;
-use nom::branch::permutation;
-use nom::multi::many0_count;
+use nom::sequence::terminated;
+use nom::sequence::tuple;
+use nom::IResult;
 
 mod asm;
 pub use asm::*;
@@ -69,7 +69,8 @@ where
 {
   move |tokens: &[&str]| {
     if let Some(token2) = tokens.get(0).as_deref() {
-      let token2 = if token2.starts_with("\\\n") { // TODO: Fix in tokenizer/lexer.
+      let token2 = if token2.starts_with("\\\n") {
+        // TODO: Fix in tokenizer/lexer.
         &token2[2..]
       } else {
         token2

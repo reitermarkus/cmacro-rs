@@ -175,9 +175,9 @@ impl LitFloat {
       let mut suffix = map(
         alt((
           cond(size1.is_none(), opt(preceded(delimited(meta, token("##"), meta), suffix_f))),
-          cond(size1.is_none() && repr.contains("."), opt(preceded(delimited(meta, token("##"), meta), suffix_long)))
+          cond(size1.is_none() && repr.contains("."), opt(preceded(delimited(meta, token("##"), meta), suffix_long))),
         )),
-        |size| size.flatten()
+        |size| size.flatten(),
       );
 
       let (tokens, size2) = suffix(tokens)?;
@@ -189,9 +189,7 @@ impl LitFloat {
 
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
   }
-
 }
-
 
 impl ToTokens for LitFloat {
   fn to_tokens(&self, tokens: &mut TokenStream) {

@@ -36,7 +36,7 @@ fn concat_identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Identifier {
   Literal(String),
-  Concat(Vec<String>)
+  Concat(Vec<String>),
 }
 
 impl Identifier {
