@@ -47,16 +47,16 @@ mod function_decl;
 pub use function_decl::*;
 
 mod literal;
-pub(crate) use literal::*;
+pub use literal::*;
 
 mod statement;
-pub(crate) use statement::*;
+pub use statement::*;
 
 mod decl;
-pub(crate) use decl::*;
+pub use decl::*;
 
 mod stringify;
-pub(crate) use stringify::*;
+pub use stringify::*;
 
 /// A variable-like macro.
 #[derive(Debug)]

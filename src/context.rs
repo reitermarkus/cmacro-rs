@@ -13,6 +13,7 @@ pub enum MacroArgType {
   Unknown,
 }
 
+/// Code generation context.
 #[derive(Debug)]
 pub struct Context<'s, 'f> {
   pub(crate) args: HashMap<&'s str, MacroArgType>,

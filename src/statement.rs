@@ -7,6 +7,13 @@ use crate::tokens::parenthesized;
 use super::*;
 
 /// A statement.
+///
+/// ```c
+/// #define STMT int n = 1;
+/// #define STMT do { \
+///   call(); \
+/// } while (0)
+/// ```
 #[derive(Debug)]
 pub enum Statement<'t> {
   Expr(Expr<'t>),

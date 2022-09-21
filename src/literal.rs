@@ -26,6 +26,9 @@ use proc_macro2::Span;
 
 use crate::tokens::{meta, token};
 
+/// A literal.
+///
+/// Also see [`LitChar`], [`LitString`], [`LitFloat`] and [`LitInt`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lit {
   Char(LitChar),
@@ -91,6 +94,14 @@ fn escaped_char(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
   ))(input)
 }
 
+/// A character literal.
+///
+/// ```c
+/// #define CHAR 'a'
+/// #define CHAR u8'a'
+/// #define CHAR u'猫'
+/// #define CHAR U'🍌'
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitChar {
   repr: Vec<u8>,
@@ -149,6 +160,15 @@ impl ToTokens for LitChar {
   }
 }
 
+/// A string literal.
+///
+/// ```c
+/// #define STRING "abc"
+/// #define STRING L"def"
+/// #define STRING u8"ghi"
+/// #define STRING u"jkl"
+/// #define STRING U"mno"
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitString {
   pub(crate) repr: Vec<u8>,
@@ -210,6 +230,13 @@ impl ToTokens for LitString {
   }
 }
 
+/// A floating-point literal.
+///
+/// ```c
+/// #define FLOAT 3.14
+/// #define FLOAT 314f
+/// #define FLOAT 3.14L
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitFloat {
   repr: String
@@ -267,9 +294,10 @@ impl ToTokens for LitFloat {
 /// An integer literal.
 ///
 /// ```c
-/// #define MY_INT1 1ull
-/// #define MY_INT2 1u ## LL
-/// #define MY_INT3 1 ## ULL
+/// #define INT 1
+/// #define INT 2ull
+/// #define INT 3u ## LL
+/// #define INT 4 ## ULL
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitInt {
