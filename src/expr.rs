@@ -252,11 +252,21 @@ impl Expr {
         if let Identifier::Literal(id) = name {
           if let Some(expr) = ctx.macro_variable(id.as_str()) {
             *self = expr.clone();
-            self.finish(ctx)?;
+            return self.finish(ctx);
           }
-        } else {
-          name.finish(ctx)?;
+
+          // Built-in macros.
+          match id.as_str() {
+            "__SCHAR_MAX__"
+            | "__SHRT_MAX__"
+            | "__INT_MAX__"
+            | "__LONG_MAX__"
+            | "__LONG_LONG_MAX__" => return Ok(()),
+            _ => (),
+          }
         }
+
+        name.finish(ctx)?;
       },
       Self::FunctionCall(call) => call.finish(ctx)?,
       Self::Literal(_) => (),
@@ -307,6 +317,29 @@ impl Expr {
         tokens.append_all(quote! { eNotifyAction_eIncrement });
       },
       Self::Variable { ref name } => {
+        if let Identifier::Literal(id) = name {
+          eprintln!("ID = {:?}", id);
+
+          match id.as_str() {
+            "__SCHAR_MAX__" => {
+              return tokens.append_all(quote!{ ::core::ffi::c_schar::MAX })
+            },
+            "__SHRT_MAX__" => {
+              return tokens.append_all(quote!{ ::core::ffi::c_short::MAX })
+            },
+            "__INT_MAX__" => {
+              return tokens.append_all(quote!{ ::core::ffi::c_int::MAX })
+            },
+            "__LONG_MAX__" => {
+              return tokens.append_all(quote!{ ::core::ffi::c_long::MAX })
+            },
+            "__LONG_LONG_MAX__" => {
+              return tokens.append_all(quote!{ ::core::ffi::c_longlong::MAX })
+            },
+            _ => (),
+          }
+        }
+
         name.to_tokens(ctx, tokens)
       },
       Self::FunctionCall(ref call) => {
