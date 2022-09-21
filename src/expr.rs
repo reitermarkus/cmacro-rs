@@ -242,7 +242,7 @@ impl Expr {
     Self::parse_term_prec14(tokens)
   }
 
-  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
+  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
     match self {
       Self::Cast { expr, ty } => {
         expr.finish(ctx)?;
@@ -252,7 +252,7 @@ impl Expr {
         name.finish(ctx)?;
 
         if let Identifier::Literal(id) = name {
-          if let Some(expr) = ctx.macro_variables.get(id.as_str()) {
+          if let Some(expr) = ctx.macro_variable(id.as_str()) {
             *self = expr.clone();
           }
         }
@@ -287,7 +287,7 @@ impl Expr {
     Ok(())
   }
 
-  pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     match self {
       Self::Cast { ref expr, ref ty } => {
         let expr = expr.to_token_stream(ctx);
@@ -396,7 +396,7 @@ impl Expr {
     }
   }
 
-  pub fn to_token_stream(&self, ctx: &mut Context) -> TokenStream {
+  pub fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens

@@ -35,11 +35,12 @@ impl Asm {
     Ok((tokens, Self { template, outputs, inputs, clobbers }))
   }
 
-  pub fn finish<'s, 'v>(&mut self, _ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
+  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
+    drop(ctx);
     Ok(())
   }
 
-  pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     let template = &self.template;
     let outputs = self.outputs.iter().map(|o| o.to_token_stream(ctx)).collect::<Vec<_>>();
     let inputs = self.inputs.iter().map(|o| o.to_token_stream(ctx)).collect::<Vec<_>>();

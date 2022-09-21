@@ -26,7 +26,7 @@ impl FunctionDecl {
     Ok((tokens, Self { ret_ty, name, args }))
   }
 
-  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
+  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
     self.ret_ty.finish(ctx)?;
     self.name.finish(ctx)?;
     for (ty, arg) in self.args.iter_mut() {
@@ -37,7 +37,7 @@ impl FunctionDecl {
     Ok(())
   }
 
-  pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     let name = self.name.to_token_stream(ctx);
     let args = self.args.iter().map(|(ty, arg)| {
       let ty = ty.to_token_stream(ctx);

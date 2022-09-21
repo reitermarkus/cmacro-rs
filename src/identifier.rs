@@ -9,7 +9,7 @@ use proc_macro2::Ident;
 use nom::IResult;
 
 use crate::tokens::{meta, token};
-use crate::{Context, MacroArgType};
+use crate::{LocalContext, MacroArgType};
 
 pub(crate) fn identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
   if let Some(token) = tokens.first() {
@@ -70,7 +70,7 @@ impl Identifier {
     )(tokens)
   }
 
-  pub fn finish<'s, 't>(&mut self, ctx: &mut Context<'s, 't>) -> Result<(), crate::Error> {
+  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
     if let Self::Concat(ref mut ids) = self {
       let mut new_ids = vec![];
       let mut non_arg_id: Option<String> = None;
@@ -85,12 +85,10 @@ impl Identifier {
           }
 
           new_ids.push(id.to_owned());
+        } else if let Some(ref mut non_arg_id) = non_arg_id {
+          non_arg_id.push_str(&id);
         } else {
-          if let Some(ref mut non_arg_id) = non_arg_id {
-            non_arg_id.push_str(&id);
-          } else {
-            non_arg_id = Some(id.to_owned());
-          }
+          non_arg_id = Some(id.to_owned());
         }
       }
 
@@ -110,11 +108,11 @@ impl Identifier {
     Ok(())
   }
 
-  pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     tokens.append_all(self.to_token_stream(ctx))
   }
 
-  pub fn to_token_stream(&self, ctx: &mut Context) -> TokenStream {
+  pub fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
     match self {
       Self::Literal(ref s) => {
         let id = Ident::new(s, Span::call_site());

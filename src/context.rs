@@ -13,23 +13,21 @@ pub enum MacroArgType {
   Unknown,
 }
 
-/// Code generation context.
+/// Local code generation context.
 #[derive(Debug)]
-pub struct Context<'t, 'f> {
+pub struct LocalContext<'t, 'g> {
   pub(crate) args: HashMap<&'t str, MacroArgType>,
   pub(crate) export_as_macro: bool,
-  pub(crate) functions: HashMap<&'f str, Vec<String>>,
-  pub(crate) variables: HashMap<&'f str, String>,
-  pub(crate) macro_variables: HashMap<&'f str, Expr>,
+  pub(crate) global_context: &'g mut Context,
 }
 
-impl<'s, 't> Context<'s, 't> {
+impl<'t, 'g> LocalContext<'t, 'g> {
   pub fn is_variadic(&self) -> bool {
     self.args.contains_key("...")
   }
 
   pub fn is_variable_known(&self, id: &str) -> bool {
-    self.args.contains_key(id) || self.variables.contains_key(id)
+    self.args.contains_key(id) || self.global_context.variables.contains_key(id)
   }
 
   pub fn arg_type_mut(&mut self, name: &str) -> Option<&mut MacroArgType> {
@@ -39,4 +37,21 @@ impl<'s, 't> Context<'s, 't> {
   pub fn is_macro_arg(&self, name: &str) -> bool {
     self.args.get(name).map(|ty| self.export_as_macro || *ty != MacroArgType::Unknown).unwrap_or(false)
   }
+
+  pub fn macro_variable(&self, name: &str) -> Option<&Expr> {
+    self.global_context.macro_variables.get(name)
+  }
+
+  pub fn function(&self, name: &str) -> Option<&Vec<String>> {
+    self.global_context.functions.get(name)
+  }
 }
+
+/// Global code generation context.
+#[derive(Debug)]
+pub struct Context {
+  pub functions: HashMap<String, Vec<String>>,
+  pub variables: HashMap<String, String>,
+  pub macro_variables: HashMap<String, Expr>,
+}
+

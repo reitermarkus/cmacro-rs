@@ -3,7 +3,7 @@ use nom::combinator::map;
 use nom::combinator::all_consuming;
 use nom::branch::alt;
 
-use crate::{Context, Statement, Expr, tokens::meta};
+use crate::{LocalContext, Statement, Expr, tokens::meta};
 
 /// The body of a macro.
 #[derive(Debug)]
@@ -28,7 +28,7 @@ impl MacroBody {
     Ok((input, body))
   }
 
-  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
+  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
     match self {
       Self::Block(stmt) => stmt.finish(ctx)?,
       Self::Expr(expr) => expr.finish(ctx)?,

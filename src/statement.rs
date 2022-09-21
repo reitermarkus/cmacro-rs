@@ -84,7 +84,7 @@ impl Statement {
     ))(tokens)
   }
 
-  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
+  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
     match self {
       Self::Expr(expr) => expr.finish(ctx)?,
       Self::FunctionDecl(f) => f.finish(ctx)?,
@@ -117,7 +117,7 @@ impl Statement {
     Ok(())
   }
 
-  pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     match self {
       Self::Expr(expr) => {
         let expr = expr.to_token_stream(ctx);
@@ -167,7 +167,7 @@ impl Statement {
     }
   }
 
-  pub fn to_token_stream(&self, ctx: &mut Context) -> TokenStream {
+  pub fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens

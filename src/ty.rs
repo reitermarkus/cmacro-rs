@@ -174,7 +174,7 @@ impl Type {
     )(tokens)
   }
 
-  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
+  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
     match self {
       Self::BuiltIn(_) => (),
       Self::Identifier { name, .. } => name.finish(ctx)?,
@@ -184,7 +184,7 @@ impl Type {
     Ok(())
   }
 
-  pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     match self {
       Self::BuiltIn(ty) => {
         match ty {
@@ -207,7 +207,7 @@ impl Type {
     }
   }
 
-  pub fn to_token_stream(&self, ctx: &mut Context) -> TokenStream {
+  pub fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens

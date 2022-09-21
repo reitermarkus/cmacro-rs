@@ -11,7 +11,7 @@ pub struct FunctionCall {
 }
 
 impl FunctionCall {
-  pub fn finish<'s, 't>(&mut self, ctx: &mut Context<'s, 't>) -> Result<(), crate::Error> {
+  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
     self.name.finish(ctx)?;
 
     for arg in self.args.iter_mut() {
@@ -19,7 +19,7 @@ impl FunctionCall {
     }
 
     if let Identifier::Literal(ref function_name) = self.name {
-      if let Some(known_args) = ctx.functions.get(function_name.as_str()).cloned() {
+      if let Some(known_args) = ctx.function(function_name.as_str()).cloned() {
         if known_args.len() == self.args.len() {
           for (arg, known_arg_type) in self.args.iter_mut().zip(known_args.iter()) {
             arg.finish(ctx)?;
@@ -45,7 +45,7 @@ impl FunctionCall {
     Ok(())
   }
 
-  pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     let mut name = TokenStream::new();
     self.name.to_tokens(ctx, &mut name);
 

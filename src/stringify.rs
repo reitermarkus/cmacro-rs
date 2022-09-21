@@ -22,7 +22,7 @@ impl Stringify {
     )(tokens)
   }
 
-  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
+  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
     if let Identifier::Literal(ref id) = self.id {
       if ctx.is_macro_arg(id) {
         ctx.export_as_macro = true;
@@ -34,11 +34,11 @@ impl Stringify {
     }
   }
 
-  pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     tokens.append_all(self.to_token_stream(ctx))
   }
 
-  pub fn to_token_stream(&self, ctx: &mut Context) -> TokenStream {
+  pub fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
     let id = self.id.to_token_stream(ctx);
 
     quote! { ::core::stringify!(#id) }

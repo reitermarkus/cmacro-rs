@@ -74,19 +74,22 @@ impl<'t> VarMacro<'t> {
     Ok(Self { name, body })
   }
 
-  pub fn write(
+  pub fn generate(
     &mut self,
     _variable_type: impl FnMut(&str, &str) -> Option<syn::Type>,
     _return_type: impl FnMut(&str) -> Option<syn::Type>,
   ) -> Result<TokenStream, crate::Error> {
     let mut tokens = TokenStream::new();
 
-    let mut ctx = Context {
-      args: HashMap::new(),
-      export_as_macro: false,
+    let mut gcx = Context {
       functions: HashMap::new(),
       variables: HashMap::new(),
       macro_variables: HashMap::new(),
+    };
+    let mut ctx = LocalContext {
+      args: HashMap::new(),
+      export_as_macro: false,
+      global_context: &mut gcx,
     };
     self.body.finish(&mut ctx)?;
 
@@ -116,7 +119,7 @@ impl<'t> FnMacro<'t> {
     Ok(Self { name: sig.name, args, body })
   }
 
-  pub fn write(
+  pub fn generate(
     &mut self,
     mut variable_type: impl FnMut(&str, &str) -> Option<syn::Type>,
     mut return_type: impl FnMut(&str) -> Option<syn::Type>,
@@ -128,12 +131,15 @@ impl<'t> FnMacro<'t> {
       args.insert(arg, ty);
     }
 
-    let mut ctx = Context {
-      args,
-      export_as_macro: false,
+    let mut gcx = Context {
       functions: HashMap::new(),
       variables: HashMap::new(),
       macro_variables: HashMap::new(),
+    };
+    let mut ctx = LocalContext {
+      args,
+      export_as_macro: false,
+      global_context: &mut gcx,
     };
     self.body.finish(&mut ctx)?;
 
