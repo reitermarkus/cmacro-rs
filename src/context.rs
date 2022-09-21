@@ -18,7 +18,7 @@ pub enum MacroArgType {
 pub struct LocalContext<'t, 'g> {
   pub(crate) args: HashMap<&'t str, MacroArgType>,
   pub(crate) export_as_macro: bool,
-  pub(crate) global_context: &'g mut Context,
+  pub(crate) global_context: &'g Context,
 }
 
 impl<'t, 'g> LocalContext<'t, 'g> {
@@ -48,10 +48,15 @@ impl<'t, 'g> LocalContext<'t, 'g> {
 }
 
 /// Global code generation context.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Context {
   pub functions: HashMap<String, Vec<String>>,
   pub variables: HashMap<String, String>,
   pub macro_variables: HashMap<String, Expr>,
 }
 
+impl Context {
+  pub fn add_var_macro(&mut self, var_macro: VarMacro) {
+    self.macro_variables.insert(var_macro.name, var_macro.expr);
+  }
+}

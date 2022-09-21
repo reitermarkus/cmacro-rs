@@ -249,12 +249,13 @@ impl Expr {
         ty.finish(ctx)?;
       },
       Self::Variable { ref mut name } => {
-        name.finish(ctx)?;
-
         if let Identifier::Literal(id) = name {
           if let Some(expr) = ctx.macro_variable(id.as_str()) {
             *self = expr.clone();
+            self.finish(ctx)?;
           }
+        } else {
+          name.finish(ctx)?;
         }
       },
       Self::FunctionCall(call) => call.finish(ctx)?,
@@ -371,6 +372,8 @@ impl Expr {
           "&"  => quote! { ( #lhs &  #rhs ) },
           "|"  => quote! { ( #lhs |  #rhs ) },
           "^"  => quote! { ( #lhs ^  #rhs ) },
+          "<<" => quote! { ( #lhs << #rhs ) },
+          ">>" => quote! { ( #lhs >> #rhs ) },
           "<=" => quote! { ( #lhs <= #rhs ) },
           "<"  => quote! { ( #lhs <  #rhs ) },
           ">"  => quote! { ( #lhs >  #rhs ) },

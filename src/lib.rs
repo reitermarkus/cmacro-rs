@@ -62,43 +62,47 @@ mod stringify;
 pub use stringify::*;
 
 /// A variable-like macro.
-#[derive(Debug)]
-pub struct VarMacro<'t> {
-  pub name: &'t str,
-  pub body: MacroBody,
+#[derive(Debug, Clone)]
+pub struct VarMacro {
+  pub name: String,
+  pub expr: Expr,
 }
 
-impl<'t> VarMacro<'t> {
-  pub fn parse<'i>(name: &'t str, body: &'i [&'t str]) -> Result<Self, nom::Err<nom::error::Error<&'i [&'t str]>>> {
-    let (_, body) = MacroBody::parse(body)?;
-    Ok(Self { name, body })
+impl VarMacro {
+  pub fn parse<'i, 't>(name: &'t str, body: &'i [&'t str]) -> Result<Self, crate::Error> {
+    let body = match MacroBody::parse(body) {
+      Ok((_, body)) => body,
+      Err(_) => return Err(crate::Error::ParserError),
+    };
+
+    let expr = match body {
+      MacroBody::Block(_) => return Err(crate::Error::InvalidVarMacro),
+      MacroBody::Expr(expr) => expr,
+    };
+
+    Ok(Self { name: name.to_owned(), expr })
   }
 
   pub fn generate(
     &mut self,
-    _variable_type: impl FnMut(&str, &str) -> Option<syn::Type>,
-    _return_type: impl FnMut(&str) -> Option<syn::Type>,
+    cx: &Context,
   ) -> Result<TokenStream, crate::Error> {
     let mut tokens = TokenStream::new();
 
-    let mut gcx = Context {
-      functions: HashMap::new(),
-      variables: HashMap::new(),
-      macro_variables: HashMap::new(),
-    };
     let mut ctx = LocalContext {
       args: HashMap::new(),
       export_as_macro: false,
-      global_context: &mut gcx,
+      global_context: &cx,
     };
-    self.body.finish(&mut ctx)?;
 
-    match &self.body {
-      MacroBody::Block(_) => return Err(crate::Error::InvalidVarMacro),
-      MacroBody::Expr(expr) => expr.to_tokens(&mut ctx, &mut tokens),
-    }
+    self.expr.finish(&mut ctx)?;
+    self.expr.to_tokens(&mut ctx, &mut tokens);
 
     Ok(tokens)
+  }
+
+  pub fn name(&self) -> &str {
+    self.name.as_str()
   }
 }
 
@@ -139,7 +143,7 @@ impl<'t> FnMacro<'t> {
     let mut ctx = LocalContext {
       args,
       export_as_macro: false,
-      global_context: &mut gcx,
+      global_context: &gcx,
     };
     self.body.finish(&mut ctx)?;
 

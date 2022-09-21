@@ -215,8 +215,6 @@ impl LitString {
       Self::parse_inner,
       move || s.clone(),
       |mut acc, s| {
-        dbg!(&acc, &s);
-
         acc.repr.extend(s.repr);
         acc
       }
