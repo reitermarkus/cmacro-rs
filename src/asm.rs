@@ -1,4 +1,5 @@
 use quote::TokenStreamExt;
+use nom::IResult;
 
 use super::*;
 

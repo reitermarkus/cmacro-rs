@@ -7,9 +7,24 @@ use nom::bytes::complete::{is_a, tag, tag_no_case, take_while, take_while_m_n};
 use nom::character::complete::none_of;
 use nom::multi::fold_many1;
 use nom::bytes::complete::is_not;
+use nom::branch::alt;
+use nom::branch::permutation;
+use nom::sequence::preceded;
+use nom::sequence::delimited;
+use nom::combinator::opt;
+use nom::combinator::map;
+use nom::IResult;
+use nom::combinator::eof;
+use nom::sequence::terminated;
+use proc_macro2::TokenStream;
+use nom::sequence::pair;
+use nom::sequence::tuple;
+use nom::multi::fold_many0;
 use quote::{ToTokens, TokenStreamExt};
+use quote::quote;
+use proc_macro2::Span;
 
-use super::*;
+use crate::tokens::{meta, token};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lit {

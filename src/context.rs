@@ -21,6 +21,10 @@ pub struct Context<'s, 'f> {
 }
 
 impl<'s, 't> Context<'s, 't> {
+  pub fn is_variadic(&self) -> bool {
+    self.args.contains_key("...")
+  }
+
   pub fn arg_type_mut(&mut self, name: &str) -> Option<&mut MacroArgType> {
     self.args.get_mut(name)
   }
