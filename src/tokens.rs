@@ -4,6 +4,8 @@ use nom::IResult;
 use nom::bytes::complete::tag;
 use nom::combinator::all_consuming;
 use nom::bytes::complete::take_until;
+use nom::sequence::pair;
+use nom::Parser;
 
 pub fn comment<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
 
@@ -47,3 +49,17 @@ where
 }
 
 pub use token as keyword;
+
+pub fn parenthesized<'i, 't, O, F>(
+  f: F,
+) -> impl FnMut(&'i [&'t str]) -> IResult<&'i [&'t str], O, nom::error::Error<&'i [&'t str]>>
+where
+  F: Parser<&'i [&'t str], O, nom::error::Error<&'i [&'t str]>>,
+  't: 'i,
+{
+  delimited(
+    pair(token("("), meta),
+    f,
+    pair(meta, token(")")),
+  )
+}

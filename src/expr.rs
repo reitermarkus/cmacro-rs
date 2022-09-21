@@ -3,6 +3,7 @@ use nom::IResult;
 use nom::multi::fold_many0;
 use quote::quote;
 
+use crate::tokens::parenthesized;
 use super::*;
 
 /// An expression.
@@ -50,7 +51,7 @@ impl<'t> Expr<'t> {
       Self::parse_concat,
       map(Lit::parse, Self::Literal),
       map(Identifier::parse, |id| Self::Variable { name: id }),
-      delimited(pair(token("("), meta), Self::parse, pair(meta, token(")"))),
+      parenthesized(Self::parse),
     ))(tokens)
   }
 
@@ -74,10 +75,8 @@ impl<'t> Expr<'t> {
         let (tokens, arg) = fold_many0(
           alt((
             map(
-              delimited(
-                pair(token("("), meta),
+              parenthesized(
                 separated_list0(tuple((meta, token(","), meta)), Self::parse),
-                pair(meta, token(")")),
               ),
               Access::Fn,
             ),
@@ -118,11 +117,7 @@ impl<'t> Expr<'t> {
     alt((
       map(
         pair(
-          delimited(
-            pair(token("("), meta),
-            Type::parse,
-            pair(meta, token(")")),
-          ),
+          parenthesized(Type::parse),
           Self::parse_term_prec2,
         ),
         |(ty, term)| {

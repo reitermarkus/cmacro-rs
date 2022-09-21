@@ -1,7 +1,9 @@
 use quote::TokenStreamExt;
 use quote::quote;
 use nom::IResult;
+use nom::combinator::value;
 
+use crate::tokens::parenthesized;
 use super::*;
 
 /// A statement.
@@ -21,21 +23,29 @@ pub enum Statement<'t> {
 
 impl<'t> Statement<'t> {
   pub fn parse<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    let condition = || delimited(pair(token("("), meta), Expr::parse, pair(meta, token(")")));
-    let block = || map(Self::parse, |stmt| if let Self::Block(stmts) = stmt { stmts } else { vec![stmt] } );
+    let condition = |input| parenthesized(Expr::parse)(input);
+    let block = |input| map(Self::parse, |stmt| if let Self::Block(stmts) = stmt {
+      stmts
+    } else {
+      vec![stmt]
+    })(input);
+    let semicolon_or_eof = |input| alt((
+      value((), token(";")),
+      value((), eof),
+    ))(input);
 
     alt((
       map(
-        delimited(token("{"), many0(preceded(meta, Self::parse)), pair(meta, token("}"))),
+        delimited(terminated(token("{"), meta), separated_list0(meta, Self::parse), preceded(meta, token("}"))),
         Self::Block,
       ),
       map(
         tuple((
-          preceded(pair(token("if"), meta), condition()),
-          block(),
+          preceded(terminated(token("if"), meta), condition),
+          block,
           opt(preceded(
-            tuple((meta, token("else"), meta)),
-            block(),
+            delimited(meta, token("else"), meta),
+            block,
           )),
         )),
         |(condition, if_branch, else_branch)| {
@@ -44,16 +54,16 @@ impl<'t> Statement<'t> {
       ),
       map(
         preceded(
-          pair(token("do"), meta),
+          terminated(token("do"), meta),
           pair(
-            block(),
-            preceded(token("while"), condition()),
+            block,
+            preceded(token("while"), condition),
           ),
         ),
         |(block, condition)| Self::DoWhile { block, condition }
       ),
       map(
-        terminated(FunctionDecl::parse, alt((token(";"), map(eof, |_| "")))),
+        terminated(FunctionDecl::parse, semicolon_or_eof),
         Self::FunctionDecl,
       ),
       map(

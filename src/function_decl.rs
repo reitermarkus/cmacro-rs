@@ -2,6 +2,7 @@ use quote::TokenStreamExt;
 use nom::IResult;
 use quote::quote;
 
+use crate::tokens::parenthesized;
 use super::*;
 
 /// A function declaration.
@@ -17,10 +18,8 @@ impl FunctionDecl {
     let (tokens, ((_, ret_ty), name, args)) = tuple((
       permutation((opt(token("static")), Type::parse)),
       Identifier::parse,
-      delimited(
-        pair(token("("), meta),
+      parenthesized(
         separated_list0(pair(meta, token(",")), pair(Type::parse, Identifier::parse)),
-        pair(meta, token(")")),
       ),
     ))(tokens)?;
 

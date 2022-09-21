@@ -1,6 +1,7 @@
 use quote::TokenStreamExt;
 use nom::IResult;
 
+use crate::tokens::parenthesized;
 use super::*;
 
 /// An inline assemble call.
@@ -14,15 +15,13 @@ pub struct Asm<'t> {
 
 impl<'t> Asm<'t> {
   pub fn parse<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    let (tokens, (template, outputs, inputs, clobbers)) = delimited(
-      pair(token("("), meta),
+    let (tokens, (template, outputs, inputs, clobbers)) = parenthesized(
       tuple((
         separated_list0(tuple((meta, token(","), meta)), LitString::parse),
         opt(preceded(token(":"), separated_list0(tuple((meta, token(","), meta)), Expr::parse))),
         opt(preceded(token(":"), separated_list0(tuple((meta, token(","), meta)), Expr::parse))),
         opt(preceded(token(":"), separated_list0(tuple((meta, token(","), meta)), Expr::parse))),
       )),
-      pair(meta, token(")")),
     )(tokens)?;
 
     let outputs = outputs.unwrap_or_default();

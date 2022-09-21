@@ -12,11 +12,10 @@ use nom::multi::separated_list0;
 use nom::combinator::opt;
 use nom::sequence::delimited;
 use nom::branch::permutation;
-use nom::multi::many0;
 use nom::sequence::preceded;
+use nom::combinator::all_consuming;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
-
 
 mod context;
 pub use context::*;
@@ -208,9 +207,8 @@ impl<'t> MacroSig<'t> {
   pub fn parse<'i>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (input, name) = identifier(input)?;
 
-    let (input, args) = terminated(
-      delimited(
-        pair(token("("), meta),
+    let (input, args) = all_consuming(
+      parenthesized(
         alt((
           map(
             token("..."),
@@ -232,9 +230,7 @@ impl<'t> MacroSig<'t> {
             },
           ),
         )),
-        pair(meta, token(")")),
       ),
-      eof,
     )(input)?;
     assert!(input.is_empty());
 
