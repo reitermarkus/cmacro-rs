@@ -57,7 +57,7 @@ mod tests {
     let (_, id) = Decl::parse(&["int", "*", "abc", "=", "123"]).unwrap();
     assert_eq!(id, Decl {
       ty: Type::Ptr {
-        ty: Box::new(Type::Identifier { name: Identifier::Literal("int".into()), is_struct: false }),
+        ty: Box::new(Type::BuiltIn(BuiltInType::Int)),
         mutable: true,
       },
       name: Identifier::Literal("abc".into()),

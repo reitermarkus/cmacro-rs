@@ -24,7 +24,7 @@ pub fn meta<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Vec<&'t str>
   many0(comment)(input)
 }
 
-pub fn token<'i, 't>(token: &'static str) -> impl Fn(&'i [&'t str]) -> IResult<&'i [&'t str], &'t str>
+pub fn token<'i, 't>(token: &'t str) -> impl Fn(&'i [&'t str]) -> IResult<&'i [&'t str], &'t str>
 where
   't: 'i,
 {
@@ -45,3 +45,5 @@ where
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
   }
 }
+
+pub use token as keyword;
