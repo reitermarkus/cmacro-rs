@@ -71,12 +71,33 @@ impl Identifier {
   }
 
   pub fn visit<'s, 't>(&mut self, ctx: &mut Context<'s, 't>) {
-    if let Self::Concat(ref ids) = self {
+    if let Self::Concat(ref mut ids) = self {
+      let mut new_ids = vec![];
+      let mut non_arg_id: Option<String> = None;
+
       for id in ids {
         if let Some(arg_ty) = ctx.arg_type_mut(id.as_str()) {
           *arg_ty = MacroArgType::Ident;
           ctx.export_as_macro = true;
+
+          if let Some(non_arg_id) = non_arg_id.take() {
+            new_ids.push(non_arg_id);
+          }
+
+          new_ids.push(id.to_owned());
+        } else {
+          if let Some(ref mut non_arg_id) = non_arg_id {
+            non_arg_id.push_str(&id);
+          } else {
+            non_arg_id = Some(id.to_owned());
+          }
         }
+      }
+
+      if new_ids.len() == 1 {
+        *self = Self::Literal(new_ids.remove(0));
+      } else {
+        *self = Self::Concat(new_ids);
       }
     }
   }
