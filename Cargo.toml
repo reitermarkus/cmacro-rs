@@ -2,6 +2,13 @@
 name = "cmacro"
 version = "0.1.0"
 edition = "2021"
+authors = ["Markus Reiter <me@reitermark.us>"]
+license = "MIT OR Apache-2.0"
+readme = "ReadMe.md"
+description = "A library for parsing C macros."
+documentation = "https://docs.rs/cmacro"
+repository = "https://github.com/reitermarkus/cmacro-rs"
+homepage = "https://github.com/reitermarkus/cmacro-rs"
 
 [dependencies]
 nom = "7"
