@@ -5,12 +5,12 @@ use super::*;
 
 /// A function call.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionCall<'t> {
+pub struct FunctionCall {
   pub name: Identifier,
-  pub args: Vec<Expr<'t>>,
+  pub args: Vec<Expr>,
 }
 
-impl FunctionCall<'_> {
+impl FunctionCall {
   pub fn visit<'s, 't>(&mut self, ctx: &mut Context<'s, 't>) {
     self.name.visit(ctx);
 

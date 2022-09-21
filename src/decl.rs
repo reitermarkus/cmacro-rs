@@ -6,15 +6,15 @@ use super::*;
 
 /// A variable declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Decl<'t> {
+pub struct Decl {
   ty: Type,
   name: Identifier,
-  rhs: Expr<'t>,
+  rhs: Expr,
   is_static: bool,
 }
 
-impl<'t> Decl<'t> {
-  pub fn parse<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+impl Decl {
+  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, ((static_storage, ty), name, _, rhs)) = tuple((
       permutation((opt(token("static")), Type::parse)),
       Identifier::parse, token("="), Expr::parse,

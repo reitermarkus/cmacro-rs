@@ -175,7 +175,7 @@ pub struct LitString {
 }
 
 impl LitString {
-  pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_inner<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     if let Some(token) = input.first() {
       let input = &input[1..];
 
@@ -206,6 +206,21 @@ impl LitString {
     }
 
     Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
+  }
+
+  pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+    let (input, s) = Self::parse_inner(input)?;
+
+    fold_many0(
+      Self::parse_inner,
+      move || s.clone(),
+      |mut acc, s| {
+        dbg!(&acc, &s);
+
+        acc.repr.extend(s.repr);
+        acc
+      }
+    )(input)
   }
 }
 
@@ -317,8 +332,6 @@ impl LitInt {
       map(preceded(tag("0"), oct_digit1), |n| format!("0o{}", n)),
       map(digit1, |n: &str| n.to_owned()),
     ));
-
-    dbg!(input);
 
     let suffix = alt((
       map(

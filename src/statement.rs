@@ -15,21 +15,21 @@ use super::*;
 /// } while (0)
 /// ```
 #[derive(Debug)]
-pub enum Statement<'t> {
-  Expr(Expr<'t>),
+pub enum Statement {
+  Expr(Expr),
   FunctionDecl(FunctionDecl),
-  Decl(Decl<'t>),
+  Decl(Decl),
   Block(Vec<Self>),
   If {
-    condition: Expr<'t>,
-    if_branch: Vec<Statement<'t>>,
-    else_branch: Vec<Statement<'t>>
+    condition: Expr,
+    if_branch: Vec<Statement>,
+    else_branch: Vec<Statement>
   },
-  DoWhile { block: Vec<Statement<'t>>, condition: Expr<'t> },
+  DoWhile { block: Vec<Statement>, condition: Expr },
 }
 
-impl<'t> Statement<'t> {
-  pub fn parse<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+impl Statement {
+  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let condition = |input| parenthesized(Expr::parse)(input);
     let block = |input| map(Self::parse, |stmt| if let Self::Block(stmts) = stmt {
       stmts

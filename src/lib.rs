@@ -1,7 +1,6 @@
 #![warn(missing_debug_implementations)]
 
 use std::collections::HashMap;
-use std::fmt::{self, Write};
 use std::str;
 use nom::combinator::map;
 use nom::branch::alt;
@@ -16,6 +15,10 @@ use nom::branch::permutation;
 use nom::sequence::preceded;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
+use quote::TokenStreamExt;
+
+mod error;
+pub use error::*;
 
 mod macro_sig;
 pub use macro_sig::*;
@@ -62,13 +65,37 @@ pub use stringify::*;
 #[derive(Debug)]
 pub struct VarMacro<'t> {
   pub name: &'t str,
-  pub body: MacroBody<'t>,
+  pub body: MacroBody,
 }
 
 impl<'t> VarMacro<'t> {
   pub fn parse<'i>(name: &'t str, body: &'i [&'t str]) -> Result<Self, nom::Err<nom::error::Error<&'i [&'t str]>>> {
     let (_, body) = MacroBody::parse(body)?;
     Ok(Self { name, body })
+  }
+
+  pub fn write(
+    &mut self,
+    _variable_type: impl FnMut(&str, &str) -> Option<syn::Type>,
+    _return_type: impl FnMut(&str) -> Option<syn::Type>,
+  ) -> Result<TokenStream, ()> {
+    let mut tokens = TokenStream::new();
+
+    let mut ctx = Context {
+      args: HashMap::new(),
+      export_as_macro: false,
+      functions: HashMap::new(),
+      variables: HashMap::new(),
+      macro_variables: HashMap::new(),
+    };
+    self.body.visit(&mut ctx);
+
+    match &self.body {
+      MacroBody::Block(_) => return Err(()),
+      MacroBody::Expr(expr) => expr.to_tokens(&mut ctx, &mut tokens),
+    }
+
+    Ok(tokens)
   }
 }
 
@@ -77,13 +104,12 @@ impl<'t> VarMacro<'t> {
 pub struct FnMacro<'t> {
   pub name: &'t str,
   pub args: Vec<(&'t str, MacroArgType)>,
-  pub body: MacroBody<'t>,
+  pub body: MacroBody,
 }
 
 impl<'t> FnMacro<'t> {
   pub fn parse<'i>(sig: &'t str, body: &'i [&'t str]) -> Result<Self, nom::Err<nom::error::Error<&'i [&'t str]>>> {
     let (_, sig) = MacroSig::parse(&tokenize_name(sig.as_bytes())).unwrap();
-
     let (_, body) = MacroBody::parse(body)?;
 
     let args = sig.args.into_iter().map(|arg| (arg, MacroArgType::Unknown)).collect();
@@ -92,16 +118,23 @@ impl<'t> FnMacro<'t> {
 
   pub fn write(
     &mut self,
-    f: &mut String,
     mut variable_type: impl FnMut(&str, &str) -> Option<syn::Type>,
     mut return_type: impl FnMut(&str) -> Option<syn::Type>,
-  ) -> fmt::Result {
+  ) -> Result<TokenStream, ()> {
+    let mut tokens = TokenStream::new();
+
     let mut args = HashMap::new();
     for (arg, ty) in self.args.clone() {
       args.insert(arg, ty);
     }
 
-    let mut ctx = Context { args, export_as_macro: false, functions: HashMap::new() };
+    let mut ctx = Context {
+      args,
+      export_as_macro: false,
+      functions: HashMap::new(),
+      variables: HashMap::new(),
+      macro_variables: HashMap::new(),
+    };
     self.body.visit(&mut ctx);
 
     let mut export_as_macro = !ctx.args.iter().all(|(_, ty)| *ty == MacroArgType::Unknown);
@@ -113,7 +146,6 @@ impl<'t> FnMacro<'t> {
     if func_args.len() != self.args.len() {
       export_as_macro = true;
     }
-
 
     let name = Ident::new(self.name, Span::call_site());
 
@@ -134,7 +166,7 @@ impl<'t> FnMacro<'t> {
         }
       }).collect::<Vec<_>>();
 
-      write!(f, "{}", quote! {
+      tokens.append_all(quote! {
         macro_rules! #name {
           (#(#args),*) => {
             #body
@@ -152,7 +184,7 @@ impl<'t> FnMacro<'t> {
         None
       };
 
-      writeln!(f, "{}", quote! {
+      tokens.append_all(quote! {
         #[allow(non_snake_case)]
         #[inline(always)]
         pub unsafe extern "C" fn #name(#(mut #func_args),*) #return_type {
@@ -161,5 +193,7 @@ impl<'t> FnMacro<'t> {
         }
       })
     }
+
+    Ok(tokens)
   }
 }

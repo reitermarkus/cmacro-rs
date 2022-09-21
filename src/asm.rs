@@ -6,15 +6,15 @@ use super::*;
 
 /// An inline assemble call.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Asm<'t> {
+pub struct Asm {
   template: Vec<LitString>,
-  outputs: Vec<Expr<'t>>,
-  inputs: Vec<Expr<'t>>,
-  clobbers: Vec<Expr<'t>>,
+  outputs: Vec<Expr>,
+  inputs: Vec<Expr>,
+  clobbers: Vec<Expr>,
 }
 
-impl<'t> Asm<'t> {
-  pub fn parse<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+impl Asm {
+  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, (template, outputs, inputs, clobbers)) = parenthesized(
       tuple((
         separated_list0(tuple((meta, token(","), meta)), LitString::parse),

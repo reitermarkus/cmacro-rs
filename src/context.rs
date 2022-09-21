@@ -15,10 +15,12 @@ pub enum MacroArgType {
 
 /// Code generation context.
 #[derive(Debug)]
-pub struct Context<'s, 'f> {
-  pub(crate) args: HashMap<&'s str, MacroArgType>,
+pub struct Context<'t, 'f> {
+  pub(crate) args: HashMap<&'t str, MacroArgType>,
   pub(crate) export_as_macro: bool,
   pub(crate) functions: HashMap<&'f str, Vec<String>>,
+  pub(crate) variables: HashMap<&'f str, String>,
+  pub(crate) macro_variables: HashMap<&'f str, Expr>,
 }
 
 impl<'s, 't> Context<'s, 't> {

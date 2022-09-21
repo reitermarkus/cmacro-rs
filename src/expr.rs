@@ -8,22 +8,22 @@ use super::*;
 
 /// An expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Expr<'t> {
+pub enum Expr {
   Variable { name: Identifier },
-  FunctionCall(FunctionCall<'t>),
-  Cast { expr: Box<Expr<'t>>, ty: Type },
+  FunctionCall(FunctionCall),
+  Cast { expr: Box<Expr>, ty: Type },
   Literal(Lit),
   FieldAccess { expr: Box<Self>, field: Identifier },
   Stringify(Stringify),
-  Concat(Vec<Expr<'t>>),
-  UnaryOp { op: &'t str, expr: Box<Self>, prefix: bool },
-  BinOp(Box<Self>, &'t str, Box<Self>),
+  Concat(Vec<Expr>),
+  UnaryOp { op: &'static str, expr: Box<Self>, prefix: bool },
+  BinOp(Box<Self>, &'static str, Box<Self>),
   Ternary(Box<Self>, Box<Self>, Box<Self>),
-  Asm(Asm<'t>),
+  Asm(Asm),
 }
 
-impl<'t> Expr<'t> {
-  fn parse_concat<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+impl Expr {
+  fn parse_concat<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let mut parse_string = alt((
       map(LitString::parse, |s| Self::Literal(Lit::String(s))),
       map(Stringify::parse, Self::Stringify),
@@ -46,7 +46,7 @@ impl<'t> Expr<'t> {
     )(tokens)
   }
 
-  fn parse_factor<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_factor<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     alt((
       Self::parse_concat,
       map(Lit::parse, Self::Literal),
@@ -55,14 +55,14 @@ impl<'t> Expr<'t> {
     ))(tokens)
   }
 
-  fn parse_term_prec1<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec1<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, factor) = Self::parse_factor(tokens)?;
 
     let (tokens, arg) = match factor {
       arg @ Expr::Variable { .. } | arg @ Expr::FunctionCall(..) |
       arg @ Expr::FieldAccess { .. } | arg @ Expr::UnaryOp { op: "&", .. } => {
-        enum Access<'t> {
-          Fn(Vec<Expr<'t>>),
+        enum Access {
+          Fn(Vec<Expr>),
           Field { field: Identifier, deref: bool },
         }
 
@@ -101,7 +101,7 @@ impl<'t> Expr<'t> {
           },
         )(tokens)?;
 
-        if let Ok((tokens, op)) = alt((token("++"), token("--")))(tokens) {
+        if let Ok((tokens, op)) = alt((map(token("++"), |_| "++"), map(token("--"), |_| "--")))(tokens) {
           (tokens, Expr::UnaryOp { op, expr: Box::new(arg), prefix: false })
         } else {
           (tokens, arg)
@@ -113,7 +113,7 @@ impl<'t> Expr<'t> {
     Ok((tokens, arg))
   }
 
-  fn parse_term_prec2<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec2<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     alt((
       map(
         pair(
@@ -128,10 +128,10 @@ impl<'t> Expr<'t> {
       map(
         pair(
           alt((
-            token("&"),
-            token("++"), token("--"),
-            token("+"), token("-"),
-            token("!"), token("~"),
+            map(token("&"), |_| "&"),
+            map(token("++"), |_| "++"), map(token("--"), |_| "--"),
+            map(token("+"), |_| "+"), map(token("-"), |_| "-"),
+            map(token("!"), |_| "!"), map(token("~"), |_| "~"),
           )),
           Self::parse_term_prec2,
         ),
@@ -143,11 +143,11 @@ impl<'t> Expr<'t> {
     ))(tokens)
   }
 
-  fn parse_term_prec3<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec3<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, factor) = Self::parse_term_prec2(tokens)?;
 
     fold_many0(
-      pair(alt((token("*"), token("/"))), Self::parse_term_prec2),
+      pair(alt((map(token("*"), |_| "*"), map(token("/"), |_| "/"))), Self::parse_term_prec2),
       move || factor.clone(),
       |lhs, (op, rhs)| {
         Self::BinOp(Box::new(lhs), op, Box::new(rhs))
@@ -155,11 +155,11 @@ impl<'t> Expr<'t> {
     )(tokens)
   }
 
-  fn parse_term_prec4<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec4<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec3(tokens)?;
 
     fold_many0(
-      pair(alt((token("+"), token("-"))), Self::parse_term_prec3),
+      pair(alt((map(token("+"), |_| "+"), map(token("-"), |_| "-"))), Self::parse_term_prec3),
       move || term.clone(),
       |lhs, (op, rhs)| {
         Self::BinOp(Box::new(lhs), op, Box::new(rhs))
@@ -167,11 +167,11 @@ impl<'t> Expr<'t> {
     )(tokens)
   }
 
-  fn parse_term_prec5<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec5<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec4(tokens)?;
 
     fold_many0(
-      pair(alt((token("<<"), token(">>"))), Self::parse_term_prec4),
+      pair(alt((map(token("<<"), |_| "<<"), map(token(">>"), |_| ">>"))), Self::parse_term_prec4),
       move || term.clone(),
       |lhs, (op, rhs)| {
         Self::BinOp(Box::new(lhs), op, Box::new(rhs))
@@ -179,11 +179,11 @@ impl<'t> Expr<'t> {
     )(tokens)
   }
 
-  fn parse_term_prec6<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec6<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec5(tokens)?;
 
     fold_many0(
-      pair(alt((token("<"), token("<="), token(">"), token(">="))), Self::parse_term_prec5),
+      pair(alt((map(token("<"), |_| "<"), map(token("<="), |_| "<="), map(token(">"), |_| ">"), map(token(">="), |_| ">="))), Self::parse_term_prec5),
       move || term.clone(),
       |lhs, (op, rhs)| {
         Self::BinOp(Box::new(lhs), op, Box::new(rhs))
@@ -191,11 +191,11 @@ impl<'t> Expr<'t> {
     )(tokens)
   }
 
-  fn parse_term_prec7<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec7<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec6(tokens)?;
 
     fold_many0(
-      pair(alt((token("=="), token("!="))), Self::parse_term_prec6),
+      pair(alt((map(token("=="), |_| "=="), map(token("!="), |_| "!="))), Self::parse_term_prec6),
       move || term.clone(),
       |lhs, (op, rhs)| {
         Self::BinOp(Box::new(lhs), op, Box::new(rhs))
@@ -203,7 +203,7 @@ impl<'t> Expr<'t> {
     )(tokens)
   }
 
-  fn parse_term_prec13<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec13<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec7(tokens)?;
 
     // Parse ternary.
@@ -217,17 +217,17 @@ impl<'t> Expr<'t> {
     Ok((tokens, term))
   }
 
-  fn parse_term_prec14<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec14<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec13(tokens)?;
 
     fold_many0(
       pair(
         alt((
-          token("="),
-          token("+="), token("-="),
-          token("*="), token("/="), token("%="),
-          token("<<="), token(">>="),
-          token("&="), token("^="), token("|="),
+          map(token("="), |_| "="),
+          map(token("+="), |_| "+="), map(token("-="), |_| "-="),
+          map(token("*="), |_| "*="), map(token("/="), |_| "/="), map(token("%="), |_| "%="),
+          map(token("<<="), |_| "<<="), map(token(">>="), |_| ">>="),
+          map(token("&="), |_| "&="), map(token("^="), |_| "^="), map(token("|="), |_| "|="),
         )),
         Self::parse_term_prec14,
       ),
@@ -238,7 +238,7 @@ impl<'t> Expr<'t> {
     )(tokens)
   }
 
-  pub fn parse<'i>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     Self::parse_term_prec14(tokens)
   }
 
@@ -248,7 +248,15 @@ impl<'t> Expr<'t> {
         expr.visit(ctx);
         ty.visit(ctx);
       },
-      Self::Variable { name } => name.visit(ctx),
+      Self::Variable { ref mut name } => {
+        name.visit(ctx);
+
+        if let Identifier::Literal(id) = name {
+          if let Some(expr) = ctx.macro_variables.get(id.as_str()) {
+            *self = expr.clone();
+          }
+        }
+      },
       Self::FunctionCall(call) => call.visit(ctx),
       Self::Literal(_) => (),
       Self::FieldAccess { expr, field } => {
@@ -414,10 +422,7 @@ mod tests {
   #[test]
   fn parse_concat() {
     let (_, expr) = Expr::parse(&[r#""abc""#, r#""def""#]).unwrap();
-    assert_eq!(expr, Expr::Concat(vec![
-      Expr::Literal(Lit::String(LitString { repr: b"abc".to_vec() })),
-      Expr::Literal(Lit::String(LitString { repr: b"def".to_vec() })),
-    ]));
+    assert_eq!(expr, Expr::Literal(Lit::String(LitString { repr: b"abcdef".to_vec() })));
 
     let (_, expr) = Expr::parse(&[r#""def""#, "#", "a"]).unwrap();
     assert_eq!(expr, Expr::Concat(vec![

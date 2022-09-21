@@ -7,13 +7,13 @@ use crate::{Context, Statement, Expr, tokens::meta};
 
 /// The body of a macro.
 #[derive(Debug)]
-pub enum MacroBody<'t> {
-  Block(Statement<'t>),
-  Expr(Expr<'t>),
+pub enum MacroBody {
+  Block(Statement),
+  Expr(Expr),
 }
 
-impl<'t> MacroBody<'t> {
-  pub fn parse<'i>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+impl MacroBody {
+  pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (input, _) = meta(input)?;
 
     if input.is_empty() {
