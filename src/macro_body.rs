@@ -28,10 +28,12 @@ impl MacroBody {
     Ok((input, body))
   }
 
-  pub fn visit<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) {
+  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
     match self {
-      Self::Block(stmt) => stmt.visit(ctx),
-      Self::Expr(expr) => expr.visit(ctx),
+      Self::Block(stmt) => stmt.finish(ctx)?,
+      Self::Expr(expr) => expr.finish(ctx)?,
     }
+
+    Ok(())
   }
 }

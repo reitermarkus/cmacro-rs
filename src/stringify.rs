@@ -22,11 +22,13 @@ impl Stringify {
     )(tokens)
   }
 
-  pub fn visit<'s, 't>(&mut self, ctx: &mut Context<'s, 't>) {
+  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
     if let Identifier::Literal(ref id) = self.id {
       if ctx.is_macro_arg(id) {
         ctx.export_as_macro = true;
       }
+
+      Ok(())
     } else {
       unreachable!()
     }

@@ -174,12 +174,14 @@ impl Type {
     )(tokens)
   }
 
-  pub fn visit<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) {
+  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
     match self {
       Self::BuiltIn(_) => (),
-      Self::Identifier { name, .. } => name.visit(ctx),
-      Self::Ptr { ty, .. } => ty.visit(ctx),
+      Self::Identifier { name, .. } => name.finish(ctx)?,
+      Self::Ptr { ty, .. } => ty.finish(ctx)?,
     }
+
+    Ok(())
   }
 
   pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {

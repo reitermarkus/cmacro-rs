@@ -78,7 +78,7 @@ impl<'t> VarMacro<'t> {
     &mut self,
     _variable_type: impl FnMut(&str, &str) -> Option<syn::Type>,
     _return_type: impl FnMut(&str) -> Option<syn::Type>,
-  ) -> Result<TokenStream, ()> {
+  ) -> Result<TokenStream, crate::Error> {
     let mut tokens = TokenStream::new();
 
     let mut ctx = Context {
@@ -88,10 +88,10 @@ impl<'t> VarMacro<'t> {
       variables: HashMap::new(),
       macro_variables: HashMap::new(),
     };
-    self.body.visit(&mut ctx);
+    self.body.finish(&mut ctx)?;
 
     match &self.body {
-      MacroBody::Block(_) => return Err(()),
+      MacroBody::Block(_) => return Err(crate::Error::InvalidVarMacro),
       MacroBody::Expr(expr) => expr.to_tokens(&mut ctx, &mut tokens),
     }
 
@@ -120,7 +120,7 @@ impl<'t> FnMacro<'t> {
     &mut self,
     mut variable_type: impl FnMut(&str, &str) -> Option<syn::Type>,
     mut return_type: impl FnMut(&str) -> Option<syn::Type>,
-  ) -> Result<TokenStream, ()> {
+  ) -> Result<TokenStream, crate::Error> {
     let mut tokens = TokenStream::new();
 
     let mut args = HashMap::new();
@@ -135,7 +135,7 @@ impl<'t> FnMacro<'t> {
       variables: HashMap::new(),
       macro_variables: HashMap::new(),
     };
-    self.body.visit(&mut ctx);
+    self.body.finish(&mut ctx)?;
 
     let mut export_as_macro = !ctx.args.iter().all(|(_, ty)| *ty == MacroArgType::Unknown);
     let func_args = self.args.iter().filter_map(|(arg, _)| {

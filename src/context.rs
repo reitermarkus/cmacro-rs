@@ -28,6 +28,10 @@ impl<'s, 't> Context<'s, 't> {
     self.args.contains_key("...")
   }
 
+  pub fn is_variable_known(&self, id: &str) -> bool {
+    self.args.contains_key(id) || self.variables.contains_key(id)
+  }
+
   pub fn arg_type_mut(&mut self, name: &str) -> Option<&mut MacroArgType> {
     self.args.get_mut(name)
   }

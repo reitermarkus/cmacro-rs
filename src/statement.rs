@@ -84,35 +84,37 @@ impl Statement {
     ))(tokens)
   }
 
-  pub fn visit<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) {
+  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
     match self {
-      Self::Expr(expr) => expr.visit(ctx),
-      Self::FunctionDecl(f) => f.visit(ctx),
-      Self::Decl(d) => d.visit(ctx),
+      Self::Expr(expr) => expr.finish(ctx)?,
+      Self::FunctionDecl(f) => f.finish(ctx)?,
+      Self::Decl(d) => d.finish(ctx)?,
       Self::Block(block) => {
         for stmt in block {
-          stmt.visit(ctx);
+          stmt.finish(ctx)?;
         }
       },
       Self::If { condition, if_branch, else_branch } => {
-        condition.visit(ctx);
+        condition.finish(ctx)?;
 
         for stmt in if_branch {
-          stmt.visit(ctx);
+          stmt.finish(ctx)?;
         }
 
         for stmt in else_branch {
-          stmt.visit(ctx);
+          stmt.finish(ctx)?;
         }
       },
       Self::DoWhile { block, condition } => {
         for stmt in block {
-          stmt.visit(ctx);
+          stmt.finish(ctx)?;
         }
 
-        condition.visit(ctx);
+        condition.finish(ctx)?;
       },
     }
+
+    Ok(())
   }
 
   pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {

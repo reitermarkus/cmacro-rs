@@ -242,14 +242,14 @@ impl Expr {
     Self::parse_term_prec14(tokens)
   }
 
-  pub fn visit<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) {
+  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
     match self {
       Self::Cast { expr, ty } => {
-        expr.visit(ctx);
-        ty.visit(ctx);
+        expr.finish(ctx)?;
+        ty.finish(ctx)?;
       },
       Self::Variable { ref mut name } => {
-        name.visit(ctx);
+        name.finish(ctx)?;
 
         if let Identifier::Literal(id) = name {
           if let Some(expr) = ctx.macro_variables.get(id.as_str()) {
@@ -257,32 +257,34 @@ impl Expr {
           }
         }
       },
-      Self::FunctionCall(call) => call.visit(ctx),
+      Self::FunctionCall(call) => call.finish(ctx)?,
       Self::Literal(_) => (),
       Self::FieldAccess { expr, field } => {
-        expr.visit(ctx);
-        field.visit(ctx);
+        expr.finish(ctx)?;
+        field.finish(ctx)?;
       },
-      Self::Stringify(stringify) => stringify.visit(ctx),
+      Self::Stringify(stringify) => stringify.finish(ctx)?,
       Self::Concat(names) => {
         for name in names {
-          name.visit(ctx);
+          name.finish(ctx)?;
         }
       },
       Self::UnaryOp { expr, .. } => {
-        expr.visit(ctx);
+        expr.finish(ctx)?;
       },
       Self::BinOp(lhs, _, rhs) => {
-        lhs.visit(ctx);
-        rhs.visit(ctx);
+        lhs.finish(ctx)?;
+        rhs.finish(ctx)?;
       },
       Self::Ternary(cond, if_branch, else_branch) => {
-        cond.visit(ctx);
-        if_branch.visit(ctx);
-        else_branch.visit(ctx);
+        cond.finish(ctx)?;
+        if_branch.finish(ctx)?;
+        else_branch.finish(ctx)?;
       },
-      Self::Asm(asm) => asm.visit(ctx),
+      Self::Asm(asm) => asm.finish(ctx)?,
     }
+
+    Ok(())
   }
 
   pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {

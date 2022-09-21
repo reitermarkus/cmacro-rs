@@ -35,7 +35,8 @@ impl Asm {
     Ok((tokens, Self { template, outputs, inputs, clobbers }))
   }
 
-  pub fn visit<'s, 'v>(&mut self, _ctx: &mut Context<'s, 'v>) {
+  pub fn finish<'s, 'v>(&mut self, _ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
+    Ok(())
   }
 
   pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {

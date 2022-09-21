@@ -70,7 +70,7 @@ impl Identifier {
     )(tokens)
   }
 
-  pub fn visit<'s, 't>(&mut self, ctx: &mut Context<'s, 't>) {
+  pub fn finish<'s, 't>(&mut self, ctx: &mut Context<'s, 't>) -> Result<(), crate::Error> {
     if let Self::Concat(ref mut ids) = self {
       let mut new_ids = vec![];
       let mut non_arg_id: Option<String> = None;
@@ -100,6 +100,14 @@ impl Identifier {
         *self = Self::Concat(new_ids);
       }
     }
+
+    if let Self::Literal(id) = self {
+      if !ctx.is_variable_known(id.as_str()) {
+        return Err(crate::Error::UnknownVariable)
+      }
+    }
+
+    Ok(())
   }
 
   pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {

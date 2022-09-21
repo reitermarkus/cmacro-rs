@@ -2,4 +2,5 @@
 #[derive(Debug)]
 pub enum Error {
   UnknownVariable,
+  InvalidVarMacro,
 }

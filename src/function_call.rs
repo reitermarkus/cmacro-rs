@@ -11,18 +11,18 @@ pub struct FunctionCall {
 }
 
 impl FunctionCall {
-  pub fn visit<'s, 't>(&mut self, ctx: &mut Context<'s, 't>) {
-    self.name.visit(ctx);
+  pub fn finish<'s, 't>(&mut self, ctx: &mut Context<'s, 't>) -> Result<(), crate::Error> {
+    self.name.finish(ctx)?;
 
     for arg in self.args.iter_mut() {
-      arg.visit(ctx);
+      arg.finish(ctx)?;
     }
 
     if let Identifier::Literal(ref function_name) = self.name {
       if let Some(known_args) = ctx.functions.get(function_name.as_str()).cloned() {
         if known_args.len() == self.args.len() {
           for (arg, known_arg_type) in self.args.iter_mut().zip(known_args.iter()) {
-            // arg.visit(ctx);
+            arg.finish(ctx)?;
 
             // If the current argument to this function is a macro argument,
             // we can infer the type of the macro argument.
@@ -39,8 +39,10 @@ impl FunctionCall {
     }
 
     for arg in self.args.iter_mut() {
-      arg.visit(ctx);
+      arg.finish(ctx)?;
     }
+
+    Ok(())
   }
 
   pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {

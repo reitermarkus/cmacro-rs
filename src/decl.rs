@@ -23,10 +23,11 @@ impl Decl {
     Ok((tokens, Self { ty, name, rhs, is_static: static_storage.is_some() }))
   }
 
-  pub fn visit<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) {
-    self.ty.visit(ctx);
-    self.name.visit(ctx);
-    self.rhs.visit(ctx);
+  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
+    self.ty.finish(ctx)?;
+    self.name.finish(ctx)?;
+    self.rhs.finish(ctx)?;
+    Ok(())
   }
 
   pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {

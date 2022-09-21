@@ -26,13 +26,15 @@ impl FunctionDecl {
     Ok((tokens, Self { ret_ty, name, args }))
   }
 
-  pub fn visit<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) {
-    self.ret_ty.visit(ctx);
-    self.name.visit(ctx);
+  pub fn finish<'s, 'v>(&mut self, ctx: &mut Context<'s, 'v>) -> Result<(), crate::Error> {
+    self.ret_ty.finish(ctx)?;
+    self.name.finish(ctx)?;
     for (ty, arg) in self.args.iter_mut() {
-      ty.visit(ctx);
-      arg.visit(ctx);
+      ty.finish(ctx)?;
+      arg.finish(ctx)?;
     }
+
+    Ok(())
   }
 
   pub fn to_tokens(&self, ctx: &mut Context, tokens: &mut TokenStream) {
