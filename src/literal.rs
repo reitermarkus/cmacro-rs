@@ -26,7 +26,7 @@ use quote::quote;
 use proc_macro2::Span;
 use std::num::FpCategory;
 
-use crate::tokens::{meta, token};
+use crate::{LocalContext, tokens::{meta, token}};
 
 /// A literal.
 ///
@@ -48,15 +48,13 @@ impl Lit {
       map(LitInt::parse, Self::Int),
     ))(input)
   }
-}
 
-impl ToTokens for Lit {
-  fn to_tokens(&self, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     match self {
-      Self::Char(c) => c.to_tokens(tokens),
-      Self::String(s) => s.to_tokens(tokens),
-      Self::Float(f) => f.to_tokens(tokens),
-      Self::Int(i) => i.to_tokens(tokens),
+      Self::Char(c) => c.to_tokens(ctx, tokens),
+      Self::String(s) => s.to_tokens(ctx, tokens),
+      Self::Float(f) => f.to_tokens(ctx, tokens),
+      Self::Int(i) => i.to_tokens(ctx, tokens),
     }
   }
 }
@@ -143,19 +141,20 @@ impl LitChar {
 
     Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
   }
-}
 
-impl ToTokens for LitChar {
-  fn to_tokens(&self, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     tokens.append_all(match *self.repr.as_slice() {
-      [c] => quote! { #c as ::core::ffi::c_char },
+      [c] => {
+        let prefix = &ctx.global_context.ffi_prefix;
+        quote! { #c as #prefix c_char }
+      },
       [c1, c2] => {
         let c = u16::from_be_bytes([c1, c2]);
-        quote ! { #c as c_wchar }
+        quote ! { #c as wchar_t }
       },
       [c1, c2, c3, c4] => {
         let c = u32::from_be_bytes([c1, c2, c3, c4]);
-        quote! { #c as c_wchar }
+        quote! { #c as wchar_t }
       },
       _ => unreachable!(),
     })
@@ -222,26 +221,25 @@ impl LitString {
       }
     )(input)
   }
+
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
+    let mut bytes = self.repr.clone();
+    bytes.push(0);
+    let bytes = syn::LitByteStr::new(&bytes, Span::call_site());
+
+    let prefix = &ctx.global_context.ffi_prefix;
+    tokens.append_all(quote! {
+      {
+        const CSTR: & #prefix CStr = #prefix CStr::from_bytes_with_nul_unchecked(&#bytes);
+        CSTR.as_ptr()
+      }
+    })
+  }
 }
 
 impl PartialEq<&str> for LitString {
   fn eq(&self, other: &&str) -> bool {
     self.repr == other.as_bytes()
-  }
-}
-
-impl ToTokens for LitString {
-  fn to_tokens(&self, tokens: &mut TokenStream) {
-    let mut bytes = self.repr.clone();
-    bytes.push(0);
-    let bytes = syn::LitByteStr::new(&bytes, Span::call_site());
-
-    tokens.append_all(quote! {
-      {
-        const CSTR: &::core::ffi::CStr = ::core::ffi::CStr::from_bytes_with_nul_unchecked(&#bytes);
-        CSTR.as_ptr()
-      }
-    })
   }
 }
 
@@ -310,18 +308,18 @@ impl LitFloat {
 
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
   }
-}
 
-impl ToTokens for LitFloat {
-  fn to_tokens(&self, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
+    let num_prefix = &ctx.global_context.num_prefix;
+
     tokens.append_all(match self {
       Self::Float(f) => {
         match f.classify() {
-          FpCategory::Nan => quote! { f32::NAN },
+          FpCategory::Nan => quote! { #num_prefix f32::NAN },
           FpCategory::Infinite => if f.is_sign_positive() {
-            quote! { f32::INFINITY }
+            quote! { #num_prefix f32::INFINITY }
           } else {
-            quote! { f32::NEG_INFINITY }
+            quote! { #num_prefix f32::NEG_INFINITY }
           },
           FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {
             proc_macro2::Literal::f32_unsuffixed(*f).to_token_stream()
@@ -330,11 +328,11 @@ impl ToTokens for LitFloat {
       },
       Self::Double(f) | Self::LongDouble(f) => {
         match f.classify() {
-          FpCategory::Nan => quote! { f64::NAN },
+          FpCategory::Nan => quote! { #num_prefix f64::NAN },
           FpCategory::Infinite => if f.is_sign_positive() {
-            quote! { f64::INFINITY }
+            quote! { #num_prefix f64::INFINITY }
           } else {
-            quote! { f64::NEG_INFINITY }
+            quote! { #num_prefix f64::NEG_INFINITY }
           },
           FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {
             proc_macro2::Literal::f64_unsuffixed(*f).to_token_stream()
@@ -428,10 +426,8 @@ impl LitInt {
 
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
   }
-}
 
-impl ToTokens for LitInt {
-  fn to_tokens(&self, tokens: &mut TokenStream) {
+  pub fn to_tokens(&self, _ctx: &mut LocalContext, tokens: &mut TokenStream) {
     let i = proc_macro2::Literal::i128_unsuffixed(self.0);
     i.to_tokens(tokens)
   }

@@ -53,6 +53,8 @@ pub struct Context {
   pub functions: HashMap<String, Vec<String>>,
   pub variables: HashMap<String, String>,
   pub macro_variables: HashMap<String, Expr>,
+  pub ffi_prefix: Option<TokenStream>,
+  pub num_prefix: Option<TokenStream>,
 }
 
 impl Context {

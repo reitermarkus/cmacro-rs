@@ -390,7 +390,7 @@ impl Expr {
         call.to_tokens(ctx, tokens);
       },
       Self::Literal(ref lit) => {
-        tokens.append_all(Some(lit))
+        lit.to_tokens(ctx, tokens)
       },
       Self::FieldAccess { ref expr, ref field } => {
         let expr = expr.to_token_stream(ctx);
@@ -462,7 +462,7 @@ impl Expr {
     }
   }
 
-  pub fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
+  pub(crate) fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens

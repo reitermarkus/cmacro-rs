@@ -112,7 +112,7 @@ impl Identifier {
     tokens.append_all(self.to_token_stream(ctx))
   }
 
-  pub fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
+  pub(crate) fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
     match self {
       Self::Literal(ref s) => {
         let id = Ident::new(s, Span::call_site());

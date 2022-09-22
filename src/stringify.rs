@@ -38,7 +38,7 @@ impl Stringify {
     tokens.append_all(self.to_token_stream(ctx))
   }
 
-  pub fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
+  pub(crate) fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
     let id = self.id.to_token_stream(ctx);
 
     quote! { ::core::stringify!(#id) }

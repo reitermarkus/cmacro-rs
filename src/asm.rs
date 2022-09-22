@@ -40,7 +40,7 @@ impl Asm {
   }
 
   pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
-    let template = &self.template;
+    let template = &self.template.iter().map(|s| String::from_utf8(s.repr.clone()).unwrap()).collect::<Vec<_>>();
     let outputs = self.outputs.iter().map(|o| o.to_token_stream(ctx)).collect::<Vec<_>>();
     let inputs = self.inputs.iter().map(|o| o.to_token_stream(ctx)).collect::<Vec<_>>();
     let clobbers = self.clobbers.iter().map(|o| o.to_token_stream(ctx)).collect::<Vec<_>>();

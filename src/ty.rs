@@ -207,7 +207,7 @@ impl Type {
     }
   }
 
-  pub fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
+  pub(crate) fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens

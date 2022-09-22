@@ -138,11 +138,7 @@ impl<'t> FnMacro<'t> {
       args.insert(arg, ty);
     }
 
-    let gcx = Context {
-      functions: HashMap::new(),
-      variables: HashMap::new(),
-      macro_variables: HashMap::new(),
-    };
+    let gcx = Context::default();
     let mut ctx = LocalContext {
       args,
       export_as_macro: false,

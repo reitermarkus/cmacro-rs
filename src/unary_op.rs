@@ -3,7 +3,6 @@ use proc_macro2::TokenStream;
 
 use crate::{LocalContext, Expr};
 
-
 /// A unary operation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
