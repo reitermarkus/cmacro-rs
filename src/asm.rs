@@ -35,8 +35,7 @@ impl Asm {
     Ok((tokens, Self { template, outputs, inputs, clobbers }))
   }
 
-  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
-    drop(ctx);
+  pub fn finish<'t, 'g>(&mut self, _ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
     Ok(())
   }
 

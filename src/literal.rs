@@ -70,7 +70,7 @@ fn escaped_char(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
     map(char('r'), |_| vec![b'\r']),
     map(char('t'), |_| vec![b'\t']),
     map(char('v'), |_| vec![b'\x0b']),
-    map(one_of([b'\\', b'\'', b'"', b'?']), |c| vec![c as u8]),
+    map(one_of([b'\\', b'\'', b'\"', b'?']), |c| vec![c as u8]),
     map_opt(take_while_m_n(1, 3, is_oct_digit), |n| {
       str::from_utf8(n).ok()
         .and_then(|s| u8::from_str_radix(s, 8).ok())
@@ -184,12 +184,12 @@ impl LitString {
         delimited(
           preceded(
             opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))),
-            char('"'),
+            char('\"'),
           ),
           fold_many0(
             alt((
               preceded(char('\\'), escaped_char),
-              map(is_not([b'\\', b'"']), |b: &[u8]| b.to_vec()),
+              map(is_not([b'\\', b'\"']), |b: &[u8]| b.to_vec()),
             )),
             Vec::new,
             |mut acc, c| {
@@ -197,7 +197,7 @@ impl LitString {
               acc
             },
           ),
-          char('"'),
+          char('\"'),
         )
       )(token.as_bytes());
 
@@ -338,7 +338,7 @@ impl LitInt {
       map_res(preceded(tag_no_case("0x"), hex_digit1), |n| i128::from_str_radix(n, 16)),
       map_res(preceded(tag_no_case("0b"), is_a("01")), |n| i128::from_str_radix(n, 2)),
       map_res(preceded(tag("0"), oct_digit1), |n| i128::from_str_radix(n, 8)),
-      map_res(digit1, |n| i128::from_str_radix(n, 10)),
+      map_res(digit1, |n: &str| n.parse()),
     ));
 
     let suffix = alt((
