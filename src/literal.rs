@@ -24,6 +24,7 @@ use nom::multi::fold_many0;
 use quote::{ToTokens, TokenStreamExt};
 use quote::quote;
 use proc_macro2::Span;
+use std::num::FpCategory;
 
 use crate::tokens::{meta, token};
 
@@ -313,16 +314,34 @@ impl LitFloat {
 
 impl ToTokens for LitFloat {
   fn to_tokens(&self, tokens: &mut TokenStream) {
-    match self {
+    tokens.append_all(match self {
       Self::Float(f) => {
-        let f = proc_macro2::Literal::f32_unsuffixed(*f);
-        f.to_tokens(tokens)
+        match f.classify() {
+          FpCategory::Nan => quote! { f32::NAN },
+          FpCategory::Infinite => if f.is_sign_positive() {
+            quote! { f32::INFINITY }
+          } else {
+            quote! { f32::NEG_INFINITY }
+          },
+          FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {
+            proc_macro2::Literal::f32_unsuffixed(*f).to_token_stream()
+          },
+        }
       },
       Self::Double(f) | Self::LongDouble(f) => {
-        let f = proc_macro2::Literal::f64_unsuffixed(*f);
-        f.to_tokens(tokens)
+        match f.classify() {
+          FpCategory::Nan => quote! { f64::NAN },
+          FpCategory::Infinite => if f.is_sign_positive() {
+            quote! { f64::INFINITY }
+          } else {
+            quote! { f64::NEG_INFINITY }
+          },
+          FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {
+            proc_macro2::Literal::f64_unsuffixed(*f).to_token_stream()
+          },
+        }
       },
-    }
+    })
   }
 }
 
