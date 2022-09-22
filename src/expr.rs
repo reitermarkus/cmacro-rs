@@ -451,6 +451,28 @@ impl Expr {
       Self::BinOp(op) => {
         op.finish(ctx)?;
 
+        // Cast mixed float and int expression.
+        match (&op.lhs, &op.rhs) {
+          (Expr::Literal(Lit::Int(LitInt(lhs))), Expr::Literal(Lit::Float(_))) => {
+            let f = if *lhs >= f32::MIN as i128 && *lhs <= f32::MAX as i128 {
+              LitFloat::Float(*lhs as f32)
+            } else {
+              LitFloat::Double(*lhs as f64)
+            };
+            op.lhs = Expr::Literal(Lit::Float(f));
+          },
+          (Expr::Literal(Lit::Float(_)), Expr::Literal(Lit::Int(LitInt(rhs)))) => {
+            let f = if *rhs >= f32::MIN as i128 && *rhs <= f32::MAX as i128 {
+              LitFloat::Float(*rhs as f32)
+            } else {
+              LitFloat::Double(*rhs as f64)
+            };
+            op.rhs = Expr::Literal(Lit::Float(f));
+          },
+          _ => (),
+        }
+
+        // Calculate numeric expression.
         match op.op {
           BinOp::Mul => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
