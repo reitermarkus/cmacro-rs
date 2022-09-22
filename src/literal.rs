@@ -313,11 +313,16 @@ impl LitFloat {
 
 impl ToTokens for LitFloat {
   fn to_tokens(&self, tokens: &mut TokenStream) {
-    tokens.append_all(match self {
-      Self::Float(f) => quote! { #f f32 },
-      Self::Double(f) => quote! { #f f64 },
-      Self::LongDouble(f) => quote! { #f },
-    })
+    match self {
+      Self::Float(f) => {
+        let f = proc_macro2::Literal::f32_unsuffixed(*f);
+        f.to_tokens(tokens)
+      },
+      Self::Double(f) | Self::LongDouble(f) => {
+        let f = proc_macro2::Literal::f64_unsuffixed(*f);
+        f.to_tokens(tokens)
+      },
+    }
   }
 }
 
@@ -408,7 +413,8 @@ impl LitInt {
 
 impl ToTokens for LitInt {
   fn to_tokens(&self, tokens: &mut TokenStream) {
-    self.0.to_tokens(tokens)
+    let i = proc_macro2::Literal::i128_unsuffixed(self.0);
+    i.to_tokens(tokens)
   }
 }
 
