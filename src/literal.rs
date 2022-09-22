@@ -541,7 +541,7 @@ impl Shl<LitInt> for LitInt {
   type Output = Self;
 
   fn shl(self, other: Self) -> Self::Output {
-    Self(self.0.wrapping_shl(other.0.max(u32::MAX as i128) as u32))
+    Self(self.0.wrapping_shl(other.0.min(u32::MAX as i128) as u32))
   }
 }
 
@@ -549,7 +549,7 @@ impl Shr<LitInt> for LitInt {
   type Output = Self;
 
   fn shr(self, other: Self) -> Self::Output {
-    Self(self.0.wrapping_shr(other.0.max(u32::MAX as i128) as u32))
+    Self(self.0.wrapping_shr(other.0.min(u32::MAX as i128) as u32))
   }
 }
 
