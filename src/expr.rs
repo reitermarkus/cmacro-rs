@@ -58,14 +58,10 @@ impl Expr {
   fn parse_term_prec1<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, factor) = Self::parse_factor(tokens)?;
 
-    if !(matches!(
-      factor,
-      Expr::Variable { .. } | Expr::FunctionCall(..) | Expr::FieldAccess { .. },
-    ) && !matches!(
-      factor,
-      Expr::UnaryOp(ref op) if matches!(**op, UnaryOp::AddrOf(_)),
-    )) {
-      return Ok((tokens, factor))
+    match factor {
+      Expr::Variable { .. } | Expr::FunctionCall(..) | Expr::FieldAccess { .. } => (),
+      Expr::UnaryOp(ref op) if matches!(**op, UnaryOp::AddrOf(_)) => (),
+      _ => return Ok((tokens, factor)),
     }
 
     enum Access {
