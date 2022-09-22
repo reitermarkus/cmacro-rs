@@ -7,7 +7,7 @@ use crate::tokens::parenthesized;
 use super::*;
 
 /// An expression.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
   Variable { name: Identifier },
   FunctionCall(FunctionCall),

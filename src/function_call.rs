@@ -4,7 +4,7 @@ use quote::quote;
 use super::*;
 
 /// A function call.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionCall {
   pub name: Identifier,
   pub args: Vec<Expr>,

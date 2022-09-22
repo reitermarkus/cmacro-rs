@@ -92,7 +92,7 @@ impl VarMacro {
     let mut ctx = LocalContext {
       args: HashMap::new(),
       export_as_macro: false,
-      global_context: &cx,
+      global_context: cx,
     };
 
     self.expr.finish(&mut ctx)?;
@@ -135,7 +135,7 @@ impl<'t> FnMacro<'t> {
       args.insert(arg, ty);
     }
 
-    let mut gcx = Context {
+    let gcx = Context {
       functions: HashMap::new(),
       variables: HashMap::new(),
       macro_variables: HashMap::new(),

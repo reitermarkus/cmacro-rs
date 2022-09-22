@@ -5,7 +5,7 @@ use quote::quote;
 use super::*;
 
 /// A variable declaration.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Decl {
   ty: Type,
   name: Identifier,
@@ -62,7 +62,7 @@ mod tests {
         mutable: true,
       },
       name: Identifier::Literal("abc".into()),
-      rhs: Expr::Literal(Lit::Int(LitInt::new("123"))),
+      rhs: Expr::Literal(Lit::Int(LitInt(123))),
       is_static: false,
     });
   }

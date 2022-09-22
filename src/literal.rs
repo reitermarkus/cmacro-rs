@@ -11,14 +11,14 @@ use nom::branch::alt;
 use nom::branch::permutation;
 use nom::sequence::preceded;
 use nom::sequence::delimited;
-use nom::combinator::opt;
-use nom::combinator::map;
+use nom::combinator::recognize;
+use nom::sequence::separated_pair;
+use nom::combinator::{value, opt, map};
 use nom::IResult;
 use nom::combinator::eof;
 use nom::sequence::terminated;
 use proc_macro2::TokenStream;
 use nom::sequence::pair;
-use nom::sequence::tuple;
 use nom::multi::fold_many0;
 use quote::{ToTokens, TokenStreamExt};
 use quote::quote;
@@ -250,26 +250,31 @@ impl ToTokens for LitString {
 /// #define FLOAT 314f
 /// #define FLOAT 3.14L
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LitFloat {
-  repr: String
+#[derive(Debug, Clone, PartialEq)]
+pub enum LitFloat {
+  Float(f32),
+  Double(f64),
+  LongDouble(f64),
 }
 
-impl LitFloat {
-  fn from_str(input: &str) -> IResult<&str, (String, Option<&str>)> {
-    let float = alt((
-      map(
-        pair(digit1, tag_no_case("f")),
-        |(int, suffix): (&str, &str)| (int.to_owned(), Some(suffix)),
-      ),
-      map(
-        tuple((digit1, preceded(char('.'), digit1), opt(alt((tag_no_case("f"), tag_no_case("l")))))),
-        |(int, dec, suffix): (&str, &str, Option<&str>)| (format!("{}.{}", int, dec), suffix),
-      ),
-    ));
+impl Eq for LitFloat {}
 
-    let (input, (repr, size)) = all_consuming(float)(input)?;
-    Ok((input, (repr, size)))
+impl LitFloat {
+  fn from_str(input: &str) -> IResult<&str, (&str, Option<&str>)> {
+    all_consuming(map(
+      pair(
+        recognize(separated_pair(
+          opt(digit1),
+          alt((
+            value((), char('.')),
+            value((), pair(tag_no_case("e"), opt(alt((char('+'), char('-')))))),
+          )),
+          digit1,
+        )),
+        opt(alt((tag_no_case("f"), tag_no_case("l")))),
+      ),
+      |(f, suffix): (&str, Option<&str>)| (f, suffix),
+    ))(input)
   }
 
   pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
@@ -288,10 +293,13 @@ impl LitFloat {
       );
 
       let (tokens, size2) = suffix(tokens)?;
-      let _size = size1.or(size2);
+      let size = size1.or(size2);
 
-      // TODO: Handle suffix.
-      return Ok((tokens, Self { repr }))
+      return Ok((tokens, match size {
+        Some("f" | "F") => Self::Float(repr.parse().unwrap()),
+        Some("l" | "L") => Self::LongDouble(repr.parse().unwrap()),
+        _ => Self::Double(repr.parse().unwrap()),
+      }))
     }
 
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
@@ -300,7 +308,11 @@ impl LitFloat {
 
 impl ToTokens for LitFloat {
   fn to_tokens(&self, tokens: &mut TokenStream) {
-    tokens.append_all(self.repr.parse::<TokenStream>().unwrap())
+    tokens.append_all(match self {
+      Self::Float(f) => quote! { #f f32 },
+      Self::Double(f) => quote! { #f f64 },
+      Self::LongDouble(f) => quote! { #f },
+    })
   }
 }
 
@@ -313,22 +325,15 @@ impl ToTokens for LitFloat {
 /// #define INT 4 ## ULL
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LitInt {
-  repr: String,
-}
+pub struct LitInt(pub i128);
 
 impl LitInt {
-  pub fn new(s: &str) -> Self {
-    let (_, (repr, _, _)) = Self::from_str(s).unwrap();
-    Self { repr }
-  }
-
-  fn from_str(input: &str) -> IResult<&str, (String, Option<&str>, Option<&str>)> {
+  fn from_str(input: &str) -> IResult<&str, (i128, Option<&str>, Option<&str>)> {
     let digits = alt((
-      map(preceded(tag_no_case("0x"), hex_digit1), |n| format!("0x{}", n)),
-      map(preceded(tag_no_case("0b"), is_a("01")), |n| format!("0b{}", n)),
-      map(preceded(tag("0"), oct_digit1), |n| format!("0o{}", n)),
-      map(digit1, |n: &str| n.to_owned()),
+      map(preceded(tag_no_case("0x"), hex_digit1), |n| i128::from_str_radix(n, 16).unwrap()),
+      map(preceded(tag_no_case("0b"), is_a("01")), |n| i128::from_str_radix(n, 2).unwrap()),
+      map(preceded(tag("0"), oct_digit1), |n| i128::from_str_radix(n, 8).unwrap()),
+      map(digit1, |n| i128::from_str_radix(n, 10).unwrap()),
     ));
 
     let suffix = alt((
@@ -389,7 +394,7 @@ impl LitInt {
       let _size = size1.or(size2);
 
       // TODO: Handle suffix.
-      return Ok((tokens, Self { repr }))
+      return Ok((tokens, Self(repr)))
     }
 
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
@@ -398,7 +403,7 @@ impl LitInt {
 
 impl ToTokens for LitInt {
   fn to_tokens(&self, tokens: &mut TokenStream) {
-    tokens.append_all(self.repr.parse::<TokenStream>().unwrap())
+    self.0.to_tokens(tokens)
   }
 }
 
@@ -435,40 +440,40 @@ mod tests {
 
   #[test]
   fn parse_float() {
-    let (_, id) = LitFloat::parse(&[r#"1234f"#]).unwrap();
-    assert_eq!(id, LitFloat { repr: "1234".into() });
+    let (_, id) = LitFloat::parse(&[r#"12.34"#]).unwrap();
+    assert_eq!(id, LitFloat::Double(12.34));
 
     let (_, id) = LitFloat::parse(&[r#"12.34f"#]).unwrap();
-    assert_eq!(id, LitFloat { repr: "12.34".into() });
+    assert_eq!(id, LitFloat::Float(12.34));
 
     let (_, id) = LitFloat::parse(&[r#"12.34L"#]).unwrap();
-    assert_eq!(id, LitFloat { repr: "12.34".into() });
+    assert_eq!(id, LitFloat::LongDouble(12.34));
   }
 
   #[test]
   fn parse_int() {
     let (_, id) = LitInt::parse(&[r#"777"#]).unwrap();
-    assert_eq!(id, LitInt { repr: "777".into() });
+    assert_eq!(id, LitInt(777));
 
     let (_, id) = LitInt::parse(&[r#"0777"#]).unwrap();
-    assert_eq!(id, LitInt { repr: "0o777".into() });
+    assert_eq!(id, LitInt(0o777));
 
     let (_, id) = LitInt::parse(&[r#"8718937817238719"#]).unwrap();
-    assert_eq!(id, LitInt { repr: "8718937817238719".into() });
+    assert_eq!(id, LitInt(8718937817238719));
 
     let (_, id) = LitInt::parse(&[r#"1U"#]).unwrap();
-    assert_eq!(id, LitInt { repr: "1".into() });
+    assert_eq!(id, LitInt(1));
 
     let (_, id) = LitInt::parse(&[r#"1ULL"#]).unwrap();
-    assert_eq!(id, LitInt { repr: "1".into() });
+    assert_eq!(id, LitInt(1));
 
     let (_, id) = LitInt::parse(&[r#"1UL"#]).unwrap();
-    assert_eq!(id, LitInt { repr: "1".into() });
+    assert_eq!(id, LitInt(1));
 
     let (_, id) = LitInt::parse(&[r#"1LLU"#]).unwrap();
-    assert_eq!(id, LitInt { repr: "1".into() });
+    assert_eq!(id, LitInt(1));
 
     let (_, id) = LitInt::parse(&[r#"1z"#]).unwrap();
-    assert_eq!(id, LitInt { repr: "1".into() });
+    assert_eq!(id, LitInt(1));
   }
 }

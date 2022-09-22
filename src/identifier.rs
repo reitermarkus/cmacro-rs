@@ -86,7 +86,7 @@ impl Identifier {
 
           new_ids.push(id.to_owned());
         } else if let Some(ref mut non_arg_id) = non_arg_id {
-          non_arg_id.push_str(&id);
+          non_arg_id.push_str(id);
         } else {
           non_arg_id = Some(id.to_owned());
         }

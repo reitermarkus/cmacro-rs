@@ -5,7 +5,7 @@ use crate::tokens::parenthesized;
 use super::*;
 
 /// An inline assemble call.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Asm {
   template: Vec<LitString>,
   outputs: Vec<Expr>,
