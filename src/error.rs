@@ -4,4 +4,5 @@ pub enum Error {
   UnknownVariable,
   InvalidVarMacro,
   ParserError,
+  UnsupportedExpression,
 }
