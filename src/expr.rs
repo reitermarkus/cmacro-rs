@@ -61,7 +61,7 @@ impl Expr {
     if !(matches!(
       factor,
       Expr::Variable { .. } | Expr::FunctionCall(..) | Expr::FieldAccess { .. },
-    ) || matches!(
+    ) && !matches!(
       factor,
       Expr::UnaryOp(ref op) if matches!(**op, UnaryOp::AddrOf(_)),
     )) {
@@ -152,7 +152,7 @@ impl Expr {
   }
 
   fn parse_term_prec3<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    let (tokens, factor) = Self::parse_term_prec2(tokens)?;
+    let (tokens, term) = Self::parse_term_prec2(tokens)?;
 
     fold_many0(
       pair(
@@ -163,7 +163,7 @@ impl Expr {
         )),
         Self::parse_term_prec2,
       ),
-      move || factor.clone(),
+      move || term.clone(),
       |lhs, (op, rhs)| {
         match op {
           "*" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Mul, rhs })),
@@ -189,9 +189,9 @@ impl Expr {
       move || term.clone(),
       |lhs, (op, rhs)| {
         if op == "+" {
-          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Plus, rhs }))
+          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Add, rhs }))
         } else {
-          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Minus, rhs }))
+          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Sub, rhs }))
         }
       }
     )(tokens)
@@ -268,8 +268,53 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec13<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec8<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec7(tokens)?;
+
+    fold_many0(
+      preceded(
+        token("&"),
+        Self::parse_term_prec7,
+      ),
+      move || term.clone(),
+      |lhs, rhs| {
+        Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitAnd, rhs }))
+      }
+    )(tokens)
+  }
+
+  fn parse_term_prec9<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+    let (tokens, term) = Self::parse_term_prec8(tokens)?;
+
+    fold_many0(
+      preceded(
+        token("^"),
+        Self::parse_term_prec8,
+      ),
+      move || term.clone(),
+      |lhs, rhs| {
+        Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitXor, rhs }))
+      }
+    )(tokens)
+  }
+
+  fn parse_term_prec10<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+    let (tokens, term) = Self::parse_term_prec9(tokens)?;
+
+    fold_many0(
+      preceded(
+        token("|"),
+        Self::parse_term_prec9,
+      ),
+      move || term.clone(),
+      |lhs, rhs| {
+        Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitOr, rhs }))
+      }
+    )(tokens)
+  }
+
+  fn parse_term_prec13<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+    let (tokens, term) = Self::parse_term_prec10(tokens)?;
 
     // Parse ternary.
     if let Ok((tokens, _)) = token("?")(tokens) {
@@ -314,7 +359,7 @@ impl Expr {
           "<<=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::ShlAssign, rhs })),
           ">>=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::ShrAssign, rhs })),
           "&=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitAndAssign, rhs })),
-          "^=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::XorAssign, rhs })),
+          "^=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitXorAssign, rhs })),
           "|=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitOrAssign, rhs })),
           _ => unreachable!(),
         }
@@ -431,7 +476,7 @@ impl Expr {
             },
             _ => (),
           },
-          BinOp::Plus => match (&op.lhs, &op.rhs) {
+          BinOp::Add => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
               *self = Expr::Literal(Lit::Float(*lhs + *rhs));
             },
@@ -440,7 +485,7 @@ impl Expr {
             },
             _ => (),
           },
-          BinOp::Minus => match (&op.lhs, &op.rhs) {
+          BinOp::Sub => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
               *self = Expr::Literal(Lit::Float(*lhs - *rhs));
             },
@@ -513,8 +558,6 @@ impl Expr {
       },
       Self::Variable { ref name } => {
         if let Identifier::Literal(id) = name {
-          eprintln!("ID = {:?}", id);
-
           let prefix = &ctx.global_context.ffi_prefix;
 
           match id.as_str() {

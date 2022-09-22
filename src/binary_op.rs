@@ -12,9 +12,9 @@ pub enum BinOp {
   /// lhs % rhs
   Rem,
   /// lhs + rhs
-  Plus,
+  Add,
   /// lhs - rhs
-  Minus,
+  Sub,
   /// lhs << rhs
   Shl,
   /// lhs >> rhs
@@ -60,7 +60,7 @@ pub enum BinOp {
   /// lhs &= rhs
   BitAndAssign,
   /// lhs ^= rhs
-  XorAssign,
+  BitXorAssign,
   /// lhs |= rhs
   BitOrAssign,
 }
@@ -71,8 +71,8 @@ impl ToTokens for BinOp {
       Self::Mul => quote!{ * },
       Self::Div => quote!{ / },
       Self::Rem => quote!{ % },
-      Self::Plus => quote!{ + },
-      Self::Minus => quote!{ - },
+      Self::Add => quote!{ + },
+      Self::Sub => quote!{ - },
       Self::Shl => quote!{ << },
       Self::Shr => quote!{ >> },
       Self::Lt => quote!{ < },
@@ -95,7 +95,7 @@ impl ToTokens for BinOp {
       Self::ShlAssign => quote!{ <<= },
       Self::ShrAssign => quote!{ >>= },
       Self::BitAndAssign => quote!{ &= },
-      Self::XorAssign => quote!{ ^= },
+      Self::BitXorAssign => quote!{ ^= },
       Self::BitOrAssign => quote!{ |= },
     })
   }
@@ -123,7 +123,7 @@ impl BinaryOp {
 
     tokens.append_all(match self.op {
       BinOp::Assign | BinOp::AddAssign | BinOp::SubAssign |
-      BinOp::BitAndAssign | BinOp::XorAssign | BinOp::BitOrAssign => {
+      BinOp::BitAndAssign | BinOp::BitXorAssign | BinOp::BitOrAssign => {
         quote! { { #lhs #op #rhs; #lhs } }
       },
       op => quote!{ ( #lhs #op #rhs ) },
