@@ -17,7 +17,7 @@ pub enum Expr {
   Stringify(Stringify),
   Concat(Vec<Expr>),
   UnaryOp(Box<UnaryOp>),
-  BinOp(Box<Self>, &'static str, Box<Self>),
+  BinOp(Box<BinaryOp>),
   Ternary(Box<Self>, Box<Self>, Box<Self>),
   Asm(Asm),
 }
@@ -155,10 +155,20 @@ impl Expr {
     let (tokens, factor) = Self::parse_term_prec2(tokens)?;
 
     fold_many0(
-      pair(alt((map(token("*"), |_| "*"), map(token("/"), |_| "/"))), Self::parse_term_prec2),
+      pair(
+        alt((
+          token("*"),
+          token("/"),
+        )),
+        Self::parse_term_prec2,
+      ),
       move || factor.clone(),
       |lhs, (op, rhs)| {
-        Self::BinOp(Box::new(lhs), op, Box::new(rhs))
+        if op == "*" {
+          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Mul, rhs }))
+        } else {
+          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Div, rhs }))
+        }
       }
     )(tokens)
   }
@@ -167,10 +177,20 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec3(tokens)?;
 
     fold_many0(
-      pair(alt((map(token("+"), |_| "+"), map(token("-"), |_| "-"))), Self::parse_term_prec3),
+      pair(
+        alt((
+          token("+"),
+          token("-"),
+        )),
+        Self::parse_term_prec3,
+      ),
       move || term.clone(),
       |lhs, (op, rhs)| {
-        Self::BinOp(Box::new(lhs), op, Box::new(rhs))
+        if op == "+" {
+          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Plus, rhs }))
+        } else {
+          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Minus, rhs }))
+        }
       }
     )(tokens)
   }
@@ -179,10 +199,20 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec4(tokens)?;
 
     fold_many0(
-      pair(alt((map(token("<<"), |_| "<<"), map(token(">>"), |_| ">>"))), Self::parse_term_prec4),
+      pair(
+        alt((
+          token("<<"),
+          token(">>"),
+        )),
+        Self::parse_term_prec4,
+      ),
       move || term.clone(),
       |lhs, (op, rhs)| {
-        Self::BinOp(Box::new(lhs), op, Box::new(rhs))
+        if op == "<<" {
+          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Shl, rhs }))
+        } else {
+          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Shr, rhs }))
+        }
       }
     )(tokens)
   }
@@ -191,10 +221,25 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec5(tokens)?;
 
     fold_many0(
-      pair(alt((map(token("<"), |_| "<"), map(token("<="), |_| "<="), map(token(">"), |_| ">"), map(token(">="), |_| ">="))), Self::parse_term_prec5),
+      pair(
+        alt((
+          token("<"),
+          token("<="),
+          token(">"),
+          token(">="),
+        )),
+        Self::parse_term_prec5,
+      ),
       move || term.clone(),
       |lhs, (op, rhs)| {
-        Self::BinOp(Box::new(lhs), op, Box::new(rhs))
+        match op {
+          "<" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Lt, rhs })),
+          "<=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Lte, rhs })),
+          ">" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Gt, rhs })),
+          ">=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Gte, rhs })),
+          _ => unreachable!(),
+        }
+
       }
     )(tokens)
   }
@@ -203,10 +248,20 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec6(tokens)?;
 
     fold_many0(
-      pair(alt((map(token("=="), |_| "=="), map(token("!="), |_| "!="))), Self::parse_term_prec6),
+      pair(
+        alt((
+          token("=="),
+          token("!="),
+        )),
+        Self::parse_term_prec6,
+      ),
       move || term.clone(),
       |lhs, (op, rhs)| {
-        Self::BinOp(Box::new(lhs), op, Box::new(rhs))
+        if op == "==" {
+          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Eq, rhs }))
+        } else {
+          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Neq, rhs }))
+        }
       }
     )(tokens)
   }
@@ -231,17 +286,36 @@ impl Expr {
     fold_many0(
       pair(
         alt((
-          map(token("="), |_| "="),
-          map(token("+="), |_| "+="), map(token("-="), |_| "-="),
-          map(token("*="), |_| "*="), map(token("/="), |_| "/="), map(token("%="), |_| "%="),
-          map(token("<<="), |_| "<<="), map(token(">>="), |_| ">>="),
-          map(token("&="), |_| "&="), map(token("^="), |_| "^="), map(token("|="), |_| "|="),
+          token("="),
+          token("+="),
+          token("-="),
+          token("*="),
+          token("/="),
+          token("%="),
+          token("<<="),
+          token(">>="),
+          token("&="),
+          token("^="),
+          token("|="),
         )),
         Self::parse_term_prec14,
       ),
       move || term.clone(),
       |lhs, (op, rhs)| {
-        Self::BinOp(Box::new(lhs), op, Box::new(rhs))
+        match op {
+          "=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Assign, rhs })),
+          "+=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::AddAssign, rhs })),
+          "-=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::SubAssign, rhs })),
+          "*=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::MulAssign, rhs })),
+          "/=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::DivAssign, rhs })),
+          "%=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::ModAssign, rhs })),
+          "<<=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::ShlAssign, rhs })),
+          ">>=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::ShrAssign, rhs })),
+          "&=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitAndAssign, rhs })),
+          "^=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::XorAssign, rhs })),
+          "|=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitOrAssign, rhs })),
+          _ => unreachable!(),
+        }
       }
     )(tokens)
   }
@@ -327,9 +401,8 @@ impl Expr {
           _ => (),
         }
       },
-      Self::BinOp(lhs, _, rhs) => {
-        lhs.finish(ctx)?;
-        rhs.finish(ctx)?;
+      Self::BinOp(op) => {
+        op.finish(ctx)?;
       },
       Self::Ternary(cond, if_branch, else_branch) => {
         cond.finish(ctx)?;
@@ -342,7 +415,7 @@ impl Expr {
     Ok(())
   }
 
-  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     match self {
       Self::Cast { ref expr, ref ty } => {
         let expr = expr.to_token_stream(ctx);
@@ -364,21 +437,23 @@ impl Expr {
         if let Identifier::Literal(id) = name {
           eprintln!("ID = {:?}", id);
 
+          let prefix = &ctx.global_context.ffi_prefix;
+
           match id.as_str() {
             "__SCHAR_MAX__" => {
-              return tokens.append_all(quote!{ ::core::ffi::c_schar::MAX })
+              return tokens.append_all(quote!{ #prefix c_schar::MAX })
             },
             "__SHRT_MAX__" => {
-              return tokens.append_all(quote!{ ::core::ffi::c_short::MAX })
+              return tokens.append_all(quote!{ #prefix c_short::MAX })
             },
             "__INT_MAX__" => {
-              return tokens.append_all(quote!{ ::core::ffi::c_int::MAX })
+              return tokens.append_all(quote!{ #prefix c_int::MAX })
             },
             "__LONG_MAX__" => {
-              return tokens.append_all(quote!{ ::core::ffi::c_long::MAX })
+              return tokens.append_all(quote!{ #prefix c_long::MAX })
             },
             "__LONG_LONG_MAX__" => {
-              return tokens.append_all(quote!{ ::core::ffi::c_longlong::MAX })
+              return tokens.append_all(quote!{ #prefix c_longlong::MAX })
             },
             _ => (),
           }
@@ -415,34 +490,8 @@ impl Expr {
       Self::UnaryOp(op) => {
         op.to_tokens(ctx, tokens)
       },
-      Self::BinOp(ref lhs, op, ref rhs) => {
-        let lhs = lhs.to_token_stream(ctx);
-        let rhs = rhs.to_token_stream(ctx);
-
-        tokens.append_all(match *op {
-          "="  => quote! { { #lhs  = #rhs; #lhs } },
-          "+=" => quote! { { #lhs += #rhs; #lhs } },
-          "-=" => quote! { { #lhs -= #rhs; #lhs } },
-          "&=" => quote! { { #lhs &= #rhs; #lhs } },
-          "|=" => quote! { { #lhs |= #rhs; #lhs } },
-          "^=" => quote! { { #lhs ^= #rhs; #lhs } },
-          "==" => quote! { ( #lhs == #rhs ) },
-          "!=" => quote! { ( #lhs != #rhs ) },
-          "+"  => quote! { ( #lhs +  #rhs ) },
-          "-"  => quote! { ( #lhs -  #rhs ) },
-          "*"  => quote! { ( #lhs *  #rhs ) },
-          "/"  => quote! { ( #lhs /  #rhs ) },
-          "&"  => quote! { ( #lhs &  #rhs ) },
-          "|"  => quote! { ( #lhs |  #rhs ) },
-          "^"  => quote! { ( #lhs ^  #rhs ) },
-          "<<" => quote! { ( #lhs << #rhs ) },
-          ">>" => quote! { ( #lhs >> #rhs ) },
-          "<=" => quote! { ( #lhs <= #rhs ) },
-          "<"  => quote! { ( #lhs <  #rhs ) },
-          ">"  => quote! { ( #lhs >  #rhs ) },
-          ">=" => quote! { ( #lhs >= #rhs ) },
-          op   => todo!("op {:?}", op),
-        });
+      Self::BinOp(op) => {
+        op.to_tokens(ctx, tokens)
       },
       Self::Ternary(ref cond, ref if_branch, ref else_branch) => {
         let cond = cond.to_token_stream(ctx);
@@ -518,13 +567,17 @@ mod tests {
   fn parse_assignment() {
     let (_, expr) = Expr::parse(&["a", "=", "b", "=", "c"]).unwrap();
     assert_eq!(expr, Expr::BinOp(
-      Box::new(var!(a)),
-      "=",
-      Box::new(Expr::BinOp(
-        Box::new(var!(b)),
-        "=",
-        Box::new(var!(c)),
-      ))
+      Box::new(BinaryOp {
+        lhs: var!(a),
+        op: BinOp::Assign,
+        rhs: Expr::BinOp(
+          Box::new(BinaryOp {
+            lhs: var!(b),
+            op: BinOp::Assign,
+            rhs: var!(c),
+          }),
+        ),
+      })
     ));
   }
 }

@@ -23,7 +23,6 @@ use nom::sequence::pair;
 use nom::multi::fold_many0;
 use quote::{ToTokens, TokenStreamExt};
 use quote::quote;
-use proc_macro2::Span;
 use std::num::FpCategory;
 
 use crate::{LocalContext, tokens::{meta, token}};
@@ -146,14 +145,17 @@ impl LitChar {
     tokens.append_all(match *self.repr.as_slice() {
       [c] => {
         let prefix = &ctx.global_context.ffi_prefix;
+        let c = proc_macro2::Literal::u8_unsuffixed(c);
         quote! { #c as #prefix c_char }
       },
       [c1, c2] => {
         let c = u16::from_be_bytes([c1, c2]);
+        let c = proc_macro2::Literal::u16_unsuffixed(c);
         quote ! { #c as wchar_t }
       },
       [c1, c2, c3, c4] => {
         let c = u32::from_be_bytes([c1, c2, c3, c4]);
+        let c = proc_macro2::Literal::u32_unsuffixed(c);
         quote! { #c as wchar_t }
       },
       _ => unreachable!(),
@@ -225,14 +227,14 @@ impl LitString {
   pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
     let mut bytes = self.repr.clone();
     bytes.push(0);
-    let bytes = syn::LitByteStr::new(&bytes, Span::call_site());
+
+    let bytes = bytes.into_iter().map(|b| {
+      proc_macro2::Literal::u8_unsuffixed(b)
+    });
 
     let prefix = &ctx.global_context.ffi_prefix;
     tokens.append_all(quote! {
-      {
-        const CSTR: & #prefix CStr = #prefix CStr::from_bytes_with_nul_unchecked(&#bytes);
-        CSTR.as_ptr()
-      }
+      [#(#bytes),*].as_ptr() as *const #prefix c_char
     })
   }
 }

@@ -36,6 +36,8 @@ pub use asm::*;
 
 mod unary_op;
 pub use unary_op::*;
+mod binary_op;
+pub use binary_op::*;
 
 mod ty;
 pub use ty::*;
