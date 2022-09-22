@@ -14,6 +14,7 @@ use nom::sequence::delimited;
 use nom::combinator::recognize;
 use nom::sequence::separated_pair;
 use nom::combinator::{value, opt, map};
+use nom::combinator::map_res;
 use nom::IResult;
 use nom::combinator::eof;
 use nom::sequence::terminated;
@@ -295,11 +296,15 @@ impl LitFloat {
       let (tokens, size2) = suffix(tokens)?;
       let size = size1.or(size2);
 
-      return Ok((tokens, match size {
-        Some("f" | "F") => Self::Float(repr.parse().unwrap()),
-        Some("l" | "L") => Self::LongDouble(repr.parse().unwrap()),
-        _ => Self::Double(repr.parse().unwrap()),
-      }))
+      let lit = match size {
+        Some("f" | "F") => repr.parse().map(Self::Float),
+        Some("l" | "L") => repr.parse().map(Self::LongDouble),
+        _ => repr.parse().map(Self::Double),
+      };
+
+      if let Ok(lit) = lit {
+        return Ok((tokens, lit))
+      }
     }
 
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
@@ -330,10 +335,10 @@ pub struct LitInt(pub i128);
 impl LitInt {
   fn from_str(input: &str) -> IResult<&str, (i128, Option<&str>, Option<&str>)> {
     let digits = alt((
-      map(preceded(tag_no_case("0x"), hex_digit1), |n| i128::from_str_radix(n, 16).unwrap()),
-      map(preceded(tag_no_case("0b"), is_a("01")), |n| i128::from_str_radix(n, 2).unwrap()),
-      map(preceded(tag("0"), oct_digit1), |n| i128::from_str_radix(n, 8).unwrap()),
-      map(digit1, |n| i128::from_str_radix(n, 10).unwrap()),
+      map_res(preceded(tag_no_case("0x"), hex_digit1), |n| i128::from_str_radix(n, 16)),
+      map_res(preceded(tag_no_case("0b"), is_a("01")), |n| i128::from_str_radix(n, 2)),
+      map_res(preceded(tag("0"), oct_digit1), |n| i128::from_str_radix(n, 8)),
+      map_res(digit1, |n| i128::from_str_radix(n, 10)),
     ));
 
     let suffix = alt((
