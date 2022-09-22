@@ -369,7 +369,7 @@ impl Sub for LitFloat {
     use LitFloat::*;
 
     match (self, other) {
-      (Float(f1), Float(f2)) => Float(f1 + f2),
+      (Float(f1), Float(f2)) => Float(f1 - f2),
       (Float(f1), Double(f2) | LongDouble(f2)) => Double(f1 as f64 - f2),
       (Double(f1) | LongDouble(f1), Float(f2)) => Double(f1 - f2 as f64),
       (Double(f1) | LongDouble(f1), Double(f2) | LongDouble(f2)) => Double(f1 - f2),
@@ -384,7 +384,7 @@ impl Mul for LitFloat {
     use LitFloat::*;
 
     match (self, other) {
-      (Float(f1), Float(f2)) => Float(f1 + f2),
+      (Float(f1), Float(f2)) => Float(f1 * f2),
       (Float(f1), Double(f2) | LongDouble(f2)) => Double(f1 as f64 * f2),
       (Double(f1) | LongDouble(f1), Float(f2)) => Double(f1 * f2 as f64),
       (Double(f1) | LongDouble(f1), Double(f2) | LongDouble(f2)) => Double(f1 * f2),
@@ -399,7 +399,7 @@ impl Div for LitFloat {
     use LitFloat::*;
 
     match (self, other) {
-      (Float(f1), Float(f2)) => Float(f1 + f2),
+      (Float(f1), Float(f2)) => Float(f1 / f2),
       (Float(f1), Double(f2) | LongDouble(f2)) => Double(f1 as f64 / f2),
       (Double(f1) | LongDouble(f1), Float(f2)) => Double(f1 / f2 as f64),
       (Double(f1) | LongDouble(f1), Double(f2) | LongDouble(f2)) => Double(f1 / f2),
