@@ -16,7 +16,7 @@ pub enum Expr {
   FieldAccess { expr: Box<Self>, field: Identifier },
   Stringify(Stringify),
   Concat(Vec<Expr>),
-  UnaryOp { op: &'static str, expr: Box<Self>, prefix: bool },
+  UnaryOp(Box<UnaryOp>),
   BinOp(Box<Self>, &'static str, Box<Self>),
   Ternary(Box<Self>, Box<Self>, Box<Self>),
   Asm(Asm),
@@ -58,59 +58,67 @@ impl Expr {
   fn parse_term_prec1<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, factor) = Self::parse_factor(tokens)?;
 
-    let (tokens, arg) = match factor {
-      arg @ Expr::Variable { .. } | arg @ Expr::FunctionCall(..) |
-      arg @ Expr::FieldAccess { .. } | arg @ Expr::UnaryOp { op: "&", .. } => {
-        enum Access {
-          Fn(Vec<Expr>),
-          Field { field: Identifier, deref: bool },
-        }
+    if !(matches!(
+      factor,
+      Expr::Variable { .. } | Expr::FunctionCall(..) | Expr::FieldAccess { .. },
+    ) || matches!(
+      factor,
+      Expr::UnaryOp(ref op) if matches!(**op, UnaryOp::AddrOf(_)),
+    )) {
+      return Ok((tokens, factor))
+    }
 
-        if matches!(arg, Expr::Variable { name: Identifier::Literal(ref id) } if id == "__asm") {
-          if let Ok((tokens, asm)) = preceded(opt(token("volatile")), Asm::parse)(tokens) {
-            return Ok((tokens, Expr::Asm(asm)))
-          }
-        }
+    enum Access {
+      Fn(Vec<Expr>),
+      Field { field: Identifier, deref: bool },
+    }
 
-        let (tokens, arg) = fold_many0(
-          alt((
-            map(
-              parenthesized(
-                separated_list0(tuple((meta, token(","), meta)), Self::parse),
-              ),
-              Access::Fn,
-            ),
-            map(
-              pair(alt((token("."), token("->"))), Identifier::parse),
-              |(access, field)| Access::Field { field, deref: access == "->" },
-            ),
-          )),
-          move || arg.clone(),
-          |acc, access| match (acc, access) {
-            (Expr::Variable { name }, Access::Fn(args)) => Expr::FunctionCall(FunctionCall { name, args }),
-            (acc, Access::Field { field, deref }) => {
-              let acc = if deref {
-                Expr::UnaryOp { op: "*", expr: Box::new(acc), prefix: true }
-              } else {
-                acc
-              };
+    if matches!(factor, Expr::Variable { name: Identifier::Literal(ref id) } if id == "__asm") {
+      if let Ok((tokens, asm)) = preceded(opt(token("volatile")), Asm::parse)(tokens) {
+        return Ok((tokens, Expr::Asm(asm)))
+      }
+    }
 
-              Expr::FieldAccess { expr: Box::new(acc), field }
-            },
-            _ => unimplemented!(),
-          },
-        )(tokens)?;
+    let fold = fold_many0(
+      alt((
+        map(
+          parenthesized(
+            separated_list0(tuple((meta, token(","), meta)), Self::parse),
+          ),
+          Access::Fn,
+        ),
+        map(
+          pair(alt((token("."), token("->"))), Identifier::parse),
+          |(access, field)| Access::Field { field, deref: access == "->" },
+        ),
+      )),
+      move || factor.clone(),
+      |acc, access| match (acc, access) {
+        (Expr::Variable { name }, Access::Fn(args)) => Expr::FunctionCall(FunctionCall { name, args }),
+        (acc, Access::Field { field, deref }) => {
+          let acc = if deref {
+            Expr::UnaryOp(Box::new(UnaryOp::Deref(acc)))
+          } else {
+            acc
+          };
 
-        if let Ok((tokens, op)) = alt((map(token("++"), |_| "++"), map(token("--"), |_| "--")))(tokens) {
-          (tokens, Expr::UnaryOp { op, expr: Box::new(arg), prefix: false })
-        } else {
-          (tokens, arg)
-        }
+          Expr::FieldAccess { expr: Box::new(acc), field }
+        },
+        _ => unimplemented!(),
       },
-      arg => (tokens, arg),
-    };
+    );
 
-    Ok((tokens, arg))
+    map(
+      pair(
+        fold,
+        opt(alt((token("++"), token("--")))),
+      ),
+      |(expr, op)| match op {
+        Some("++") => Expr::UnaryOp(Box::new(UnaryOp::PostInc(expr))),
+        Some("--") => Expr::UnaryOp(Box::new(UnaryOp::PostDec(expr))),
+        _ => expr,
+      }
+    )(tokens)
   }
 
   fn parse_term_prec2<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
@@ -126,17 +134,17 @@ impl Expr {
         },
       ),
       map(
-        pair(
-          alt((
-            map(token("&"), |_| "&"),
-            map(token("++"), |_| "++"), map(token("--"), |_| "--"),
-            map(token("+"), |_| "+"), map(token("-"), |_| "-"),
-            map(token("!"), |_| "!"), map(token("~"), |_| "~"),
-          )),
-          Self::parse_term_prec2,
-        ),
-        |(op, term)| {
-          Expr::UnaryOp { op, expr: Box::new(term), prefix: true }
+        alt((
+          map(preceded(token("&"), Self::parse_term_prec2), UnaryOp::AddrOf),
+          map(preceded(token("++"), Self::parse_term_prec2), UnaryOp::Inc),
+          map(preceded(token("--"), Self::parse_term_prec2), UnaryOp::Dec),
+          map(preceded(token("+"), Self::parse_term_prec2), UnaryOp::Plus),
+          map(preceded(token("-"), Self::parse_term_prec2), UnaryOp::Minus),
+          map(preceded(token("!"), Self::parse_term_prec2), UnaryOp::Not),
+          map(preceded(token("~"), Self::parse_term_prec2), UnaryOp::Comp),
+        )),
+        |op| {
+          Expr::UnaryOp(Box::new(op))
         }
       ),
       Self::parse_term_prec1,
@@ -280,8 +288,44 @@ impl Expr {
           name.finish(ctx)?;
         }
       },
-      Self::UnaryOp { expr, .. } => {
-        expr.finish(ctx)?;
+      Self::UnaryOp(op) => {
+        op.finish(ctx)?;
+
+        match &**op {
+          UnaryOp::Plus(
+            expr @ Expr::Literal(Lit::Int(_)) |
+            expr @ Expr::Literal(Lit::Float(_)),
+          ) => {
+            *self = expr.clone();
+          },
+          UnaryOp::Minus(Expr::Literal(Lit::Int(LitInt(i)))) => {
+            *self = Expr::Literal(Lit::Int(LitInt(i.wrapping_neg())));
+          },
+          UnaryOp::Minus(Expr::Literal(Lit::Float(f))) => {
+            *self = Expr::Literal(Lit::Float(match f {
+              LitFloat::Float(f) => LitFloat::Float(-f),
+              LitFloat::Double(f) => LitFloat::Double(-f),
+              LitFloat::LongDouble(f) => LitFloat::LongDouble(-f),
+            }));
+          },
+          UnaryOp::Not(Expr::Literal(Lit::Int(LitInt(i)))) => {
+            *self = Expr::Literal(Lit::Int(LitInt(if *i == 0 { 1 } else { 0 })));
+          },
+          UnaryOp::Not(Expr::Literal(Lit::Float(f))) => {
+            *self = Expr::Literal(Lit::Float(match f {
+              LitFloat::Float(f) => LitFloat::Float(if *f == 0.0 { 1.0 } else { 0.0 }),
+              LitFloat::Double(f) => LitFloat::Double(if *f == 0.0 { 1.0 } else { 0.0 }),
+              LitFloat::LongDouble(f) => LitFloat::LongDouble(if *f == 0.0 { 1.0 } else { 0.0 }),
+            }));
+          },
+          UnaryOp::Comp(Expr::Literal(Lit::Int(LitInt(i)))) => {
+            *self = Expr::Literal(Lit::Int(LitInt(!i)));
+          },
+          UnaryOp::Comp(Expr::Literal(Lit::Float(_) | Lit::String(_))) => {
+            return Err(crate::Error::UnsupportedExpression)
+          },
+          _ => (),
+        }
       },
       Self::BinOp(lhs, _, rhs) => {
         lhs.finish(ctx)?;
@@ -368,22 +412,8 @@ impl Expr {
           )
         })
       },
-      Self::UnaryOp { op, ref expr, prefix } => {
-        let expr = expr.to_token_stream(ctx);
-
-        tokens.append_all(match (*op, prefix) {
-          ("++", true) => quote! { { #expr += 1; #expr } },
-          ("--", true) => quote! { { #expr -= 1; #expr } },
-          ("++", false) => quote! { { let prev = #expr; #expr += 1; prev } },
-          ("--", false) => quote! { { let prev = #expr; #expr -= 1; prev } },
-          ("!", _) => quote! { (#expr == Default::default()) },
-          ("~", _) => quote! { (!#expr) },
-          ("+", _) => quote! { (+#expr) },
-          ("-", _) => quote! { (-#expr) },
-          ("*", true) => quote! { (*#expr) },
-          ("&", true) => quote! { ::core::ptr::addr_of_mut!(#expr) },
-          (op, _) => todo!("op = {:?}", op),
-        })
+      Self::UnaryOp(op) => {
+        op.to_tokens(ctx, tokens)
       },
       Self::BinOp(ref lhs, op, ref rhs) => {
         let lhs = lhs.to_token_stream(ctx);
@@ -479,7 +509,7 @@ mod tests {
   fn parse_ptr_access() {
     let (_, expr) = Expr::parse(&["a", "->", "b"]).unwrap();
     assert_eq!(expr, Expr::FieldAccess {
-      expr: Box::new(Expr::UnaryOp { op: "*", expr: Box::new(var!(a)), prefix: true }),
+      expr: Box::new(Expr::UnaryOp(Box::new(UnaryOp::Deref(var!(a))))),
       field: id!(b),
     });
   }

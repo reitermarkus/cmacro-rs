@@ -34,6 +34,9 @@ use tokens::*;
 mod asm;
 pub use asm::*;
 
+mod unary_op;
+pub use unary_op::*;
+
 mod ty;
 pub use ty::*;
 

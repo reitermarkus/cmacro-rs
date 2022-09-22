@@ -36,7 +36,7 @@ impl Asm {
   }
 
   pub fn finish<'t, 'g>(&mut self, _ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
-    return Err(crate::Error::UnsupportedExpression)
+    Err(crate::Error::UnsupportedExpression)
   }
 
   pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
