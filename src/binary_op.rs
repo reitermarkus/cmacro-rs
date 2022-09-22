@@ -9,6 +9,8 @@ pub enum BinOp {
   Mul,
   /// lhs / rhs
   Div,
+  /// lhs % rhs
+  Rem,
   /// lhs + rhs
   Plus,
   /// lhs - rhs
@@ -50,7 +52,7 @@ pub enum BinOp {
   /// lhs /= rhs
   DivAssign,
   /// lhs %= rhs
-  ModAssign,
+  RemAssign,
   /// lhs <<= rhs
   ShlAssign,
   /// lhs >>= rhs
@@ -68,6 +70,7 @@ impl ToTokens for BinOp {
     tokens.append_all(match self {
       Self::Mul => quote!{ * },
       Self::Div => quote!{ / },
+      Self::Rem => quote!{ % },
       Self::Plus => quote!{ + },
       Self::Minus => quote!{ - },
       Self::Shl => quote!{ << },
@@ -88,7 +91,7 @@ impl ToTokens for BinOp {
       Self::SubAssign => quote!{ -= },
       Self::MulAssign => quote!{ *= },
       Self::DivAssign => quote!{ /= },
-      Self::ModAssign => quote!{ %= },
+      Self::RemAssign => quote!{ %= },
       Self::ShlAssign => quote!{ <<= },
       Self::ShrAssign => quote!{ >>= },
       Self::BitAndAssign => quote!{ &= },

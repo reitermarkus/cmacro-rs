@@ -159,15 +159,17 @@ impl Expr {
         alt((
           token("*"),
           token("/"),
+          token("%"),
         )),
         Self::parse_term_prec2,
       ),
       move || factor.clone(),
       |lhs, (op, rhs)| {
-        if op == "*" {
-          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Mul, rhs }))
-        } else {
-          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Div, rhs }))
+        match op {
+          "*" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Mul, rhs })),
+          "/" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Div, rhs })),
+          "%" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Rem, rhs })),
+          _ => unreachable!(),
         }
       }
     )(tokens)
@@ -308,7 +310,7 @@ impl Expr {
           "-=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::SubAssign, rhs })),
           "*=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::MulAssign, rhs })),
           "/=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::DivAssign, rhs })),
-          "%=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::ModAssign, rhs })),
+          "%=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::RemAssign, rhs })),
           "<<=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::ShlAssign, rhs })),
           ">>=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::ShrAssign, rhs })),
           "&=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitAndAssign, rhs })),
@@ -403,6 +405,82 @@ impl Expr {
       },
       Self::BinOp(op) => {
         op.finish(ctx)?;
+
+        match op.op {
+          BinOp::Mul => match (&op.lhs, &op.rhs) {
+            (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
+              *self = Expr::Literal(Lit::Float(*lhs * *rhs));
+            },
+            (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
+              *self = Expr::Literal(Lit::Int(*lhs * *rhs));
+            },
+            _ => (),
+          },
+          BinOp::Div => match (&op.lhs, &op.rhs) {
+            (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
+              *self = Expr::Literal(Lit::Float(*lhs / *rhs));
+            },
+            (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
+              *self = Expr::Literal(Lit::Int(*lhs / *rhs));
+            },
+            _ => (),
+          },
+          BinOp::Rem => match (&op.lhs, &op.rhs) {
+            (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
+              *self = Expr::Literal(Lit::Int(*lhs % *rhs));
+            },
+            _ => (),
+          },
+          BinOp::Plus => match (&op.lhs, &op.rhs) {
+            (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
+              *self = Expr::Literal(Lit::Float(*lhs + *rhs));
+            },
+            (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
+              *self = Expr::Literal(Lit::Int(*lhs + *rhs));
+            },
+            _ => (),
+          },
+          BinOp::Minus => match (&op.lhs, &op.rhs) {
+            (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
+              *self = Expr::Literal(Lit::Float(*lhs - *rhs));
+            },
+            (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
+              *self = Expr::Literal(Lit::Int(*lhs - *rhs));
+            },
+            _ => (),
+          },
+          BinOp::Shl => match (&op.lhs, &op.rhs) {
+            (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
+              *self = Expr::Literal(Lit::Int(*lhs << *rhs));
+            },
+            _ => (),
+          },
+          BinOp::Shr => match (&op.lhs, &op.rhs) {
+            (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
+              *self = Expr::Literal(Lit::Int(*lhs >> *rhs));
+            },
+            _ => (),
+          },
+          BinOp::BitAnd => match (&op.lhs, &op.rhs) {
+            (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
+              *self = Expr::Literal(Lit::Int(*lhs & *rhs));
+            },
+            _ => (),
+          },
+          BinOp::BitOr => match (&op.lhs, &op.rhs) {
+            (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
+              *self = Expr::Literal(Lit::Int(*lhs | *rhs));
+            },
+            _ => (),
+          },
+          BinOp::BitXor => match (&op.lhs, &op.rhs) {
+            (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
+              *self = Expr::Literal(Lit::Int(*lhs ^ *rhs));
+            },
+            _ => (),
+          },
+          _ => (),
+        }
       },
       Self::Ternary(cond, if_branch, else_branch) => {
         cond.finish(ctx)?;

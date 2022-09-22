@@ -1,4 +1,5 @@
 use std::str;
+use std::ops::{Add, Sub, Mul, Div, BitAnd, BitOr, BitXor, Rem, Shl, Shr};
 
 use nom::combinator::{all_consuming, cond, map_opt};
 use nom::character::complete::{char, one_of, digit1, hex_digit1, oct_digit1};
@@ -252,7 +253,7 @@ impl PartialEq<&str> for LitString {
 /// #define FLOAT 314f
 /// #define FLOAT 3.14L
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LitFloat {
   Float(f32),
   Double(f64),
@@ -345,6 +346,67 @@ impl LitFloat {
   }
 }
 
+
+impl Add for LitFloat {
+  type Output = Self;
+
+  fn add(self, other: Self) -> Self::Output {
+    use LitFloat::*;
+
+    match (self, other) {
+      (Float(f1), Float(f2)) => Float(f1 + f2),
+      (Float(f1), Double(f2) | LongDouble(f2)) => Double(f1 as f64 + f2),
+      (Double(f1) | LongDouble(f1), Float(f2)) => Double(f1 + f2 as f64),
+      (Double(f1) | LongDouble(f1), Double(f2) | LongDouble(f2)) => Double(f1 + f2),
+    }
+  }
+}
+
+impl Sub for LitFloat {
+  type Output = Self;
+
+  fn sub(self, other: Self) -> Self::Output {
+    use LitFloat::*;
+
+    match (self, other) {
+      (Float(f1), Float(f2)) => Float(f1 + f2),
+      (Float(f1), Double(f2) | LongDouble(f2)) => Double(f1 as f64 - f2),
+      (Double(f1) | LongDouble(f1), Float(f2)) => Double(f1 - f2 as f64),
+      (Double(f1) | LongDouble(f1), Double(f2) | LongDouble(f2)) => Double(f1 - f2),
+    }
+  }
+}
+
+impl Mul for LitFloat {
+  type Output = Self;
+
+  fn mul(self, other: Self) -> Self::Output {
+    use LitFloat::*;
+
+    match (self, other) {
+      (Float(f1), Float(f2)) => Float(f1 + f2),
+      (Float(f1), Double(f2) | LongDouble(f2)) => Double(f1 as f64 * f2),
+      (Double(f1) | LongDouble(f1), Float(f2)) => Double(f1 * f2 as f64),
+      (Double(f1) | LongDouble(f1), Double(f2) | LongDouble(f2)) => Double(f1 * f2),
+    }
+  }
+}
+
+impl Div for LitFloat {
+  type Output = Self;
+
+  fn div(self, other: Self) -> Self::Output {
+    use LitFloat::*;
+
+    match (self, other) {
+      (Float(f1), Float(f2)) => Float(f1 + f2),
+      (Float(f1), Double(f2) | LongDouble(f2)) => Double(f1 as f64 / f2),
+      (Double(f1) | LongDouble(f1), Float(f2)) => Double(f1 / f2 as f64),
+      (Double(f1) | LongDouble(f1), Double(f2) | LongDouble(f2)) => Double(f1 / f2),
+    }
+  }
+}
+
 /// An integer literal.
 ///
 /// ```c
@@ -353,7 +415,7 @@ impl LitFloat {
 /// #define INT 3u ## LL
 /// #define INT 4 ## ULL
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LitInt(pub i128);
 
 impl LitInt {
@@ -432,6 +494,86 @@ impl LitInt {
   pub fn to_tokens(&self, _ctx: &mut LocalContext, tokens: &mut TokenStream) {
     let i = proc_macro2::Literal::i128_unsuffixed(self.0);
     i.to_tokens(tokens)
+  }
+}
+
+impl Add for LitInt {
+  type Output = Self;
+
+  fn add(self, other: Self) -> Self::Output {
+    Self(self.0.wrapping_add(other.0))
+  }
+}
+
+impl Sub for LitInt {
+  type Output = Self;
+
+  fn sub(self, other: Self) -> Self::Output {
+    Self(self.0.wrapping_sub(other.0))
+  }
+}
+
+impl Mul for LitInt {
+  type Output = Self;
+
+  fn mul(self, other: Self) -> Self::Output {
+    Self(self.0.wrapping_mul(other.0))
+  }
+}
+
+impl Div for LitInt {
+  type Output = Self;
+
+  fn div(self, other: Self) -> Self::Output {
+    Self(self.0.wrapping_div(other.0))
+  }
+}
+
+impl Rem for LitInt {
+  type Output = Self;
+
+  fn rem(self, other: Self) -> Self::Output {
+    Self(self.0.wrapping_rem(other.0))
+  }
+}
+
+impl Shl<LitInt> for LitInt {
+  type Output = Self;
+
+  fn shl(self, other: Self) -> Self::Output {
+    Self(self.0.wrapping_shl(other.0.max(u32::MAX as i128) as u32))
+  }
+}
+
+impl Shr<LitInt> for LitInt {
+  type Output = Self;
+
+  fn shr(self, other: Self) -> Self::Output {
+    Self(self.0.wrapping_shr(other.0.max(u32::MAX as i128) as u32))
+  }
+}
+
+impl BitAnd for LitInt {
+  type Output = Self;
+
+  fn bitand(self, other: Self) -> Self::Output {
+    Self(self.0 & other.0)
+  }
+}
+
+impl BitOr for LitInt {
+  type Output = Self;
+
+  fn bitor(self, other: Self) -> Self::Output {
+    Self(self.0 | other.0)
+  }
+}
+
+impl BitXor for LitInt {
+  type Output = Self;
+
+  fn bitxor(self, other: Self) -> Self::Output {
+    Self(self.0 ^ other.0)
   }
 }
 
