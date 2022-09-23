@@ -9,7 +9,7 @@ use quote::TokenStreamExt;
 
 use super::{
   tokens::{meta, parenthesized, token},
-  Expr, Lit, LitString,
+  Expr, Lit, LitString, Type,
 };
 use crate::{CodegenContext, LocalContext};
 
@@ -46,7 +46,8 @@ impl Asm {
     Ok((tokens, Self { template, outputs, inputs, clobbers }))
   }
 
-  pub(crate) fn finish<'t, 'g, C>(&mut self, _ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  #[allow(unused_variables)]
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {

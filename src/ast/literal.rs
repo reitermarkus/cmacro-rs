@@ -26,7 +26,10 @@ use quote::quote;
 use quote::{ToTokens, TokenStreamExt};
 use std::num::FpCategory;
 
-use super::tokens::{meta, token};
+use super::{
+  tokens::{meta, token},
+  ty::BuiltInType,
+};
 use crate::{CodegenContext, LocalContext};
 
 /// A literal.
@@ -398,7 +401,10 @@ impl Div for LitFloat {
 /// #define INT 4 ## ULL
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LitInt(pub i128);
+pub struct LitInt {
+  pub value: i128,
+  pub suffix: Option<BuiltInType>,
+}
 
 impl LitInt {
   fn from_str(input: &str) -> IResult<&str, (i128, Option<&str>, Option<&str>)> {
@@ -426,7 +432,7 @@ impl LitInt {
   }
 
   pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    if let Some(Ok((_, (repr, unsigned1, size1)))) = tokens.first().copied().map(Self::from_str) {
+    if let Some(Ok((_, (value, unsigned1, size1)))) = tokens.first().copied().map(Self::from_str) {
       let tokens = &tokens[1..];
 
       let suffix_unsigned = alt((token("u"), token("U")));
@@ -446,18 +452,32 @@ impl LitInt {
       );
 
       let (tokens, (unsigned2, size2)) = suffix(tokens)?;
-      let _unsigned = unsigned1.or(unsigned2).is_some();
-      let _size = size1.or(size2);
+      let unsigned = unsigned1.or(unsigned2).is_some();
+      let size = size1.or(size2);
+
+      let suffix = match (unsigned, size) {
+        (false, None) => None,
+        (true, None) => Some(BuiltInType::UInt),
+        (unsigned, Some(size)) => {
+          if size.eq_ignore_ascii_case("l") {
+            Some(if unsigned { BuiltInType::ULong } else { BuiltInType::Long })
+          } else if size.eq_ignore_ascii_case("ll") {
+            Some(if unsigned { BuiltInType::ULongLong } else { BuiltInType::LongLong })
+          } else {
+            None
+          }
+        },
+      };
 
       // TODO: Handle suffix.
-      return Ok((tokens, Self(repr)))
+      return Ok((tokens, Self { value, suffix }))
     }
 
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(self, _ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
-    let i = proc_macro2::Literal::i128_unsuffixed(self.0);
+    let i = proc_macro2::Literal::i128_unsuffixed(self.value);
     i.to_tokens(tokens)
   }
 }
@@ -466,7 +486,12 @@ impl Add for LitInt {
   type Output = Self;
 
   fn add(self, other: Self) -> Self::Output {
-    Self(self.0.wrapping_add(other.0))
+    let value = self.value.wrapping_add(other.value);
+    let suffix = match (self.suffix, other.suffix) {
+      (Some(s1), Some(s2)) if s1 == s2 => Some(s1),
+      (s1, s2) => s1.xor(s2),
+    };
+    Self { value, suffix }
   }
 }
 
@@ -474,7 +499,12 @@ impl Sub for LitInt {
   type Output = Self;
 
   fn sub(self, other: Self) -> Self::Output {
-    Self(self.0.wrapping_sub(other.0))
+    let value = self.value.wrapping_sub(other.value);
+    let suffix = match (self.suffix, other.suffix) {
+      (Some(s1), Some(s2)) if s1 == s2 => Some(s1),
+      (s1, s2) => s1.xor(s2),
+    };
+    Self { value, suffix }
   }
 }
 
@@ -482,7 +512,12 @@ impl Mul for LitInt {
   type Output = Self;
 
   fn mul(self, other: Self) -> Self::Output {
-    Self(self.0.wrapping_mul(other.0))
+    let value = self.value.wrapping_mul(other.value);
+    let suffix = match (self.suffix, other.suffix) {
+      (Some(s1), Some(s2)) if s1 == s2 => Some(s1),
+      (s1, s2) => s1.xor(s2),
+    };
+    Self { value, suffix }
   }
 }
 
@@ -490,7 +525,12 @@ impl Div for LitInt {
   type Output = Self;
 
   fn div(self, other: Self) -> Self::Output {
-    Self(self.0.wrapping_div(other.0))
+    let value = self.value.wrapping_div(other.value);
+    let suffix = match (self.suffix, other.suffix) {
+      (Some(s1), Some(s2)) if s1 == s2 => Some(s1),
+      (s1, s2) => s1.xor(s2),
+    };
+    Self { value, suffix }
   }
 }
 
@@ -498,7 +538,12 @@ impl Rem for LitInt {
   type Output = Self;
 
   fn rem(self, other: Self) -> Self::Output {
-    Self(self.0.wrapping_rem(other.0))
+    let value = self.value.wrapping_rem(other.value);
+    let suffix = match (self.suffix, other.suffix) {
+      (Some(s1), Some(s2)) if s1 == s2 => Some(s1),
+      (s1, s2) => s1.xor(s2),
+    };
+    Self { value, suffix }
   }
 }
 
@@ -506,7 +551,12 @@ impl Shl<LitInt> for LitInt {
   type Output = Self;
 
   fn shl(self, other: Self) -> Self::Output {
-    Self(self.0.wrapping_shl(other.0.min(u32::MAX as i128) as u32))
+    let value = self.value.wrapping_shl(other.value.min(u32::MAX as i128) as u32);
+    let suffix = match (self.suffix, other.suffix) {
+      (Some(s1), Some(s2)) if s1 == s2 => Some(s1),
+      (s1, s2) => s1.xor(s2),
+    };
+    Self { value, suffix }
   }
 }
 
@@ -514,7 +564,12 @@ impl Shr<LitInt> for LitInt {
   type Output = Self;
 
   fn shr(self, other: Self) -> Self::Output {
-    Self(self.0.wrapping_shr(other.0.min(u32::MAX as i128) as u32))
+    let value = self.value.wrapping_shr(other.value.min(u32::MAX as i128) as u32);
+    let suffix = match (self.suffix, other.suffix) {
+      (Some(s1), Some(s2)) if s1 == s2 => Some(s1),
+      (s1, s2) => s1.xor(s2),
+    };
+    Self { value, suffix }
   }
 }
 
@@ -522,7 +577,12 @@ impl BitAnd for LitInt {
   type Output = Self;
 
   fn bitand(self, other: Self) -> Self::Output {
-    Self(self.0 & other.0)
+    let value = self.value & other.value;
+    let suffix = match (self.suffix, other.suffix) {
+      (Some(s1), Some(s2)) if s1 == s2 => Some(s1),
+      (s1, s2) => s1.xor(s2),
+    };
+    Self { value, suffix }
   }
 }
 
@@ -530,7 +590,12 @@ impl BitOr for LitInt {
   type Output = Self;
 
   fn bitor(self, other: Self) -> Self::Output {
-    Self(self.0 | other.0)
+    let value = self.value | other.value;
+    let suffix = match (self.suffix, other.suffix) {
+      (Some(s1), Some(s2)) if s1 == s2 => Some(s1),
+      (s1, s2) => s1.xor(s2),
+    };
+    Self { value, suffix }
   }
 }
 
@@ -538,7 +603,12 @@ impl BitXor for LitInt {
   type Output = Self;
 
   fn bitxor(self, other: Self) -> Self::Output {
-    Self(self.0 ^ other.0)
+    let value = self.value ^ other.value;
+    let suffix = match (self.suffix, other.suffix) {
+      (Some(s1), Some(s2)) if s1 == s2 => Some(s1),
+      (s1, s2) => s1.xor(s2),
+    };
+    Self { value, suffix }
   }
 }
 
@@ -588,27 +658,27 @@ mod tests {
   #[test]
   fn parse_int() {
     let (_, id) = LitInt::parse(&[r#"777"#]).unwrap();
-    assert_eq!(id, LitInt(777));
+    assert_eq!(id, LitInt { value: 777, suffix: None });
 
     let (_, id) = LitInt::parse(&[r#"0777"#]).unwrap();
-    assert_eq!(id, LitInt(0o777));
+    assert_eq!(id, LitInt { value: 0o777, suffix: None });
 
     let (_, id) = LitInt::parse(&[r#"8718937817238719"#]).unwrap();
-    assert_eq!(id, LitInt(8718937817238719));
+    assert_eq!(id, LitInt { value: 8718937817238719, suffix: None });
 
     let (_, id) = LitInt::parse(&[r#"1U"#]).unwrap();
-    assert_eq!(id, LitInt(1));
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::UInt) });
 
     let (_, id) = LitInt::parse(&[r#"1ULL"#]).unwrap();
-    assert_eq!(id, LitInt(1));
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
 
     let (_, id) = LitInt::parse(&[r#"1UL"#]).unwrap();
-    assert_eq!(id, LitInt(1));
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULong) });
 
     let (_, id) = LitInt::parse(&[r#"1LLU"#]).unwrap();
-    assert_eq!(id, LitInt(1));
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
 
     let (_, id) = LitInt::parse(&[r#"1z"#]).unwrap();
-    assert_eq!(id, LitInt(1));
+    assert_eq!(id, LitInt { value: 1, suffix: None });
   }
 }

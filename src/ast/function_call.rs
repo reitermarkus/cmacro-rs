@@ -13,7 +13,7 @@ pub struct FunctionCall {
 }
 
 impl FunctionCall {
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -47,7 +47,8 @@ impl FunctionCall {
       arg.finish(ctx)?;
     }
 
-    Ok(())
+    // TODO: Get function return type from context.
+    Ok(None)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {

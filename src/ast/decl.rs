@@ -26,14 +26,16 @@ impl Decl {
     Ok((tokens, Self { ty, name, rhs, is_static: static_storage.is_some() }))
   }
 
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
     self.ty.finish(ctx)?;
     self.name.finish(ctx)?;
     self.rhs.finish(ctx)?;
-    Ok(())
+
+    // A declaration has no type.
+    Ok(None)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
@@ -67,7 +69,7 @@ mod tests {
       Decl {
         ty: Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Int)), mutable: true },
         name: Identifier::Literal("abc".into()),
-        rhs: Expr::Literal(Lit::Int(LitInt(123))),
+        rhs: Expr::Literal(Lit::Int(LitInt { value: 123, suffix: None })),
         is_static: false,
       }
     );

@@ -16,7 +16,7 @@ use super::*;
 use crate::{CodegenContext, LocalContext};
 
 /// A built-in type.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltInType {
   Float,
   Double,
@@ -148,17 +148,15 @@ impl Type {
     )(tokens)
   }
 
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
     match self {
-      Self::BuiltIn(_) => (),
-      Self::Identifier { name, .. } => name.finish(ctx)?,
-      Self::Ptr { ty, .. } => ty.finish(ctx)?,
+      Self::BuiltIn(_) => Ok(None),
+      Self::Identifier { name, .. } => name.finish(ctx),
+      Self::Ptr { ty, .. } => ty.finish(ctx),
     }
-
-    Ok(())
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {

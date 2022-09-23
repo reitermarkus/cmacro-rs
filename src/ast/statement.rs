@@ -69,14 +69,20 @@ impl Statement {
     ))(tokens)
   }
 
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
     match self {
-      Self::Expr(expr) => expr.finish(ctx)?,
-      Self::FunctionDecl(f) => f.finish(ctx)?,
-      Self::Decl(d) => d.finish(ctx)?,
+      Self::Expr(expr) => {
+        expr.finish(ctx)?;
+      },
+      Self::FunctionDecl(f) => {
+        f.finish(ctx)?;
+      },
+      Self::Decl(d) => {
+        d.finish(ctx)?;
+      },
       Self::Block(block) => {
         for stmt in block {
           stmt.finish(ctx)?;
@@ -102,7 +108,8 @@ impl Statement {
       },
     }
 
-    Ok(())
+    // TODO: Check if this should be `void`.
+    Ok(None)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {

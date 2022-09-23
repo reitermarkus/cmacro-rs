@@ -294,7 +294,7 @@ impl Expr {
     Self::parse_term_prec14(tokens)
   }
 
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -302,9 +302,10 @@ impl Expr {
       Self::Cast { expr, ty } => {
         expr.finish(ctx)?;
         ty.finish(ctx)?;
+        Ok(Some(ty.clone()))
       },
       Self::Variable { ref mut name } => {
-        name.finish(ctx)?;
+        let ty = name.finish(ctx)?;
 
         if let Identifier::Literal(id) = name {
           if let Some(expr) = ctx.macro_variable(id.as_str()) {
@@ -314,34 +315,45 @@ impl Expr {
 
           if !ctx.is_variable_known(id.as_str()) {
             // Built-in macros.
-            match id.as_str() {
-              "__SCHAR_MAX__" | "__SHRT_MAX__" | "__INT_MAX__" | "__LONG_MAX__" | "__LONG_LONG_MAX__" => return Ok(()),
-              _ => return Err(crate::Error::UnknownVariable),
+            return match id.as_str() {
+              "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
+              "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
+              "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
+              "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
+              "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
+              _ => Err(crate::Error::UnknownVariable),
             }
           }
         }
+
+        Ok(ty)
       },
-      Self::FunctionCall(call) => call.finish(ctx)?,
-      Self::Literal(_) => (),
+      Self::FunctionCall(call) => call.finish(ctx),
+      Self::Literal(_) => Ok(None),
       Self::FieldAccess { expr, field } => {
         expr.finish(ctx)?;
         field.finish(ctx)?;
+
+        Ok(None)
       },
-      Self::Stringify(stringify) => stringify.finish(ctx)?,
+      Self::Stringify(stringify) => stringify.finish(ctx),
       Self::Concat(names) => {
         for name in names {
           name.finish(ctx)?;
         }
+
+        // TODO: Should be `*const c_char`.
+        Ok(None)
       },
       Self::UnaryOp(op) => {
-        op.finish(ctx)?;
+        let ty = op.finish(ctx)?;
 
         match &**op {
           UnaryOp::Plus(expr @ Expr::Literal(Lit::Int(_)) | expr @ Expr::Literal(Lit::Float(_))) => {
             *self = expr.clone();
           },
-          UnaryOp::Minus(Expr::Literal(Lit::Int(LitInt(i)))) => {
-            *self = Expr::Literal(Lit::Int(LitInt(i.wrapping_neg())));
+          UnaryOp::Minus(Expr::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
+            *self = Expr::Literal(Lit::Int(LitInt { value: i.wrapping_neg(), suffix: None }));
           },
           UnaryOp::Minus(Expr::Literal(Lit::Float(f))) => {
             *self = Expr::Literal(Lit::Float(match f {
@@ -350,8 +362,8 @@ impl Expr {
               LitFloat::LongDouble(f) => LitFloat::LongDouble(-f),
             }));
           },
-          UnaryOp::Not(Expr::Literal(Lit::Int(LitInt(i)))) => {
-            *self = Expr::Literal(Lit::Int(LitInt(if *i == 0 { 1 } else { 0 })));
+          UnaryOp::Not(Expr::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
+            *self = Expr::Literal(Lit::Int(LitInt { value: if *i == 0 { 1 } else { 0 }, suffix: None }));
           },
           UnaryOp::Not(Expr::Literal(Lit::Float(f))) => {
             *self = Expr::Literal(Lit::Float(match f {
@@ -360,38 +372,19 @@ impl Expr {
               LitFloat::LongDouble(f) => LitFloat::LongDouble(if *f == 0.0 { 1.0 } else { 0.0 }),
             }));
           },
-          UnaryOp::Comp(Expr::Literal(Lit::Int(LitInt(i)))) => {
-            *self = Expr::Literal(Lit::Int(LitInt(!i)));
+          UnaryOp::Comp(Expr::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
+            *self = Expr::Literal(Lit::Int(LitInt { value: !i, suffix: None }));
           },
           UnaryOp::Comp(Expr::Literal(Lit::Float(_) | Lit::String(_))) => {
             return Err(crate::Error::UnsupportedExpression)
           },
           _ => (),
         }
+
+        Ok(ty)
       },
       Self::BinOp(op) => {
-        op.finish(ctx)?;
-
-        // Cast mixed float and int expression.
-        match (&op.lhs, &op.rhs) {
-          (Expr::Literal(Lit::Int(LitInt(lhs))), Expr::Literal(Lit::Float(_))) => {
-            let f = if *lhs >= f32::MIN as i128 && *lhs <= f32::MAX as i128 {
-              LitFloat::Float(*lhs as f32)
-            } else {
-              LitFloat::Double(*lhs as f64)
-            };
-            op.lhs = Expr::Literal(Lit::Float(f));
-          },
-          (Expr::Literal(Lit::Float(_)), Expr::Literal(Lit::Int(LitInt(rhs)))) => {
-            let f = if *rhs >= f32::MIN as i128 && *rhs <= f32::MAX as i128 {
-              LitFloat::Float(*rhs as f32)
-            } else {
-              LitFloat::Double(*rhs as f64)
-            };
-            op.rhs = Expr::Literal(Lit::Float(f));
-          },
-          _ => (),
-        }
+        let (lhs_ty, rhs_ty) = op.finish(ctx)?;
 
         // Calculate numeric expression.
         match op.op {
@@ -467,18 +460,33 @@ impl Expr {
             },
             _ => return Err(crate::Error::UnsupportedExpression),
           },
+          BinOp::Eq | BinOp::Neq | BinOp::And | BinOp::Or | BinOp::Lt | BinOp::Lte | BinOp::Gt | BinOp::Gte => {
+            return Ok(Some(Type::BuiltIn(BuiltInType::Bool)))
+          },
           _ => (),
+        }
+
+        if lhs_ty == rhs_ty {
+          Ok(lhs_ty)
+        } else {
+          // TODO: Add type casts if possible.
+          Err(crate::Error::UnsupportedExpression)
         }
       },
       Self::Ternary(cond, if_branch, else_branch) => {
         cond.finish(ctx)?;
-        if_branch.finish(ctx)?;
-        else_branch.finish(ctx)?;
-      },
-      Self::Asm(asm) => asm.finish(ctx)?,
-    }
+        let lhs_ty = if_branch.finish(ctx)?;
+        let rhs_ty = else_branch.finish(ctx)?;
 
-    Ok(())
+        if lhs_ty == rhs_ty {
+          Ok(lhs_ty)
+        } else {
+          // TODO: Add type casts if possible.
+          Err(crate::Error::UnsupportedExpression)
+        }
+      },
+      Self::Asm(asm) => asm.finish(ctx),
+    }
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {

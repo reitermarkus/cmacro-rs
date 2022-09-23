@@ -6,10 +6,10 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use quote::TokenStreamExt;
 
-use super::identifier::identifier;
 use super::{
+  identifier::identifier,
   tokens::{meta, token},
-  Identifier,
+  Identifier, Type,
 };
 use crate::{CodegenContext, LocalContext};
 
@@ -30,7 +30,7 @@ impl Stringify {
     )
   }
 
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -39,7 +39,8 @@ impl Stringify {
         ctx.export_as_macro = true;
       }
 
-      Ok(())
+      // TODO: Should be `*const c_char`.
+      Ok(None)
     } else {
       unreachable!()
     }

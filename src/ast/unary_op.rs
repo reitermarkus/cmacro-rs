@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
+use super::{BuiltInType, Type};
 use crate::{CodegenContext, Expr, LocalContext};
 
 /// A unary operation.
@@ -29,7 +30,7 @@ pub enum UnaryOp {
 }
 
 impl UnaryOp {
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -38,12 +39,26 @@ impl UnaryOp {
       Self::Dec(expr) => expr.finish(ctx),
       Self::PostInc(expr) => expr.finish(ctx),
       Self::PostDec(expr) => expr.finish(ctx),
-      Self::Not(expr) => expr.finish(ctx),
+      Self::Not(expr) => {
+        expr.finish(ctx)?;
+        // TODO: Evaluate literal.
+        Ok(Some(Type::BuiltIn(BuiltInType::Bool)))
+      },
       Self::Comp(expr) => expr.finish(ctx),
       Self::Plus(expr) => expr.finish(ctx),
       Self::Minus(expr) => expr.finish(ctx),
-      Self::Deref(expr) => expr.finish(ctx),
-      Self::AddrOf(expr) => expr.finish(ctx),
+      Self::Deref(expr) => {
+        let ty = expr.finish(ctx)?;
+        if let Some(Type::Ptr { ty, .. }) = ty {
+          Ok(Some(*ty))
+        } else {
+          Ok(ty)
+        }
+      },
+      Self::AddrOf(expr) => {
+        let ty = expr.finish(ctx)?;
+        Ok(ty.map(|t| Type::Ptr { ty: Box::new(t), mutable: true }))
+      },
     }
   }
 

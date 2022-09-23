@@ -3,7 +3,10 @@ use nom::combinator::all_consuming;
 use nom::combinator::map;
 use nom::IResult;
 
-use crate::{ast::meta, CodegenContext, Expr, LocalContext, Statement};
+use crate::{
+  ast::{meta, Type},
+  CodegenContext, Expr, LocalContext, Statement,
+};
 
 /// The body of a macro.
 #[derive(Debug)]
@@ -28,15 +31,13 @@ impl MacroBody {
     Ok((input, body))
   }
 
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
     match self {
-      Self::Block(stmt) => stmt.finish(ctx)?,
-      Self::Expr(expr) => expr.finish(ctx)?,
+      Self::Block(stmt) => stmt.finish(ctx),
+      Self::Expr(expr) => expr.finish(ctx),
     }
-
-    Ok(())
   }
 }

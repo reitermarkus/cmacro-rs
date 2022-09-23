@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 
+use super::{Lit, LitFloat, LitInt, Type};
 use crate::{CodegenContext, Expr, LocalContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,14 +110,35 @@ pub struct BinaryOp {
 }
 
 impl BinaryOp {
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  pub(crate) fn finish<'t, 'g, C>(
+    &mut self,
+    ctx: &mut LocalContext<'t, 'g, C>,
+  ) -> Result<(Option<Type>, Option<Type>), crate::Error>
   where
     C: CodegenContext,
   {
-    self.lhs.finish(ctx)?;
-    self.rhs.finish(ctx)?;
+    // Cast mixed float and int expression.
+    match (&self.lhs, &self.rhs) {
+      (Expr::Literal(Lit::Int(LitInt { value: lhs, suffix: None })), Expr::Literal(Lit::Float(_))) => {
+        let f = if *lhs >= f32::MIN as i128 && *lhs <= f32::MAX as i128 {
+          LitFloat::Float(*lhs as f32)
+        } else {
+          LitFloat::Double(*lhs as f64)
+        };
+        self.lhs = Expr::Literal(Lit::Float(f));
+      },
+      (Expr::Literal(Lit::Float(_)), Expr::Literal(Lit::Int(LitInt { value: rhs, suffix: None }))) => {
+        let f = if *rhs >= f32::MIN as i128 && *rhs <= f32::MAX as i128 {
+          LitFloat::Float(*rhs as f32)
+        } else {
+          LitFloat::Double(*rhs as f64)
+        };
+        self.rhs = Expr::Literal(Lit::Float(f));
+      },
+      _ => (),
+    }
 
-    Ok(())
+    Ok((self.lhs.finish(ctx)?, self.rhs.finish(ctx)?))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {

@@ -8,7 +8,10 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use quote::TokenStreamExt;
 
-use super::tokens::{meta, token};
+use super::{
+  tokens::{meta, token},
+  Type,
+};
 use crate::{CodegenContext, LocalContext, MacroArgType};
 
 pub(crate) fn identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
@@ -65,7 +68,7 @@ impl Identifier {
     )(tokens)
   }
 
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -97,7 +100,8 @@ impl Identifier {
       }
     }
 
-    Ok(())
+    // An identifier does not have a type.
+    Ok(None)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {

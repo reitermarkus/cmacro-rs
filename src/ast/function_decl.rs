@@ -31,7 +31,7 @@ impl FunctionDecl {
     Ok((tokens, Self { ret_ty, name, args }))
   }
 
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -42,7 +42,8 @@ impl FunctionDecl {
       arg.finish(ctx)?;
     }
 
-    Ok(())
+    // A declaration has no type.
+    Ok(None)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
