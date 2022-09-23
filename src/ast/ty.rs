@@ -1,19 +1,19 @@
-use quote::TokenStreamExt;
-use quote::quote;
-use nom::IResult;
-use nom::multi::fold_many0;
-use quote::ToTokens;
-use nom::combinator::opt;
 use nom::branch::alt;
-use nom::combinator::map;
-use proc_macro2::TokenStream;
-use nom::sequence::delimited;
-use nom::sequence::preceded;
-use nom::sequence::pair;
 use nom::branch::permutation;
+use nom::combinator::map;
+use nom::combinator::opt;
+use nom::multi::fold_many0;
+use nom::sequence::delimited;
+use nom::sequence::pair;
+use nom::sequence::preceded;
+use nom::IResult;
+use proc_macro2::TokenStream;
+use quote::quote;
+use quote::ToTokens;
+use quote::TokenStreamExt;
 
-use crate::LocalContext;
 use super::*;
+use crate::{CodegenContext, LocalContext};
 
 /// A built-in type.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,13 +69,7 @@ fn int_ty<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], BuiltInType> {
   alt((
     // [const] [(un)signed] long long [int]
     map(
-      permutation((
-        const_qualifier,
-        opt(int_signedness),
-        keyword("long"),
-        keyword("long"),
-        opt(keyword("int")),
-      )),
+      permutation((const_qualifier, opt(int_signedness), keyword("long"), keyword("long"), opt(keyword("int")))),
       |(_, s, _, _, _)| {
         if matches!(s, Some("unsigned")) {
           BuiltInType::ULongLong
@@ -85,39 +79,25 @@ fn int_ty<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], BuiltInType> {
       },
     ),
     // [const] [(un)signed] long/short [int]
-    map(
-      permutation((
-        const_qualifier,
-        opt(int_signedness),
-        int_longness,
-        opt(keyword("int")),
-      )),
-      |(_, s, i, _)| {
-        match (s, i) {
-          (Some("unsigned"), "short") => BuiltInType::UShort,
-          (_, "short") => BuiltInType::Short,
-          (Some("unsigned"), "long") => BuiltInType::ULong,
-          (_, "long") => BuiltInType::Long,
-          _ => unreachable!(),
-        }
-      },
-    ),
+    map(permutation((const_qualifier, opt(int_signedness), int_longness, opt(keyword("int")))), |(_, s, i, _)| match (
+      s, i,
+    ) {
+      (Some("unsigned"), "short") => BuiltInType::UShort,
+      (_, "short") => BuiltInType::Short,
+      (Some("unsigned"), "long") => BuiltInType::ULong,
+      (_, "long") => BuiltInType::Long,
+      _ => unreachable!(),
+    }),
     // [const] [(un)signed] char/int
     map(
-      permutation((
-        const_qualifier,
-        opt(int_signedness),
-        alt((keyword("char"), keyword("int"))),
-      )),
-      |(_, s, i)| {
-        match (s, i) {
-          (Some("unsigned"), "int") => BuiltInType::UInt,
-          (_, "int") => BuiltInType::Int,
-          (Some("unsigned"), "char") => BuiltInType::UChar,
-          (Some("signed"), "char") => BuiltInType::SChar,
-          (_, "char") => BuiltInType::Char,
-          _ => unreachable!(),
-        }
+      permutation((const_qualifier, opt(int_signedness), alt((keyword("char"), keyword("int"))))),
+      |(_, s, i)| match (s, i) {
+        (Some("unsigned"), "int") => BuiltInType::UInt,
+        (_, "int") => BuiltInType::Int,
+        (Some("unsigned"), "char") => BuiltInType::UChar,
+        (Some("signed"), "char") => BuiltInType::SChar,
+        (_, "char") => BuiltInType::Char,
+        _ => unreachable!(),
       },
     ),
   ))(input)
@@ -127,14 +107,7 @@ fn ty<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Type> {
   alt((
     // [const] float/double/bool/void
     map(
-      permutation((
-        const_qualifier,
-        alt((
-          keyword("float"),
-          keyword("double"),
-          keyword("bool"),
-        ),
-      ))),
+      permutation((const_qualifier, alt((keyword("float"), keyword("double"), keyword("bool"))))),
       |(_, ty)| match ty {
         "float" => Type::BuiltIn(BuiltInType::Float),
         "double" => Type::BuiltIn(BuiltInType::Double),
@@ -145,21 +118,15 @@ fn ty<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Type> {
     ),
     map(int_ty, Type::BuiltIn),
     // [const] <identifier>
-    map(
-      permutation((const_qualifier, pair(opt(keyword("struct")), identifier))),
-      |(_, (s, id))| Type::Identifier {
-        name: Identifier::Literal(id.to_owned()), is_struct: s.is_some()
-      },
-    ),
+    map(permutation((const_qualifier, pair(opt(keyword("struct")), identifier))), |(_, (s, id))| Type::Identifier {
+      name: Identifier::Literal(id.to_owned()),
+      is_struct: s.is_some(),
+    }),
   ))(input)
 }
 
 fn const_qualifier<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], bool> {
-  fold_many0(
-    keyword("const"),
-    || false,
-    |_, _| true,
-  )(input)
+  fold_many0(keyword("const"), || false, |_, _| true)(input)
 }
 
 /// A type.
@@ -172,9 +139,7 @@ pub enum Type {
 
 impl Type {
   pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    let (tokens, ty) = delimited(
-      const_qualifier, ty, const_qualifier,
-    )(tokens)?;
+    let (tokens, ty) = delimited(const_qualifier, ty, const_qualifier)(tokens)?;
 
     fold_many0(
       preceded(pair(token("*"), meta), const_qualifier),
@@ -183,7 +148,10 @@ impl Type {
     )(tokens)
   }
 
-  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  where
+    C: CodegenContext,
+  {
     match self {
       Self::BuiltIn(_) => (),
       Self::Identifier { name, .. } => name.finish(ctx)?,
@@ -193,17 +161,13 @@ impl Type {
     Ok(())
   }
 
-  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     match self {
-      Self::BuiltIn(ty) => {
-        match ty {
-          BuiltInType::Float | BuiltInType::Double | BuiltInType::Bool => ty.to_tokens(tokens),
-          ty => tokens.append_all(quote! { ::core::ffi::#ty })
-        }
+      Self::BuiltIn(ty) => match ty {
+        BuiltInType::Float | BuiltInType::Double | BuiltInType::Bool => ty.to_tokens(tokens),
+        ty => tokens.append_all(quote! { ::core::ffi::#ty }),
       },
-      Self::Identifier { name, .. } => {
-        name.to_tokens(ctx, tokens)
-      },
+      Self::Identifier { name, .. } => name.to_tokens(ctx, tokens),
       Self::Ptr { ty, mutable } => {
         let ty = ty.to_token_stream(ctx);
 
@@ -216,7 +180,7 @@ impl Type {
     }
   }
 
-  pub(crate) fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>) -> TokenStream {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens

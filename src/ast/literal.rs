@@ -1,33 +1,33 @@
+use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Shl, Shr, Sub};
 use std::str;
-use std::ops::{Add, Sub, Mul, Div, BitAnd, BitOr, BitXor, Rem, Shl, Shr};
 
-use nom::combinator::{all_consuming, cond, map_opt};
-use nom::character::complete::{char, one_of, digit1, hex_digit1, oct_digit1};
-use nom::character::{is_hex_digit, is_oct_digit};
-use nom::bytes::complete::{is_a, tag, tag_no_case, take_while, take_while_m_n};
-use nom::character::complete::none_of;
-use nom::multi::fold_many1;
-use nom::bytes::complete::is_not;
 use nom::branch::alt;
 use nom::branch::permutation;
-use nom::sequence::preceded;
-use nom::sequence::delimited;
-use nom::combinator::recognize;
-use nom::sequence::separated_pair;
-use nom::combinator::{value, opt, map};
-use nom::combinator::map_res;
-use nom::IResult;
+use nom::bytes::complete::is_not;
+use nom::bytes::complete::{is_a, tag, tag_no_case, take_while, take_while_m_n};
+use nom::character::complete::none_of;
+use nom::character::complete::{char, digit1, hex_digit1, oct_digit1, one_of};
+use nom::character::{is_hex_digit, is_oct_digit};
 use nom::combinator::eof;
-use nom::sequence::terminated;
-use proc_macro2::TokenStream;
-use nom::sequence::pair;
+use nom::combinator::map_res;
+use nom::combinator::recognize;
+use nom::combinator::{all_consuming, cond, map_opt};
+use nom::combinator::{map, opt, value};
 use nom::multi::fold_many0;
-use quote::{ToTokens, TokenStreamExt};
+use nom::multi::fold_many1;
+use nom::sequence::delimited;
+use nom::sequence::pair;
+use nom::sequence::preceded;
+use nom::sequence::separated_pair;
+use nom::sequence::terminated;
+use nom::IResult;
+use proc_macro2::TokenStream;
 use quote::quote;
+use quote::{ToTokens, TokenStreamExt};
 use std::num::FpCategory;
 
-use crate::{LocalContext};
 use super::tokens::{meta, token};
+use crate::{CodegenContext, LocalContext};
 
 /// A literal.
 ///
@@ -50,7 +50,7 @@ impl Lit {
     ))(input)
   }
 
-  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     match self {
       Self::Char(c) => c.to_tokens(ctx, tokens),
       Self::String(s) => s.to_tokens(ctx, tokens),
@@ -72,26 +72,27 @@ fn escaped_char(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
     map(char('v'), |_| vec![b'\x0b']),
     map(one_of([b'\\', b'\'', b'\"', b'?']), |c| vec![c as u8]),
     map_opt(take_while_m_n(1, 3, is_oct_digit), |n| {
-      str::from_utf8(n).ok()
-        .and_then(|s| u8::from_str_radix(s, 8).ok())
-        .map(|b| vec![b])
+      str::from_utf8(n).ok().and_then(|s| u8::from_str_radix(s, 8).ok()).map(|b| vec![b])
     }),
-    preceded(tag_no_case("x"), map_opt(take_while(is_hex_digit), |n: &[u8]| {
-      let start = n.len().max(2) - 2;
-      str::from_utf8(&n[start..]).ok()
-        .and_then(|s| u8::from_str_radix(s, 16).ok())
-        .map(|b| vec![b])
-    })),
-    preceded(char('u'), map_opt(take_while_m_n(4, 4, is_hex_digit), |n: &[u8]| {
-      str::from_utf8(n).ok()
-        .and_then(|s| u16::from_str_radix(s, 16).ok())
-        .map(|n| n.to_be_bytes().to_vec())
-    })),
-    preceded(char('U'), map_opt(take_while_m_n(8, 8, is_hex_digit), |n: &[u8]| {
-      str::from_utf8(n).ok()
-        .and_then(|s| u32::from_str_radix(s, 16).ok())
-        .map(|n| n.to_be_bytes().to_vec())
-    })),
+    preceded(
+      tag_no_case("x"),
+      map_opt(take_while(is_hex_digit), |n: &[u8]| {
+        let start = n.len().max(2) - 2;
+        str::from_utf8(&n[start..]).ok().and_then(|s| u8::from_str_radix(s, 16).ok()).map(|b| vec![b])
+      }),
+    ),
+    preceded(
+      char('u'),
+      map_opt(take_while_m_n(4, 4, is_hex_digit), |n: &[u8]| {
+        str::from_utf8(n).ok().and_then(|s| u16::from_str_radix(s, 16).ok()).map(|n| n.to_be_bytes().to_vec())
+      }),
+    ),
+    preceded(
+      char('U'),
+      map_opt(take_while_m_n(8, 8, is_hex_digit), |n: &[u8]| {
+        str::from_utf8(n).ok().and_then(|s| u32::from_str_radix(s, 16).ok()).map(|n| n.to_be_bytes().to_vec())
+      }),
+    ),
   ))(input)
 }
 
@@ -111,21 +112,15 @@ pub struct LitChar {
 impl LitChar {
   fn from_str(input: &str) -> IResult<&[u8], Vec<u8>> {
     all_consuming(delimited(
-      preceded(
-        opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))),
-        char('\''),
-      ),
+      preceded(opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))), char('\'')),
       fold_many1(
-        alt((
-          preceded(char('\\'), escaped_char),
-          map(none_of(r#"\'"#), |b| vec![b as u8]),
-        )),
+        alt((preceded(char('\\'), escaped_char), map(none_of(r#"\'"#), |b| vec![b as u8]))),
         Vec::new,
         |mut acc, c| {
           acc.clear();
           acc.extend(c);
           acc
-        }
+        },
       ),
       char('\''),
     ))(input.as_bytes())
@@ -143,17 +138,17 @@ impl LitChar {
     Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
   }
 
-  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     tokens.append_all(match *self.repr.as_slice() {
       [c] => {
-        let prefix = &ctx.global_context.ffi_prefix;
+        let prefix = &ctx.ffi_prefix();
         let c = proc_macro2::Literal::u8_unsuffixed(c);
         quote! { #c as #prefix c_char }
       },
       [c1, c2] => {
         let c = u16::from_be_bytes([c1, c2]);
         let c = proc_macro2::Literal::u16_unsuffixed(c);
-        quote ! { #c as wchar_t }
+        quote! { #c as wchar_t }
       },
       [c1, c2, c3, c4] => {
         let c = u32::from_be_bytes([c1, c2, c3, c4]);
@@ -184,26 +179,18 @@ impl LitString {
     if let Some(token) = input.first() {
       let input = &input[1..];
 
-      let res: IResult<&[u8], Vec<u8>> = all_consuming(
-        delimited(
-          preceded(
-            opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))),
-            char('\"'),
-          ),
-          fold_many0(
-            alt((
-              preceded(char('\\'), escaped_char),
-              map(is_not([b'\\', b'\"']), |b: &[u8]| b.to_vec()),
-            )),
-            Vec::new,
-            |mut acc, c| {
-              acc.extend(c);
-              acc
-            },
-          ),
-          char('\"'),
-        )
-      )(token.as_bytes());
+      let res: IResult<&[u8], Vec<u8>> = all_consuming(delimited(
+        preceded(opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))), char('\"')),
+        fold_many0(
+          alt((preceded(char('\\'), escaped_char), map(is_not([b'\\', b'\"']), |b: &[u8]| b.to_vec()))),
+          Vec::new,
+          |mut acc, c| {
+            acc.extend(c);
+            acc
+          },
+        ),
+        char('\"'),
+      ))(token.as_bytes());
 
       if let Ok((_, s)) = res {
         return Ok((input, Self { repr: s }))
@@ -222,19 +209,17 @@ impl LitString {
       |mut acc, s| {
         acc.repr.extend(s.repr);
         acc
-      }
+      },
     )(input)
   }
 
-  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     let mut bytes = self.repr.clone();
     bytes.push(0);
 
-    let bytes = bytes.into_iter().map(|b| {
-      proc_macro2::Literal::u8_unsuffixed(b)
-    });
+    let bytes = bytes.into_iter().map(proc_macro2::Literal::u8_unsuffixed);
 
-    let prefix = &ctx.global_context.ffi_prefix;
+    let prefix = ctx.ffi_prefix();
     tokens.append_all(quote! {
       [#(#bytes),*].as_ptr() as *const #prefix c_char
     })
@@ -269,10 +254,7 @@ impl LitFloat {
       pair(
         recognize(separated_pair(
           opt(digit1),
-          alt((
-            value((), char('.')),
-            value((), pair(tag_no_case("e"), opt(alt((char('+'), char('-')))))),
-          )),
+          alt((value((), char('.')), value((), pair(tag_no_case("e"), opt(alt((char('+'), char('-')))))))),
           digit1,
         )),
         opt(alt((tag_no_case("f"), tag_no_case("l")))),
@@ -313,40 +295,39 @@ impl LitFloat {
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
   }
 
-  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
-    let num_prefix = &ctx.global_context.num_prefix;
+  pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
+    let num_prefix = &ctx.num_prefix();
 
     tokens.append_all(match self {
-      Self::Float(f) => {
-        match f.classify() {
-          FpCategory::Nan => quote! { #num_prefix f32::NAN },
-          FpCategory::Infinite => if f.is_sign_positive() {
+      Self::Float(f) => match f.classify() {
+        FpCategory::Nan => quote! { #num_prefix f32::NAN },
+        FpCategory::Infinite => {
+          if f.is_sign_positive() {
             quote! { #num_prefix f32::INFINITY }
           } else {
             quote! { #num_prefix f32::NEG_INFINITY }
-          },
-          FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {
-            proc_macro2::Literal::f32_unsuffixed(*f).to_token_stream()
-          },
-        }
+          }
+        },
+        FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {
+          proc_macro2::Literal::f32_unsuffixed(f).to_token_stream()
+        },
       },
-      Self::Double(f) | Self::LongDouble(f) => {
-        match f.classify() {
-          FpCategory::Nan => quote! { #num_prefix f64::NAN },
-          FpCategory::Infinite => if f.is_sign_positive() {
+      Self::Double(f) | Self::LongDouble(f) => match f.classify() {
+        FpCategory::Nan => quote! { #num_prefix f64::NAN },
+        FpCategory::Infinite => {
+          if f.is_sign_positive() {
             quote! { #num_prefix f64::INFINITY }
           } else {
             quote! { #num_prefix f64::NEG_INFINITY }
-          },
-          FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {
-            proc_macro2::Literal::f64_unsuffixed(*f).to_token_stream()
-          },
-        }
+          }
+        },
+        FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {
+          proc_macro2::Literal::f64_unsuffixed(f).to_token_stream()
+        },
       },
     })
   }
 }
-
 
 impl Add for LitFloat {
   type Output = Self;
@@ -430,30 +411,14 @@ impl LitInt {
 
     let suffix = alt((
       map(
-        pair(
-          tag_no_case("u"),
-          opt(
-            alt((
-              tag_no_case("ll"),
-              tag_no_case("l"),
-              tag_no_case("z"),
-            )),
-          ),
-        ),
-        |(unsigned, size)| (Some(unsigned), size)
+        pair(tag_no_case("u"), opt(alt((tag_no_case("ll"), tag_no_case("l"), tag_no_case("z"))))),
+        |(unsigned, size)| (Some(unsigned), size),
       ),
       map(
-        pair(
-          alt((
-            tag_no_case("ll"),
-            tag_no_case("l"),
-            tag_no_case("z"),
-          )),
-          opt(tag_no_case("u")),
-        ),
+        pair(alt((tag_no_case("ll"), tag_no_case("l"), tag_no_case("z"))), opt(tag_no_case("u"))),
         |(size, unsigned)| (unsigned, Some(size)),
       ),
-      map(eof, |_| (None, None))
+      map(eof, |_| (None, None)),
     ));
 
     let (input, (repr, (unsigned, size))) = all_consuming(pair(digits, suffix))(input)?;
@@ -472,11 +437,10 @@ impl LitInt {
       let mut suffix = map(
         permutation((
           cond(unsigned1.is_none(), opt(preceded(delimited(meta, token("##"), meta), suffix_unsigned))),
-          cond(size1.is_none(), opt(preceded(delimited(meta, token("##"), meta), alt((
-            suffix_long_long,
-            suffix_long,
-            suffix_size_t,
-          )))))
+          cond(
+            size1.is_none(),
+            opt(preceded(delimited(meta, token("##"), meta), alt((suffix_long_long, suffix_long, suffix_size_t)))),
+          ),
         )),
         |(unsigned, size)| (unsigned.flatten(), size.flatten()),
       );
@@ -492,7 +456,7 @@ impl LitInt {
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
   }
 
-  pub fn to_tokens(&self, _ctx: &mut LocalContext, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(self, _ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     let i = proc_macro2::Literal::i128_unsuffixed(self.0);
     i.to_tokens(tokens)
   }

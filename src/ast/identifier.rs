@@ -1,15 +1,15 @@
-use nom::sequence::delimited;
-use quote::TokenStreamExt;
-use proc_macro2::TokenStream;
-use proc_macro2::Span;
-use quote::quote;
 use nom::multi::fold_many0;
+use nom::sequence::delimited;
 use nom::sequence::preceded;
-use proc_macro2::Ident;
 use nom::IResult;
+use proc_macro2::Ident;
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use quote::quote;
+use quote::TokenStreamExt;
 
-use crate::{LocalContext, MacroArgType};
 use super::tokens::{meta, token};
+use crate::{CodegenContext, LocalContext, MacroArgType};
 
 pub(crate) fn identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
   if let Some(token) = tokens.first() {
@@ -53,24 +53,22 @@ impl Identifier {
     let (tokens, id) = identifier(tokens)?;
 
     fold_many0(
-      preceded(
-        delimited(meta, token("##"), meta),
-        concat_identifier,
-      ),
+      preceded(delimited(meta, token("##"), meta), concat_identifier),
       move || Self::Literal(id.to_owned()),
-      |acc, item| {
-        match acc {
-          Self::Literal(id) => Self::Concat(vec![id, item.to_owned()]),
-          Self::Concat(mut ids) => {
-            ids.push(item.to_owned());
-            Self::Concat(ids)
-          }
-        }
-      }
+      |acc, item| match acc {
+        Self::Literal(id) => Self::Concat(vec![id, item.to_owned()]),
+        Self::Concat(mut ids) => {
+          ids.push(item.to_owned());
+          Self::Concat(ids)
+        },
+      },
     )(tokens)
   }
 
-  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  where
+    C: CodegenContext,
+  {
     if let Self::Concat(ref mut ids) = self {
       let mut new_ids = vec![];
       let mut non_arg_id: Option<String> = None;
@@ -102,11 +100,11 @@ impl Identifier {
     Ok(())
   }
 
-  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     tokens.append_all(self.to_token_stream(ctx))
   }
 
-  pub(crate) fn to_token_stream(&self, ctx: &mut LocalContext) -> TokenStream {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>) -> TokenStream {
     match self {
       Self::Literal(ref s) => {
         let id = Ident::new(s, Span::call_site());

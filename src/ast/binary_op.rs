@@ -1,7 +1,7 @@
-use quote::{quote, ToTokens, TokenStreamExt};
 use proc_macro2::TokenStream;
+use quote::{quote, ToTokens, TokenStreamExt};
 
-use crate::{LocalContext, Expr};
+use crate::{CodegenContext, Expr, LocalContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
@@ -68,35 +68,35 @@ pub enum BinOp {
 impl ToTokens for BinOp {
   fn to_tokens(&self, tokens: &mut TokenStream) {
     tokens.append_all(match self {
-      Self::Mul => quote!{ * },
-      Self::Div => quote!{ / },
-      Self::Rem => quote!{ % },
-      Self::Add => quote!{ + },
-      Self::Sub => quote!{ - },
-      Self::Shl => quote!{ << },
-      Self::Shr => quote!{ >> },
-      Self::Lt => quote!{ < },
-      Self::Lte => quote!{ <= },
-      Self::Gt => quote!{ > },
-      Self::Gte => quote!{ >= },
-      Self::Eq => quote!{ == },
-      Self::Neq => quote!{ != },
-      Self::BitAnd => quote!{ & },
-      Self::BitXor => quote!{ ^ },
-      Self::BitOr => quote!{ | },
-      Self::And => quote!{ && },
-      Self::Or => quote!{ || },
-      Self::Assign => quote!{ =  },
-      Self::AddAssign => quote!{ += },
-      Self::SubAssign => quote!{ -= },
-      Self::MulAssign => quote!{ *= },
-      Self::DivAssign => quote!{ /= },
-      Self::RemAssign => quote!{ %= },
-      Self::ShlAssign => quote!{ <<= },
-      Self::ShrAssign => quote!{ >>= },
-      Self::BitAndAssign => quote!{ &= },
-      Self::BitXorAssign => quote!{ ^= },
-      Self::BitOrAssign => quote!{ |= },
+      Self::Mul => quote! { * },
+      Self::Div => quote! { / },
+      Self::Rem => quote! { % },
+      Self::Add => quote! { + },
+      Self::Sub => quote! { - },
+      Self::Shl => quote! { << },
+      Self::Shr => quote! { >> },
+      Self::Lt => quote! { < },
+      Self::Lte => quote! { <= },
+      Self::Gt => quote! { > },
+      Self::Gte => quote! { >= },
+      Self::Eq => quote! { == },
+      Self::Neq => quote! { != },
+      Self::BitAnd => quote! { & },
+      Self::BitXor => quote! { ^ },
+      Self::BitOr => quote! { | },
+      Self::And => quote! { && },
+      Self::Or => quote! { || },
+      Self::Assign => quote! { =  },
+      Self::AddAssign => quote! { += },
+      Self::SubAssign => quote! { -= },
+      Self::MulAssign => quote! { *= },
+      Self::DivAssign => quote! { /= },
+      Self::RemAssign => quote! { %= },
+      Self::ShlAssign => quote! { <<= },
+      Self::ShrAssign => quote! { >>= },
+      Self::BitAndAssign => quote! { &= },
+      Self::BitXorAssign => quote! { ^= },
+      Self::BitOrAssign => quote! { |= },
     })
   }
 }
@@ -109,24 +109,31 @@ pub struct BinaryOp {
 }
 
 impl BinaryOp {
-  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  where
+    C: CodegenContext,
+  {
     self.lhs.finish(ctx)?;
     self.rhs.finish(ctx)?;
 
     Ok(())
   }
 
-  pub(crate) fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     let lhs = self.lhs.to_token_stream(ctx);
     let op = self.op;
     let rhs = self.rhs.to_token_stream(ctx);
 
     tokens.append_all(match self.op {
-      BinOp::Assign | BinOp::AddAssign | BinOp::SubAssign |
-      BinOp::BitAndAssign | BinOp::BitXorAssign | BinOp::BitOrAssign => {
+      BinOp::Assign
+      | BinOp::AddAssign
+      | BinOp::SubAssign
+      | BinOp::BitAndAssign
+      | BinOp::BitXorAssign
+      | BinOp::BitOrAssign => {
         quote! { { #lhs #op #rhs; #lhs } }
       },
-      op => quote!{ ( #lhs #op #rhs ) },
+      op => quote! { ( #lhs #op #rhs ) },
     })
   }
 }

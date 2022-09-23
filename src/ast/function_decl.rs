@@ -1,16 +1,16 @@
-use proc_macro2::TokenStream;
-use nom::sequence::pair;
-use quote::TokenStreamExt;
-use nom::IResult;
-use quote::quote;
 use nom::branch::permutation;
 use nom::combinator::opt;
 use nom::multi::separated_list0;
+use nom::sequence::pair;
 use nom::sequence::tuple;
+use nom::IResult;
+use proc_macro2::TokenStream;
+use quote::quote;
+use quote::TokenStreamExt;
 
-use crate::LocalContext;
 use super::tokens::parenthesized;
 use super::*;
+use crate::{CodegenContext, LocalContext};
 
 /// A function declaration.
 #[derive(Debug)]
@@ -25,15 +25,16 @@ impl FunctionDecl {
     let (tokens, ((_, ret_ty), name, args)) = tuple((
       permutation((opt(token("static")), Type::parse)),
       Identifier::parse,
-      parenthesized(
-        separated_list0(pair(meta, token(",")), pair(Type::parse, Identifier::parse)),
-      ),
+      parenthesized(separated_list0(pair(meta, token(",")), pair(Type::parse, Identifier::parse))),
     ))(tokens)?;
 
     Ok((tokens, Self { ret_ty, name, args }))
   }
 
-  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  where
+    C: CodegenContext,
+  {
     self.ret_ty.finish(ctx)?;
     self.name.finish(ctx)?;
     for (ty, arg) in self.args.iter_mut() {
@@ -44,13 +45,17 @@ impl FunctionDecl {
     Ok(())
   }
 
-  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     let name = self.name.to_token_stream(ctx);
-    let args = self.args.iter().map(|(ty, arg)| {
-      let ty = ty.to_token_stream(ctx);
-      let arg = arg.to_token_stream(ctx);
-      quote! { #arg: #ty }
-    }).collect::<Vec<_>>();
+    let args = self
+      .args
+      .iter()
+      .map(|(ty, arg)| {
+        let ty = ty.to_token_stream(ctx);
+        let arg = arg.to_token_stream(ctx);
+        quote! { #arg: #ty }
+      })
+      .collect::<Vec<_>>();
     let ret_ty = self.ret_ty.to_token_stream(ctx);
 
     tokens.append_all(quote! {

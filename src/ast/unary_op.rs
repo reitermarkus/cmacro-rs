@@ -1,7 +1,7 @@
-use quote::{quote, TokenStreamExt};
 use proc_macro2::TokenStream;
+use quote::{quote, TokenStreamExt};
 
-use crate::{LocalContext, Expr};
+use crate::{CodegenContext, Expr, LocalContext};
 
 /// A unary operation.
 #[derive(Debug, Clone, PartialEq)]
@@ -29,7 +29,10 @@ pub enum UnaryOp {
 }
 
 impl UnaryOp {
-  pub fn finish<'t, 'g>(&mut self, ctx: &mut LocalContext<'t, 'g>) -> Result<(), crate::Error> {
+  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<(), crate::Error>
+  where
+    C: CodegenContext,
+  {
     match self {
       Self::Inc(expr) => expr.finish(ctx),
       Self::Dec(expr) => expr.finish(ctx),
@@ -44,7 +47,7 @@ impl UnaryOp {
     }
   }
 
-  pub fn to_tokens(&self, ctx: &mut LocalContext, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     tokens.append_all(match self {
       Self::Inc(expr) => {
         let expr = expr.to_token_stream(ctx);

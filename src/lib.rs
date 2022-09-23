@@ -1,10 +1,10 @@
 #![warn(missing_debug_implementations)]
 
-use std::collections::HashMap;
-use std::str;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use quote::TokenStreamExt;
+use std::collections::HashMap;
+use std::str;
 
 pub mod ast;
 pub use ast::*;
@@ -40,17 +40,13 @@ impl VarMacro {
     Ok(Self { name: name.to_owned(), expr })
   }
 
-  pub fn generate(
-    &mut self,
-    cx: &Context,
-  ) -> Result<TokenStream, crate::Error> {
+  pub fn generate<C>(&mut self, cx: &C) -> Result<TokenStream, crate::Error>
+  where
+    C: CodegenContext,
+  {
     let mut tokens = TokenStream::new();
 
-    let mut ctx = LocalContext {
-      args: HashMap::new(),
-      export_as_macro: false,
-      global_context: cx,
-    };
+    let mut ctx = LocalContext { args: HashMap::new(), export_as_macro: false, global_context: cx };
 
     self.expr.finish(&mut ctx)?;
     self.expr.to_tokens(&mut ctx, &mut tokens);
@@ -80,11 +76,15 @@ impl<'t> FnMacro<'t> {
     Ok(Self { name: sig.name, args, body })
   }
 
-  pub fn generate(
+  pub fn generate<C>(
     &mut self,
     mut variable_type: impl FnMut(&str, &str) -> Option<syn::Type>,
     mut return_type: impl FnMut(&str) -> Option<syn::Type>,
-  ) -> Result<TokenStream, crate::Error> {
+    cx: &C,
+  ) -> Result<TokenStream, crate::Error>
+  where
+    C: CodegenContext,
+  {
     let mut tokens = TokenStream::new();
 
     let mut args = HashMap::new();
@@ -92,19 +92,18 @@ impl<'t> FnMacro<'t> {
       args.insert(arg, ty);
     }
 
-    let gcx = Context::default();
-    let mut ctx = LocalContext {
-      args,
-      export_as_macro: false,
-      global_context: &gcx,
-    };
+    let mut ctx = LocalContext { args, export_as_macro: false, global_context: cx };
     self.body.finish(&mut ctx)?;
 
-    let mut export_as_macro = !ctx.args.iter().all(|(_, ty)| *ty == MacroArgType::Unknown);
-    let func_args = self.args.iter().filter_map(|(arg, _)| {
-      let id = Ident::new(arg, Span::call_site());
-      variable_type(self.name, arg).map(|ty| quote! { #id: #ty })
-    }).collect::<Vec<_>>();
+    let mut export_as_macro = ctx.is_variadic() || !ctx.args.iter().all(|(_, ty)| *ty == MacroArgType::Unknown);
+    let func_args = self
+      .args
+      .iter()
+      .filter_map(|(arg, _)| {
+        let id = Ident::new(arg, Span::call_site());
+        variable_type(self.name, arg).map(|ty| quote! { #id: #ty })
+      })
+      .collect::<Vec<_>>();
 
     if func_args.len() != self.args.len() {
       export_as_macro = true;
@@ -119,15 +118,19 @@ impl<'t> FnMacro<'t> {
     }
 
     if export_as_macro {
-      let args = self.args.iter().map(|(arg, ty)| {
-        let id = Ident::new(arg, Span::call_site());
+      let args = self
+        .args
+        .iter()
+        .map(|(arg, ty)| {
+          let id = Ident::new(arg, Span::call_site());
 
-        if *ty == MacroArgType::Ident {
-          quote! { $#id:ident }
-        } else {
-          quote! { $#id:expr }
-        }
-      }).collect::<Vec<_>>();
+          if *ty == MacroArgType::Ident {
+            quote! { $#id:ident }
+          } else {
+            quote! { $#id:expr }
+          }
+        })
+        .collect::<Vec<_>>();
 
       tokens.append_all(quote! {
         macro_rules! #name {
@@ -141,11 +144,7 @@ impl<'t> FnMacro<'t> {
         quote! { -> #ty }
       });
 
-      let semicolon = if return_type.is_none() {
-        Some(quote! { ; })
-      } else {
-        None
-      };
+      let semicolon = if return_type.is_none() { Some(quote! { ; }) } else { None };
 
       tokens.append_all(quote! {
         #[allow(non_snake_case)]

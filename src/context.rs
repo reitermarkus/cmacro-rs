@@ -15,19 +15,15 @@ pub enum MacroArgType {
 
 /// Local code generation context.
 #[derive(Debug)]
-pub struct LocalContext<'t, 'g> {
+pub(crate) struct LocalContext<'t, 'g, C> {
   pub(crate) args: HashMap<&'t str, MacroArgType>,
   pub(crate) export_as_macro: bool,
-  pub(crate) global_context: &'g Context,
+  pub(crate) global_context: &'g C,
 }
 
-impl<'t, 'g> LocalContext<'t, 'g> {
+impl<'t, 'g, C> LocalContext<'t, 'g, C> {
   pub fn is_variadic(&self) -> bool {
     self.args.contains_key("...")
-  }
-
-  pub fn is_variable_known(&self, id: &str) -> bool {
-    self.args.contains_key(id) || self.global_context.variables.contains_key(id)
   }
 
   pub fn arg_type_mut(&mut self, name: &str) -> Option<&mut MacroArgType> {
@@ -37,13 +33,35 @@ impl<'t, 'g> LocalContext<'t, 'g> {
   pub fn is_macro_arg(&self, name: &str) -> bool {
     self.args.get(name).map(|ty| self.export_as_macro || *ty != MacroArgType::Unknown).unwrap_or(false)
   }
+}
 
-  pub fn macro_variable(&self, name: &str) -> Option<&Expr> {
-    self.global_context.macro_variables.get(name)
+impl<C> LocalContext<'_, '_, C>
+where
+  C: CodegenContext,
+{
+  pub fn is_variable_known(&self, id: &str) -> bool {
+    self.args.contains_key(id) || self.macro_variable(id).is_some()
+  }
+}
+
+impl<'t, 'g, C> CodegenContext for LocalContext<'t, 'g, C>
+where
+  C: CodegenContext,
+{
+  fn function(&self, name: &str) -> Option<Vec<String>> {
+    self.global_context.function(name)
   }
 
-  pub fn function(&self, name: &str) -> Option<&Vec<String>> {
-    self.global_context.functions.get(name)
+  fn macro_variable(&self, name: &str) -> Option<Expr> {
+    self.global_context.macro_variable(name)
+  }
+
+  fn ffi_prefix(&self) -> Option<TokenStream> {
+    self.global_context.ffi_prefix()
+  }
+
+  fn num_prefix(&self) -> Option<TokenStream> {
+    self.global_context.num_prefix()
   }
 }
 
@@ -60,5 +78,43 @@ pub struct Context {
 impl Context {
   pub fn add_var_macro(&mut self, var_macro: VarMacro) {
     self.macro_variables.insert(var_macro.name, var_macro.expr);
+  }
+}
+
+pub trait CodegenContext {
+  #[allow(unused_variables)]
+  fn function(&self, name: &str) -> Option<Vec<String>> {
+    None
+  }
+
+  #[allow(unused_variables)]
+  fn macro_variable(&self, name: &str) -> Option<Expr> {
+    None
+  }
+
+  fn ffi_prefix(&self) -> Option<TokenStream> {
+    None
+  }
+
+  fn num_prefix(&self) -> Option<TokenStream> {
+    None
+  }
+}
+
+impl CodegenContext for Context {
+  fn function(&self, name: &str) -> Option<Vec<String>> {
+    self.functions.get(name).cloned()
+  }
+
+  fn macro_variable(&self, name: &str) -> Option<Expr> {
+    self.macro_variables.get(name).cloned()
+  }
+
+  fn ffi_prefix(&self) -> Option<TokenStream> {
+    self.ffi_prefix.clone()
+  }
+
+  fn num_prefix(&self) -> Option<TokenStream> {
+    self.num_prefix.clone()
   }
 }

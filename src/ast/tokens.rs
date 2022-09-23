@@ -1,14 +1,13 @@
+use nom::bytes::complete::tag;
+use nom::bytes::complete::take_until;
+use nom::combinator::all_consuming;
 use nom::multi::many0;
 use nom::sequence::delimited;
-use nom::IResult;
-use nom::bytes::complete::tag;
-use nom::combinator::all_consuming;
-use nom::bytes::complete::take_until;
 use nom::sequence::pair;
+use nom::IResult;
 use nom::Parser;
 
 pub fn comment<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
-
   if let Some(token) = tokens.first() {
     let token: &str = token;
 
@@ -57,9 +56,5 @@ where
   F: Parser<&'i [&'t str], O, nom::error::Error<&'i [&'t str]>>,
   't: 'i,
 {
-  delimited(
-    pair(token("("), meta),
-    f,
-    pair(meta, token(")")),
-  )
+  delimited(pair(token("("), meta), f, pair(meta, token(")")))
 }
