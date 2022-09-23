@@ -1,6 +1,7 @@
 use nom::multi::fold_many0;
 use nom::sequence::delimited;
 use nom::sequence::preceded;
+use nom::combinator::verify;
 use nom::IResult;
 use proc_macro2::Ident;
 use proc_macro2::Span;
@@ -9,22 +10,17 @@ use quote::quote;
 use quote::TokenStreamExt;
 
 use super::{
-  tokens::{meta, token},
+  tokens::{meta, take_one, token},
   Type,
 };
 use crate::{CodegenContext, LocalContext, MacroArgType};
 
 pub(crate) fn identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
-  if let Some(token) = tokens.first() {
+  verify(take_one, |token: &str| {
     let mut it = token.chars();
-    if let Some('a'..='z' | 'A'..='Z' | '_') = it.next() {
-      if it.all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9')) {
-        return Ok((&tokens[1..], token))
-      }
-    }
-  }
-
-  Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
+    matches!(it.next(), Some('a'..='z' | 'A'..='Z' | '_'))
+      && it.all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
+  })(tokens)
 }
 
 fn concat_identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {

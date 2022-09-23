@@ -1,60 +1,80 @@
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_until;
 use nom::combinator::all_consuming;
+use nom::combinator::map_opt;
 use nom::multi::many0;
 use nom::sequence::delimited;
 use nom::sequence::pair;
+use nom::Compare;
+use nom::CompareResult;
+use nom::FindSubstring;
 use nom::IResult;
+use nom::InputLength;
+use nom::InputTake;
 use nom::Parser;
 
-pub fn comment<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
-  if let Some(token) = tokens.first() {
-    let token: &str = token;
-
-    let res: IResult<&str, &str> = all_consuming(delimited(tag("/*"), take_until("*/"), tag("*/")))(token);
-
-    if let Ok((_, token)) = res {
-      return Ok((&tokens[1..], token))
-    }
+pub(crate) fn take_one<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], I>
+where
+  I: Clone,
+{
+  if let Some(token) = tokens.first().cloned() {
+    return Ok((&tokens[1..], token))
   }
 
-  Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
+  Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Eof)))
 }
 
-pub fn meta<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Vec<&'t str>> {
+pub(crate) fn comment<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], I>
+where
+  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+{
+  let (tokens, token) = take_one(tokens)?;
+
+  let (_, comment) = all_consuming(delimited(tag("/*"), take_until("*/"), tag("*/")))(token)
+    .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))?;
+
+  Ok((tokens, comment))
+}
+
+pub(crate) fn meta<'i, I>(input: &'i [I]) -> IResult<&'i [I], Vec<I>>
+where
+  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+{
   many0(comment)(input)
 }
 
-pub fn token<'i, 't>(token: &'t str) -> impl Fn(&'i [&'t str]) -> IResult<&'i [&'t str], &'t str>
+pub(crate) fn token<'i, I>(token: &'static str) -> impl Fn(&'i [I]) -> IResult<&'i [I], I>
 where
-  't: 'i,
+  I: InputTake + InputLength + Compare<&'static str> + Clone,
 {
-  move |tokens: &[&str]| {
-    if let Some(token2) = tokens.first() {
-      let token2 = if let Some(token2) = token2.strip_prefix("\\\n") {
+  move |tokens: &[I]| {
+    map_opt(take_one, |token2: I| {
+      let token2 = if token2.input_len() >= 2 && token2.take(2).compare("\\\n") == CompareResult::Ok {
         // TODO: Fix in tokenizer/lexer.
+        let (_, token2) = token2.take_split(2);
         token2
       } else {
         token2
       };
 
-      if token2 == token {
-        return Ok((&tokens[1..], token2))
+      if token2.compare(token) == CompareResult::Ok {
+        Some(token2)
+      } else {
+        None
       }
-    }
-
-    Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
+    })(tokens)
   }
 }
 
-pub use token as keyword;
+pub(crate) use token as keyword;
 
-pub fn parenthesized<'i, 't, O, F>(
+pub(crate) fn parenthesized<'i, I, O, F>(
   f: F,
-) -> impl FnMut(&'i [&'t str]) -> IResult<&'i [&'t str], O, nom::error::Error<&'i [&'t str]>>
+) -> impl FnMut(&'i [I]) -> IResult<&'i [I], O, nom::error::Error<&'i [I]>> + 'i
 where
-  F: Parser<&'i [&'t str], O, nom::error::Error<&'i [&'t str]>>,
-  't: 'i,
+  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone + 'i,
+  O: 'i,
+  F: Parser<&'i [I], O, nom::error::Error<&'i [I]>> + 'i,
 {
   delimited(pair(token("("), meta), f, pair(meta, token(")")))
 }
