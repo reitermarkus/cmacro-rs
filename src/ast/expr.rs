@@ -391,74 +391,88 @@ impl Expr {
           BinOp::Mul => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
               *self = Expr::Literal(Lit::Float(*lhs * *rhs));
+              return self.finish(ctx)
             },
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs * *rhs));
+              return self.finish(ctx)
             },
-            _ => return Err(crate::Error::UnsupportedExpression),
+            _ => (),
           },
           BinOp::Div => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
               *self = Expr::Literal(Lit::Float(*lhs / *rhs));
+              return self.finish(ctx)
             },
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs / *rhs));
+              return self.finish(ctx)
             },
-            _ => return Err(crate::Error::UnsupportedExpression),
+            _ => (),
           },
           BinOp::Rem => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs % *rhs));
+              return self.finish(ctx)
             },
-            _ => return Err(crate::Error::UnsupportedExpression),
+            _ => (),
           },
           BinOp::Add => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
               *self = Expr::Literal(Lit::Float(*lhs + *rhs));
+              return self.finish(ctx)
             },
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs + *rhs));
+              return self.finish(ctx)
             },
-            _ => return Err(crate::Error::UnsupportedExpression),
+            _ => (),
           },
           BinOp::Sub => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
               *self = Expr::Literal(Lit::Float(*lhs - *rhs));
+              return self.finish(ctx)
             },
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs - *rhs));
+              return self.finish(ctx)
             },
-            _ => return Err(crate::Error::UnsupportedExpression),
+            _ => (),
           },
           BinOp::Shl => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs << *rhs));
+              return self.finish(ctx)
             },
-            _ => return Err(crate::Error::UnsupportedExpression),
+            _ => (),
           },
           BinOp::Shr => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs >> *rhs));
+              return self.finish(ctx)
             },
-            _ => return Err(crate::Error::UnsupportedExpression),
+            _ => (),
           },
           BinOp::BitAnd => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs & *rhs));
+              return self.finish(ctx)
             },
-            _ => return Err(crate::Error::UnsupportedExpression),
+            _ => (),
           },
           BinOp::BitOr => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs | *rhs));
+              return self.finish(ctx)
             },
-            _ => return Err(crate::Error::UnsupportedExpression),
+            _ => (),
           },
           BinOp::BitXor => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs ^ *rhs));
+              return self.finish(ctx)
             },
-            _ => return Err(crate::Error::UnsupportedExpression),
+            _ => (),
           },
           BinOp::Eq | BinOp::Neq | BinOp::And | BinOp::Or | BinOp::Lt | BinOp::Lte | BinOp::Gt | BinOp::Gte => {
             return Ok(Some(Type::BuiltIn(BuiltInType::Bool)))
@@ -469,8 +483,7 @@ impl Expr {
         if lhs_ty == rhs_ty {
           Ok(lhs_ty)
         } else {
-          // TODO: Add type casts if possible.
-          Err(crate::Error::UnsupportedExpression)
+          Ok(lhs_ty.xor(rhs_ty))
         }
       },
       Self::Ternary(cond, if_branch, else_branch) => {
@@ -481,8 +494,7 @@ impl Expr {
         if lhs_ty == rhs_ty {
           Ok(lhs_ty)
         } else {
-          // TODO: Add type casts if possible.
-          Err(crate::Error::UnsupportedExpression)
+          Ok(lhs_ty.xor(rhs_ty))
         }
       },
       Self::Asm(asm) => asm.finish(ctx),

@@ -1,3 +1,5 @@
+use crate::ast::Type;
+
 /// A parsing or codegen error.
 #[derive(Debug)]
 pub enum Error {
@@ -5,4 +7,5 @@ pub enum Error {
   InvalidVarMacro,
   ParserError,
   UnsupportedExpression,
+  IncompatibleTypes(Option<Type>, Option<Type>),
 }

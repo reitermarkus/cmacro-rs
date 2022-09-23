@@ -39,7 +39,7 @@ impl VarMacro {
     Ok(Self { name: name.to_owned(), expr })
   }
 
-  pub fn generate<C>(&mut self, cx: &C) -> Result<TokenStream, crate::Error>
+  pub fn generate<C>(&mut self, cx: &C) -> Result<(TokenStream, Option<Type>), crate::Error>
   where
     C: CodegenContext,
   {
@@ -47,10 +47,10 @@ impl VarMacro {
 
     let mut ctx = LocalContext { args: HashMap::new(), export_as_macro: false, global_context: cx };
 
-    self.expr.finish(&mut ctx)?;
+    let ty = self.expr.finish(&mut ctx)?;
     self.expr.to_tokens(&mut ctx, &mut tokens);
 
-    Ok(tokens)
+    Ok((tokens, ty))
   }
 
   pub fn name(&self) -> &str {
