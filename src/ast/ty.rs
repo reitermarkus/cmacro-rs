@@ -3,7 +3,16 @@ use quote::quote;
 use nom::IResult;
 use nom::multi::fold_many0;
 use quote::ToTokens;
+use nom::combinator::opt;
+use nom::branch::alt;
+use nom::combinator::map;
+use proc_macro2::TokenStream;
+use nom::sequence::delimited;
+use nom::sequence::preceded;
+use nom::sequence::pair;
+use nom::branch::permutation;
 
+use crate::LocalContext;
 use super::*;
 
 /// A built-in type.

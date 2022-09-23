@@ -1,6 +1,9 @@
+use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
 use quote::quote;
 
+use crate::LocalContext;
+use crate::MacroArgType;
 use super::*;
 
 /// A function call.

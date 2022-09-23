@@ -1,8 +1,14 @@
 use quote::TokenStreamExt;
 use quote::quote;
 use nom::IResult;
+use proc_macro2::TokenStream;
+use nom::combinator::map;
+use nom::sequence::preceded;
+use nom::sequence::terminated;
 
-use super::*;
+use crate::LocalContext;
+use super::{Identifier, tokens::{meta, token}};
+use super::identifier::identifier;
 
 /// Stringification of a macro argument.
 ///

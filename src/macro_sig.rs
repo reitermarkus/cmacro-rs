@@ -8,8 +8,8 @@ use nom::sequence::tuple;
 use nom::combinator::opt;
 use nom::combinator::all_consuming;
 
-use crate::tokens::{token, meta, parenthesized};
-use crate::identifier::identifier;
+use crate::ast::{token, meta, parenthesized};
+use crate::ast::identifier;
 
 /// The signature of a macro.
 #[derive(Debug)]

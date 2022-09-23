@@ -1,7 +1,12 @@
 use quote::TokenStreamExt;
 use nom::IResult;
 use quote::quote;
+use nom::combinator::opt;
+use nom::sequence::tuple;
+use proc_macro2::TokenStream;
+use nom::branch::permutation;
 
+use crate::LocalContext;
 use super::*;
 
 /// A variable declaration.

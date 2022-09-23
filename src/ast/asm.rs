@@ -1,8 +1,14 @@
 use quote::TokenStreamExt;
 use nom::IResult;
+use proc_macro2::TokenStream;
+use nom::multi::separated_list0;
+use nom::combinator::opt;
+use nom::sequence::preceded;
+use quote::quote;
+use nom::sequence::tuple;
 
-use crate::tokens::parenthesized;
-use super::*;
+use crate::LocalContext;
+use super::{tokens::{meta, parenthesized, token}, Expr, Lit, LitString};
 
 /// An inline assemble call.
 #[derive(Debug, Clone, PartialEq)]

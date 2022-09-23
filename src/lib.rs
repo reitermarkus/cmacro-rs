@@ -2,24 +2,14 @@
 
 use std::collections::HashMap;
 use std::str;
-use nom::combinator::map;
-use nom::branch::alt;
-use nom::sequence::terminated;
-use nom::combinator::eof;
-use nom::sequence::pair;
-use nom::sequence::tuple;
-use nom::multi::separated_list0;
-use nom::combinator::opt;
-use nom::sequence::delimited;
-use nom::branch::permutation;
-use nom::sequence::preceded;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use quote::TokenStreamExt;
 
+pub mod ast;
+pub use ast::*;
 mod error;
 pub use error::*;
-
 mod macro_sig;
 pub use macro_sig::*;
 mod macro_body;
@@ -27,44 +17,6 @@ pub use macro_body::*;
 
 mod context;
 pub use context::*;
-
-mod tokens;
-use tokens::*;
-
-mod asm;
-pub use asm::*;
-
-mod unary_op;
-pub use unary_op::*;
-mod binary_op;
-pub use binary_op::*;
-
-mod ty;
-pub use ty::*;
-
-mod identifier;
-pub use identifier::*;
-
-mod expr;
-pub use expr::*;
-
-mod function_call;
-pub use function_call::*;
-
-mod function_decl;
-pub use function_decl::*;
-
-mod literal;
-pub use literal::*;
-
-mod statement;
-pub use statement::*;
-
-mod decl;
-pub use decl::*;
-
-mod stringify;
-pub use stringify::*;
 
 /// A variable-like macro.
 #[derive(Debug, Clone)]

@@ -26,7 +26,8 @@ use quote::{ToTokens, TokenStreamExt};
 use quote::quote;
 use std::num::FpCategory;
 
-use crate::{LocalContext, tokens::{meta, token}};
+use crate::{LocalContext};
+use super::tokens::{meta, token};
 
 /// A literal.
 ///

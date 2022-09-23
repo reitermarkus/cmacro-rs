@@ -3,7 +3,7 @@ use nom::combinator::map;
 use nom::combinator::all_consuming;
 use nom::branch::alt;
 
-use crate::{LocalContext, Statement, Expr, tokens::meta};
+use crate::{LocalContext, Statement, Expr, ast::meta};
 
 /// The body of a macro.
 #[derive(Debug)]

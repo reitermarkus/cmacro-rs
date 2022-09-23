@@ -1,8 +1,15 @@
+use proc_macro2::TokenStream;
+use nom::sequence::pair;
 use quote::TokenStreamExt;
 use nom::IResult;
 use quote::quote;
+use nom::branch::permutation;
+use nom::combinator::opt;
+use nom::multi::separated_list0;
+use nom::sequence::tuple;
 
-use crate::tokens::parenthesized;
+use crate::LocalContext;
+use super::tokens::parenthesized;
 use super::*;
 
 /// A function declaration.

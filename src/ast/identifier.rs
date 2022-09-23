@@ -8,8 +8,8 @@ use nom::sequence::preceded;
 use proc_macro2::Ident;
 use nom::IResult;
 
-use crate::tokens::{meta, token};
 use crate::{LocalContext, MacroArgType};
+use super::tokens::{meta, token};
 
 pub(crate) fn identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
   if let Some(token) = tokens.first() {
