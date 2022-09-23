@@ -352,8 +352,15 @@ impl Expr {
           UnaryOp::Plus(expr @ Expr::Literal(Lit::Int(_)) | expr @ Expr::Literal(Lit::Float(_))) => {
             *self = expr.clone();
           },
-          UnaryOp::Minus(Expr::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
-            *self = Expr::Literal(Lit::Int(LitInt { value: i.wrapping_neg(), suffix: None }));
+          UnaryOp::Minus(Expr::Literal(Lit::Int(LitInt { value: i, suffix }))) => {
+            let suffix = match suffix {
+              Some(BuiltInType::UChar | BuiltInType::SChar) => Some(BuiltInType::SChar),
+              Some(BuiltInType::UInt | BuiltInType::Int) => Some(BuiltInType::Int),
+              Some(BuiltInType::ULong | BuiltInType::Long) => Some(BuiltInType::Long),
+              Some(BuiltInType::ULongLong | BuiltInType::LongLong) => Some(BuiltInType::LongLong),
+              _ => None,
+            };
+            *self = Expr::Literal(Lit::Int(LitInt { value: i.wrapping_neg(), suffix }));
           },
           UnaryOp::Minus(Expr::Literal(Lit::Float(f))) => {
             *self = Expr::Literal(Lit::Float(match f {
