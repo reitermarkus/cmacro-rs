@@ -383,24 +383,26 @@ impl Expr {
         ty.finish(ctx)?;
       },
       Self::Variable { ref mut name } => {
+        name.finish(ctx)?;
+
         if let Identifier::Literal(id) = name {
           if let Some(expr) = ctx.macro_variable(id.as_str()) {
             *self = expr.clone();
             return self.finish(ctx);
           }
 
-          // Built-in macros.
-          match id.as_str() {
-            "__SCHAR_MAX__"
-            | "__SHRT_MAX__"
-            | "__INT_MAX__"
-            | "__LONG_MAX__"
-            | "__LONG_LONG_MAX__" => return Ok(()),
-            _ => (),
+          if !ctx.is_variable_known(id.as_str()) {
+            // Built-in macros.
+            match id.as_str() {
+              "__SCHAR_MAX__"
+              | "__SHRT_MAX__"
+              | "__INT_MAX__"
+              | "__LONG_MAX__"
+              | "__LONG_LONG_MAX__" => return Ok(()),
+              _ => return Err(crate::Error::UnknownVariable),
+            }
           }
         }
-
-        name.finish(ctx)?;
       },
       Self::FunctionCall(call) => call.finish(ctx)?,
       Self::Literal(_) => (),

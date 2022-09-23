@@ -99,12 +99,6 @@ impl Identifier {
       }
     }
 
-    if let Self::Literal(id) = self {
-      if !ctx.is_variable_known(id.as_str()) {
-        return Err(crate::Error::UnknownVariable)
-      }
-    }
-
     Ok(())
   }
 
