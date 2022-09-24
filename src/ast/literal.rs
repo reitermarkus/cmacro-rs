@@ -1,10 +1,22 @@
+use std::ops::RangeFrom;
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Shl, Shr, Sub};
 use std::str;
 
 use nom::branch::alt;
+use nom::character::complete::anychar;
+use nom::combinator::verify;
+use nom::multi::fold_many_m_n;
+use nom::AsChar;
+use nom::Compare;
+use nom::FindToken;
+use nom::InputIter;
+use nom::InputLength;
+use nom::InputTake;
+use nom::Slice;
+
 use nom::branch::permutation;
 use nom::bytes::complete::is_not;
-use nom::bytes::complete::{is_a, tag, tag_no_case, take_while, take_while_m_n};
+use nom::bytes::complete::{is_a, tag, tag_no_case};
 use nom::character::complete::none_of;
 use nom::character::complete::{char, digit1, hex_digit1, oct_digit1, one_of};
 use nom::character::{is_hex_digit, is_oct_digit};
@@ -64,7 +76,12 @@ impl Lit {
   }
 }
 
-fn escaped_char(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
+fn escaped_char<I>(input: I) -> IResult<I, Vec<u8>>
+where
+  I: InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
+  <I as InputIter>::Item: AsChar + Copy,
+  &'static str: FindToken<<I as InputIter>::Item>,
+{
   alt((
     map(char('a'), |_| vec![b'\x07']),
     map(char('b'), |_| vec![b'\x08']),
@@ -74,28 +91,55 @@ fn escaped_char(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
     map(char('r'), |_| vec![b'\r']),
     map(char('t'), |_| vec![b'\t']),
     map(char('v'), |_| vec![b'\x0b']),
-    map(one_of([b'\\', b'\'', b'\"', b'?']), |c| vec![c as u8]),
-    map_opt(take_while_m_n(1, 3, is_oct_digit), |n| {
-      str::from_utf8(n).ok().and_then(|s| u8::from_str_radix(s, 8).ok()).map(|b| vec![b])
-    }),
+    map(one_of(r#"\'"?"#), |c| vec![c as u8]),
+    map(
+      fold_many_m_n(
+        1,
+        3,
+        map_opt(verify(anychar, |c| is_oct_digit(*c as u8)), |c| c.to_digit(8).map(|n| n as u8)),
+        || 0,
+        |acc, n| acc * 8 + n,
+      ),
+      |n| vec![n],
+    ),
     preceded(
       tag_no_case("x"),
-      map_opt(take_while(is_hex_digit), |n: &[u8]| {
-        let start = n.len().max(2) - 2;
-        str::from_utf8(&n[start..]).ok().and_then(|s| u8::from_str_radix(s, 16).ok()).map(|b| vec![b])
-      }),
+      map(
+        fold_many_m_n(
+          2,
+          2,
+          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(8).map(|n| n as u8)),
+          || 0,
+          |acc, n| acc * 16 + n,
+        ),
+        |n| vec![n],
+      ),
     ),
     preceded(
       char('u'),
-      map_opt(take_while_m_n(4, 4, is_hex_digit), |n: &[u8]| {
-        str::from_utf8(n).ok().and_then(|s| u16::from_str_radix(s, 16).ok()).map(|n| n.to_be_bytes().to_vec())
-      }),
+      map(
+        fold_many_m_n(
+          4,
+          4,
+          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(8).map(|n| n as u16)),
+          || 0,
+          |acc, n| acc * 16 + n,
+        ),
+        |n| n.to_ne_bytes().to_vec(),
+      ),
     ),
     preceded(
       char('U'),
-      map_opt(take_while_m_n(8, 8, is_hex_digit), |n: &[u8]| {
-        str::from_utf8(n).ok().and_then(|s| u32::from_str_radix(s, 16).ok()).map(|n| n.to_be_bytes().to_vec())
-      }),
+      map(
+        fold_many_m_n(
+          8,
+          8,
+          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(8).map(|n| n as u32)),
+          || 0,
+          |acc, n| acc * 16 + n,
+        ),
+        |n| n.to_ne_bytes().to_vec(),
+      ),
     ),
   ))(input)
 }
@@ -114,13 +158,18 @@ pub struct LitChar {
 }
 
 impl LitChar {
-  pub fn parse<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+  pub fn parse<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str> + 't,
+    <I as InputIter>::Item: AsChar + Copy,
+    &'static str: FindToken<<I as InputIter>::Item>,
+  {
     let (_, token) = take_one(input)?;
 
     let (_, c) = all_consuming(delimited(
       preceded(opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))), char('\'')),
       fold_many1(
-        alt((preceded(char('\\'), escaped_char), map(none_of(r#"\'"#), |b| vec![b as u8]))),
+        alt((preceded(char('\\'), escaped_char), map(none_of(r#"\'"#), |b| vec![b.as_char() as u8]))),
         Vec::new,
         |mut acc, c| {
           acc.clear();

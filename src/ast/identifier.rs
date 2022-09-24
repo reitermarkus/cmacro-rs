@@ -22,14 +22,13 @@ use super::{
 };
 use crate::{CodegenContext, LocalContext, MacroArgType};
 
-pub(crate) fn identifier<'i, 't, I, T>(tokens: &'i [I]) -> IResult<&'i [I], &'t str>
+pub(crate) fn identifier<'i, 't, I>(tokens: &'i [I]) -> IResult<&'i [I], &'t str>
 where
-  I: AsBytes + InputIter<Item = T> + Copy + 't,
-  T: AsChar,
+  I: AsBytes + Copy,
   'i: 't,
 {
   verify(take_one, |token: &I| {
-    let mut it = token.iter_elements().map(|i| i.as_char());
+    let mut it = token.as_bytes().iter().map(|i| i.as_char());
     matches!(it.next(), Some('a'..='z' | 'A'..='Z' | '_'))
       && it.all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
   })(tokens)?;
@@ -38,14 +37,13 @@ where
   Ok((&tokens[1..], std::str::from_utf8(bytes).unwrap()))
 }
 
-fn concat_identifier<'i, 't, I, T>(tokens: &'i [I]) -> IResult<&'i [I], &'t str>
+fn concat_identifier<'i, 't, I>(tokens: &'i [I]) -> IResult<&'i [I], &'t str>
 where
-  I: AsBytes + InputIter<Item = T> + Copy + 't,
-  T: AsChar,
+  I: AsBytes + Copy,
   'i: 't,
 {
   verify(take_one, |token: &I| {
-    token.iter_elements().all(|c| matches!(c.as_char(), 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
+    token.as_bytes().iter().all(|c| matches!(c.as_char(), 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
   })(tokens)?;
 
   let bytes = tokens[0].as_bytes();

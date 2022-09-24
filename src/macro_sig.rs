@@ -6,7 +6,12 @@ use nom::combinator::map;
 use nom::combinator::opt;
 use nom::multi::separated_list0;
 use nom::sequence::tuple;
+use nom::AsBytes;
+use nom::Compare;
+use nom::FindSubstring;
 use nom::IResult;
+use nom::InputLength;
+use nom::InputTake;
 
 use crate::ast::identifier;
 use crate::ast::{meta, parenthesized, token};
@@ -71,8 +76,9 @@ pub(crate) fn tokenize_name<'t>(input: &'t [u8]) -> Vec<&'t [u8]> {
 }
 
 impl<'t> MacroSig<'t> {
-  pub fn parse<'i>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self>
+  pub fn parse<'i, I>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
+    I: AsBytes + InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Copy,
     'i: 't,
   {
     let (input, name) = identifier(input)?;

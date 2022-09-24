@@ -15,11 +15,11 @@ use nom::Parser;
 
 pub(crate) fn take_one<'i, 't, I>(tokens: &'i [I]) -> IResult<&'i [I], I>
 where
-  I: Copy + 't,
+  I: Clone + 't,
   'i: 't,
 {
   if tokens.len() > 0 {
-    return Ok((&tokens[1..], tokens[0]))
+    return Ok((&tokens[1..], tokens[0].clone()))
   }
 
   Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Eof)))
@@ -27,7 +27,7 @@ where
 
 pub(crate) fn comment<'i, 't, I>(tokens: &'i [I]) -> IResult<&'i [I], I>
 where
-  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Copy + 't,
+  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone + 't,
   'i: 't,
 {
   let (tokens, token) = take_one(tokens)?;
@@ -40,7 +40,7 @@ where
 
 pub(crate) fn meta<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], Vec<I>>
 where
-  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Copy + 't,
+  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone + 't,
   'i: 't,
 {
   many0(comment)(input)
@@ -48,7 +48,7 @@ where
 
 pub(crate) fn token<'i, 't, I>(token: &'static str) -> impl Fn(&'i [I]) -> IResult<&'i [I], &'static str>
 where
-  I: InputTake + InputLength + Compare<&'static str> + Copy + 't,
+  I: InputTake + InputLength + Compare<&'static str> + Clone + 't,
   'i: 't,
 {
   move |tokens: &[I]| {
@@ -76,7 +76,7 @@ pub(crate) fn parenthesized<'i, 't, I, O, F>(
   f: F,
 ) -> impl FnMut(&'i [I]) -> IResult<&'i [I], O, nom::error::Error<&'i [I]>>
 where
-  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Copy + 'i,
+  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone + 'i,
   O: 'i,
   F: Parser<&'i [I], O, nom::error::Error<&'i [I]>>,
   'i: 't,
