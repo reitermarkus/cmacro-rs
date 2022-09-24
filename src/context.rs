@@ -15,13 +15,13 @@ pub enum MacroArgType {
 
 /// Local code generation context.
 #[derive(Debug)]
-pub(crate) struct LocalContext<'t, 'g, C> {
-  pub(crate) args: HashMap<&'t str, MacroArgType>,
+pub(crate) struct LocalContext<'g, C> {
+  pub(crate) args: HashMap<String, MacroArgType>,
   pub(crate) export_as_macro: bool,
   pub(crate) global_context: &'g C,
 }
 
-impl<'t, 'g, C> LocalContext<'t, 'g, C> {
+impl<'g, C> LocalContext<'g, C> {
   pub fn is_variadic(&self) -> bool {
     self.args.contains_key("...")
   }
@@ -35,7 +35,7 @@ impl<'t, 'g, C> LocalContext<'t, 'g, C> {
   }
 }
 
-impl<C> LocalContext<'_, '_, C>
+impl<C> LocalContext<'_, C>
 where
   C: CodegenContext,
 {
@@ -44,7 +44,7 @@ where
   }
 }
 
-impl<'t, 'g, C> CodegenContext for LocalContext<'t, 'g, C>
+impl<'g, C> CodegenContext for LocalContext<'g, C>
 where
   C: CodegenContext,
 {

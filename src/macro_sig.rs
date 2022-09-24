@@ -6,10 +6,11 @@ use nom::combinator::map;
 use nom::combinator::opt;
 use nom::multi::separated_list0;
 use nom::sequence::tuple;
-use nom::AsBytes;
+use nom::AsChar;
 use nom::Compare;
 use nom::FindSubstring;
 use nom::IResult;
+use nom::InputIter;
 use nom::InputLength;
 use nom::InputTake;
 
@@ -18,9 +19,9 @@ use crate::ast::{meta, parenthesized, token};
 
 /// The signature of a macro.
 #[derive(Debug)]
-pub struct MacroSig<'t> {
-  pub name: &'t str,
-  pub args: Vec<&'t str>,
+pub struct MacroSig {
+  pub name: String,
+  pub args: Vec<String>,
 }
 
 pub(crate) fn tokenize_name<'t>(input: &'t [u8]) -> Vec<&'t [u8]> {
@@ -75,20 +76,20 @@ pub(crate) fn tokenize_name<'t>(input: &'t [u8]) -> Vec<&'t [u8]> {
   tokens
 }
 
-impl<'t> MacroSig<'t> {
+impl MacroSig {
   pub fn parse<'i, I>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: AsBytes + InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Copy,
-    'i: 't,
+    I: InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Copy,
+    <I as InputIter>::Item: AsChar,
   {
     let (input, name) = identifier(input)?;
 
     let (input, args) = all_consuming(parenthesized(alt((
-      map(token("..."), |var_arg| vec![var_arg]),
+      map(token("..."), |var_arg| vec![var_arg.to_owned()]),
       map(
         tuple((
           separated_list0(tuple((meta, token(","), meta)), identifier),
-          opt(tuple((tuple((meta, token(","), meta)), token("...")))),
+          opt(tuple((tuple((meta, token(","), meta)), map(token("..."), |var_arg| var_arg.to_owned())))),
         )),
         |(arguments, var_arg)| {
           let mut arguments = arguments.to_vec();

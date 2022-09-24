@@ -110,9 +110,9 @@ pub struct BinaryOp {
 }
 
 impl BinaryOp {
-  pub(crate) fn finish<'t, 'g, C>(
+  pub(crate) fn finish<'g, C>(
     &mut self,
-    ctx: &mut LocalContext<'t, 'g, C>,
+    ctx: &mut LocalContext<'g, C>,
   ) -> Result<(Option<Type>, Option<Type>), crate::Error>
   where
     C: CodegenContext,
@@ -141,7 +141,7 @@ impl BinaryOp {
     Ok((self.lhs.finish(ctx)?, self.rhs.finish(ctx)?))
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     let lhs = self.lhs.to_token_stream(ctx);
     let op = self.op;
     let rhs = self.rhs.to_token_stream(ctx);

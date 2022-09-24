@@ -60,14 +60,14 @@ impl VarMacro {
 
 /// A function-like macro.
 #[derive(Debug)]
-pub struct FnMacro<'s> {
-  pub name: &'s str,
-  pub args: Vec<(&'s str, MacroArgType)>,
+pub struct FnMacro {
+  pub name: String,
+  pub args: Vec<(String, MacroArgType)>,
   pub body: MacroBody,
 }
 
-impl<'s> FnMacro<'s> {
-  pub fn parse<'i, 't>(
+impl FnMacro {
+  pub fn parse<'i, 's, 't>(
     sig: &'i [&'s [u8]],
     body: &'i [&'t [u8]],
   ) -> Result<Self, nom::Err<nom::error::Error<&'i [&'t [u8]]>>>
@@ -108,7 +108,7 @@ impl<'s> FnMacro<'s> {
       .iter()
       .filter_map(|(arg, _)| {
         let id = Ident::new(arg, Span::call_site());
-        variable_type(self.name, arg).map(|ty| quote! { #id: #ty })
+        variable_type(&self.name, arg).map(|ty| quote! { #id: #ty })
       })
       .collect::<Vec<_>>();
 
@@ -116,7 +116,7 @@ impl<'s> FnMacro<'s> {
       export_as_macro = true;
     }
 
-    let name = Ident::new(self.name, Span::call_site());
+    let name = Ident::new(&self.name, Span::call_site());
 
     let mut body = TokenStream::new();
     match &self.body {
@@ -147,7 +147,7 @@ impl<'s> FnMacro<'s> {
         }
       })
     } else {
-      let return_type = return_type(self.name).map(|ty| {
+      let return_type = return_type(&self.name).map(|ty| {
         quote! { -> #ty }
       });
 

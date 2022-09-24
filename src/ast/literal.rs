@@ -12,7 +12,6 @@ use nom::character::complete::none_of;
 use nom::character::complete::{char, digit1, hex_digit1, oct_digit1, one_of};
 use nom::character::{is_hex_digit, is_oct_digit};
 use nom::combinator::eof;
-use nom::combinator::map_res;
 use nom::combinator::recognize;
 use nom::combinator::verify;
 use nom::combinator::{all_consuming, cond, map_opt};
@@ -88,7 +87,7 @@ impl Lit {
     ))(input)
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     match self {
       Self::Char(c) => c.to_tokens(ctx, tokens),
       Self::String(s) => s.to_tokens(ctx, tokens),
@@ -206,7 +205,7 @@ impl LitChar {
     Ok((input, Self { repr: c }))
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     tokens.append_all(match *self.repr.as_slice() {
       [c] => {
         let prefix = &ctx.ffi_prefix();
@@ -304,7 +303,7 @@ impl LitString {
     )(input)
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     let mut bytes = self.repr.clone();
     bytes.push(0);
 
@@ -416,7 +415,7 @@ impl LitFloat {
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Float)))
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     let num_prefix = &ctx.num_prefix();
 
     tokens.append_all(match self {
@@ -631,7 +630,7 @@ impl LitInt {
     return Ok((tokens, Self { value, suffix }))
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(self, _ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(self, _ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     let i = proc_macro2::Literal::i128_unsuffixed(self.value);
     i.to_tokens(tokens)
   }

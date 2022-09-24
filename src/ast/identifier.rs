@@ -22,32 +22,32 @@ use super::{
 };
 use crate::{CodegenContext, LocalContext, MacroArgType};
 
-pub(crate) fn identifier<'i, 't, I>(tokens: &'i [I]) -> IResult<&'i [I], &'t str>
+pub(crate) fn identifier<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], String>
 where
-  I: AsBytes + Copy,
-  'i: 't,
+  I: InputIter + Clone,
+  <I as InputIter>::Item: AsChar,
 {
   verify(take_one, |token: &I| {
-    let mut it = token.as_bytes().iter().map(|i| i.as_char());
+    let mut it = token.iter_elements().map(|i| i.as_char());
     matches!(it.next(), Some('a'..='z' | 'A'..='Z' | '_'))
       && it.all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
   })(tokens)?;
 
-  let bytes = tokens[0].as_bytes();
-  Ok((&tokens[1..], std::str::from_utf8(bytes).unwrap()))
+  let s = tokens[0].iter_elements().map(|c| c.as_char()).collect();
+  Ok((&tokens[1..], s))
 }
 
-fn concat_identifier<'i, 't, I>(tokens: &'i [I]) -> IResult<&'i [I], &'t str>
+fn concat_identifier<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], String>
 where
-  I: AsBytes + Copy,
-  'i: 't,
+  I: InputIter + Clone,
+  <I as InputIter>::Item: AsChar,
 {
   verify(take_one, |token: &I| {
-    token.as_bytes().iter().all(|c| matches!(c.as_char(), 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
+    token.iter_elements().all(|c| matches!(c.as_char(), 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
   })(tokens)?;
 
-  let bytes = tokens[0].as_bytes();
-  Ok((&tokens[1..], std::str::from_utf8(bytes).unwrap()))
+  let s = tokens[0].iter_elements().map(|c| c.as_char()).collect();
+  Ok((&tokens[1..], s))
 }
 
 /// An identifier.
@@ -79,18 +79,18 @@ impl Identifier {
 
     fold_many0(
       preceded(delimited(meta::<I>, token::<I>("##"), meta::<I>), concat_identifier),
-      move || Self::Literal(id.iter_elements().map(char::from).collect()),
+      move || Self::Literal(id.clone()),
       |acc, item| match acc {
-        Self::Literal(id) => Self::Concat(vec![id, item.iter_elements().map(|c| c.as_char()).collect()]),
+        Self::Literal(id) => Self::Concat(vec![id, item]),
         Self::Concat(mut ids) => {
-          ids.push(item.iter_elements().map(|c| c.as_char()).collect());
+          ids.push(item);
           Self::Concat(ids)
         },
       },
     )(tokens)
   }
 
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -126,11 +126,11 @@ impl Identifier {
     Ok(None)
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     tokens.append_all(self.to_token_stream(ctx))
   }
 
-  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>) -> TokenStream {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
     match self {
       Self::Literal(ref s) => {
         let id = Ident::new(s, Span::call_site());

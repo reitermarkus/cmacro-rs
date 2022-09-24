@@ -6,7 +6,13 @@ use nom::multi::fold_many0;
 use nom::sequence::delimited;
 use nom::sequence::pair;
 use nom::sequence::preceded;
+use nom::AsChar;
+use nom::Compare;
+use nom::FindSubstring;
 use nom::IResult;
+use nom::InputIter;
+use nom::InputLength;
+use nom::InputTake;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
@@ -57,12 +63,21 @@ impl ToTokens for BuiltInType {
   }
 }
 
-fn int_ty<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], BuiltInType> {
-  fn int_signedness<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], &'static str> {
+fn int_ty<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], BuiltInType>
+where
+  I: InputTake + InputLength + Compare<&'static str> + Clone,
+{
+  fn int_signedness<'i, I>(input: &'i [I]) -> IResult<&'i [I], &'static str>
+  where
+    I: InputTake + InputLength + Compare<&'static str> + Clone,
+  {
     alt((keyword("unsigned"), keyword("signed")))(input)
   }
 
-  fn int_longness<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], &'static str> {
+  fn int_longness<'i, I>(input: &'i [I]) -> IResult<&'i [I], &'static str>
+  where
+    I: InputTake + InputLength + Compare<&'static str> + Clone,
+  {
     alt((keyword("short"), keyword("long")))(input)
   }
 
@@ -103,7 +118,11 @@ fn int_ty<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], BuiltInType>
   ))(input)
 }
 
-fn ty<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Type> {
+fn ty<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], Type>
+where
+  I: InputTake + InputLength + InputIter + Compare<&'static str> + Clone + 't,
+  <I as InputIter>::Item: AsChar,
+{
   alt((
     // [const] float/double/bool/void
     map(
@@ -125,7 +144,10 @@ fn ty<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Type> {
   ))(input)
 }
 
-fn const_qualifier<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], bool> {
+fn const_qualifier<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], bool>
+where
+  I: InputTake + InputLength + Compare<&'static str> + Clone,
+{
   fold_many0(keyword("const"), || false, |_, _| true)(input)
 }
 
@@ -138,7 +160,11 @@ pub enum Type {
 }
 
 impl Type {
-  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+  pub fn parse<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+    <I as InputIter>::Item: AsChar,
+  {
     let (tokens, ty) = delimited(const_qualifier, ty, const_qualifier)(tokens)?;
 
     fold_many0(
@@ -148,7 +174,7 @@ impl Type {
     )(tokens)
   }
 
-  pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -159,7 +185,7 @@ impl Type {
     }
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     match self {
       Self::BuiltIn(ty) => match ty {
         BuiltInType::Float | BuiltInType::Double | BuiltInType::Bool => ty.to_tokens(tokens),
@@ -178,7 +204,7 @@ impl Type {
     }
   }
 
-  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>) -> TokenStream {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens
