@@ -1,40 +1,45 @@
 use std::ops::RangeFrom;
+use std::ops::RangeTo;
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Shl, Shr, Sub};
 use std::str;
 
 use nom::branch::alt;
-use nom::character::complete::anychar;
-use nom::combinator::verify;
-use nom::multi::fold_many_m_n;
-use nom::AsChar;
-use nom::Compare;
-use nom::FindToken;
-use nom::InputIter;
-use nom::InputLength;
-use nom::InputTake;
-use nom::InputTakeAtPosition;
-use nom::Slice;
-
 use nom::branch::permutation;
 use nom::bytes::complete::is_not;
 use nom::bytes::complete::{is_a, tag, tag_no_case};
+use nom::character::complete::anychar;
 use nom::character::complete::none_of;
 use nom::character::complete::{char, digit1, hex_digit1, oct_digit1, one_of};
 use nom::character::{is_hex_digit, is_oct_digit};
 use nom::combinator::eof;
 use nom::combinator::map_res;
 use nom::combinator::recognize;
+use nom::combinator::verify;
 use nom::combinator::{all_consuming, cond, map_opt};
-use nom::combinator::{map, opt, value};
+use nom::combinator::{map, opt};
 use nom::multi::fold_many0;
 use nom::multi::fold_many1;
+use nom::multi::fold_many_m_n;
 use nom::sequence::delimited;
 use nom::sequence::pair;
 use nom::sequence::preceded;
 use nom::sequence::separated_pair;
 use nom::sequence::terminated;
 use nom::AsBytes;
+use nom::AsChar;
+use nom::Compare;
+use nom::FindSubstring;
+
+use nom::CompareResult;
+use nom::FindToken;
 use nom::IResult;
+use nom::InputIter;
+use nom::InputLength;
+use nom::InputTake;
+use nom::InputTakeAtPosition;
+use nom::Offset;
+use nom::ParseTo;
+use nom::Slice;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::{ToTokens, TokenStreamExt};
@@ -319,24 +324,46 @@ pub enum LitFloat {
 impl Eq for LitFloat {}
 
 impl LitFloat {
-  fn from_str(input: &[u8]) -> IResult<&[u8], (&str, Option<&str>)> {
-    all_consuming(map(
-      pair(
-        map_res(
-          recognize(separated_pair(
-            opt(digit1),
-            alt((value((), char('.')), value((), pair(tag_no_case("e"), opt(alt((char('+'), char('-')))))))),
-            digit1,
-          )),
-          str::from_utf8,
-        ),
-        opt(map_res(alt((tag_no_case("f"), tag_no_case("l"))), str::from_utf8)),
-      ),
-      |(f, suffix): (&str, Option<&str>)| (f, suffix),
+  fn from_str<I, C>(input: I) -> IResult<I, (I, Option<&'static str>)>
+  where
+    I: InputTake
+      + InputLength
+      + Slice<RangeTo<usize>>
+      + Slice<RangeFrom<usize>>
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + Compare<&'static str>
+      + Offset
+      + Clone,
+
+    C: AsChar,
+  {
+    all_consuming(pair(
+      recognize(separated_pair(
+        opt(digit1),
+        alt((recognize(char('.')), recognize(pair(tag_no_case("e"), opt(alt((char('+'), char('-')))))))),
+        digit1,
+      )),
+      opt(alt((map(tag_no_case("f"), |_| "f"), map(tag_no_case("l"), |_| "l")))),
     ))(input)
   }
 
-  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+  pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake
+      + InputLength
+      + Slice<RangeTo<usize>>
+      + Slice<RangeFrom<usize>>
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + Compare<&'static str>
+      + Offset
+      + Clone
+      + ParseTo<f32>
+      + ParseTo<f64>
+      + FindSubstring<&'static str>,
+    C: AsChar,
+  {
     let (_, input) = take_one(tokens)?;
 
     let (_, (repr, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;
@@ -347,10 +374,13 @@ impl LitFloat {
     let suffix_long = alt((token("l"), token("L")));
 
     let mut suffix = map(
-      alt((
-        cond(size1.is_none(), opt(preceded(delimited(meta, token("##"), meta), suffix_f))),
-        cond(size1.is_none() && repr.contains('.'), opt(preceded(delimited(meta, token("##"), meta), suffix_long))),
-      )),
+      cond(
+        size1.is_none(),
+        opt(alt((
+          preceded(delimited(meta, token("##"), meta), suffix_f),
+          preceded(delimited(meta, token("##"), meta), suffix_long),
+        ))),
+      ),
       |size| size.flatten(),
     );
 
@@ -358,16 +388,16 @@ impl LitFloat {
     let size = size1.or(size2);
 
     let lit = match size {
-      Some("f" | "F") => repr.parse().map(Self::Float),
-      Some("l" | "L") => repr.parse().map(Self::LongDouble),
-      _ => repr.parse().map(Self::Double),
+      Some(s) if s.compare_no_case("f") == CompareResult::Ok => repr.parse_to().map(Self::Float),
+      Some(s) if s.compare_no_case("l") == CompareResult::Ok => repr.parse_to().map(Self::LongDouble),
+      _ => repr.parse_to().map(Self::Double),
     };
 
-    if let Ok(lit) = lit {
+    if let Some(lit) = lit {
       return Ok((tokens, lit))
     }
 
-    Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
+    Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Float)))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
