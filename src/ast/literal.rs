@@ -166,7 +166,7 @@ impl LitChar {
     <I as InputIter>::Item: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    let (_, token) = take_one(input)?;
+    let (input2, token) = take_one(input)?;
 
     let (_, c) = all_consuming(delimited(
       preceded(opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))), char('\'')),
@@ -183,7 +183,7 @@ impl LitChar {
     ))(token)
     .map_err(|err| err.map_input(|_| input))?;
 
-    Ok((input, Self { repr: c }))
+    Ok((input2, Self { repr: c }))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
@@ -764,8 +764,9 @@ mod tests {
 
   #[test]
   fn parse_char() {
-    let (_, id) = LitChar::parse(&[r#"'a'"#]).unwrap();
+    let (rest, id) = LitChar::parse(&[r#"'a'"#]).unwrap();
     assert_eq!(id, LitChar { repr: vec![b'a'] });
+    assert!(rest.is_empty());
 
     let (_, id) = LitChar::parse(&[r#"'abc'"#]).unwrap();
     assert_eq!(id, LitChar { repr: vec![b'c'] });
@@ -778,6 +779,9 @@ mod tests {
 
     let (_, id) = LitChar::parse(&[r#"'\UCAFEbabe'"#]).unwrap();
     assert_eq!(id, LitChar { repr: vec![0xca, 0xfe, 0xba, 0xbe] });
+
+    let (_, id) = LitChar::parse(&[r#"'\U0001f369'"#]).unwrap();
+    assert_eq!(id, LitChar { repr: vec![0x00, 0x01, 0xf3, 0x69] });
   }
 
   #[test]
