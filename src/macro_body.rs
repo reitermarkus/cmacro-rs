@@ -1,4 +1,7 @@
-use std::ops::{RangeFrom, RangeTo};
+use std::{
+  fmt::Debug,
+  ops::{RangeFrom, RangeTo},
+};
 
 use nom::{
   branch::alt,
@@ -22,7 +25,8 @@ pub enum MacroBody {
 impl MacroBody {
   pub fn parse<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>

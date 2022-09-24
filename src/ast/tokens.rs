@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use nom::{
   bytes::complete::{tag, take_until},
   combinator::{all_consuming, map_opt},
@@ -8,7 +10,7 @@ use nom::{
 
 pub(crate) fn take_one<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], I>
 where
-  I: Clone,
+  I: Debug + Clone,
 {
   if tokens.len() > 0 {
     return Ok((&tokens[1..], tokens[0].clone()))
@@ -19,7 +21,7 @@ where
 
 pub(crate) fn comment<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], I>
 where
-  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+  I: Debug + InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone,
 {
   let (tokens, token) = take_one(tokens)?;
 
@@ -31,14 +33,14 @@ where
 
 pub(crate) fn meta<'i, I>(input: &'i [I]) -> IResult<&'i [I], Vec<I>>
 where
-  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+  I: Debug + InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone,
 {
   many0(comment)(input)
 }
 
 pub(crate) fn token<'i, I>(token: &'static str) -> impl Fn(&'i [I]) -> IResult<&'i [I], &'static str>
 where
-  I: InputTake + InputLength + Compare<&'static str> + Clone,
+  I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
 {
   move |tokens: &[I]| {
     map_opt(take_one, |token2: I| {
@@ -63,7 +65,7 @@ pub(crate) use token as keyword;
 
 pub(crate) fn parenthesized<'i, I, O, F>(f: F) -> impl FnMut(&'i [I]) -> IResult<&'i [I], O, nom::error::Error<&'i [I]>>
 where
-  I: InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone + 'i,
+  I: Debug + InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone + 'i,
   O: 'i,
   F: Parser<&'i [I], O, nom::error::Error<&'i [I]>>,
 {

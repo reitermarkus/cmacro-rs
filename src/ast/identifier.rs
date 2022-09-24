@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use nom::{
   combinator::verify,
   multi::fold_many0,
@@ -15,7 +17,7 @@ use crate::{CodegenContext, LocalContext, MacroArgType};
 
 pub(crate) fn identifier<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], String>
 where
-  I: InputIter + Clone,
+  I: Debug + InputIter + Clone,
   <I as InputIter>::Item: AsChar,
 {
   verify(take_one, |token: &I| {
@@ -30,7 +32,7 @@ where
 
 fn concat_identifier<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], String>
 where
-  I: InputIter + Clone,
+  I: Debug + InputIter + Clone,
   <I as InputIter>::Item: AsChar,
 {
   verify(take_one, |token: &I| {
@@ -57,7 +59,13 @@ pub enum Identifier {
 impl Identifier {
   pub fn parse<'i, 't, I, T>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputIter<Item = T> + InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+    I: Debug
+      + InputIter<Item = T>
+      + InputTake
+      + InputLength
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + Clone,
     T: AsChar,
   {
     let (tokens, id) = identifier(tokens)?;

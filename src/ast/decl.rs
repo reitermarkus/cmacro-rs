@@ -1,4 +1,7 @@
-use std::ops::{RangeFrom, RangeTo};
+use std::{
+  fmt::Debug,
+  ops::{RangeFrom, RangeTo},
+};
 
 use nom::{
   branch::permutation, combinator::opt, sequence::tuple, AsChar, Compare, FindSubstring, FindToken, IResult, InputIter,
@@ -22,7 +25,8 @@ pub struct Decl {
 impl Decl {
   pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>

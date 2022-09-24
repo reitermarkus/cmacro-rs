@@ -1,4 +1,7 @@
-use std::ops::{RangeFrom, RangeTo};
+use std::{
+  fmt::Debug,
+  ops::{RangeFrom, RangeTo},
+};
 
 use nom::{
   combinator::opt,
@@ -28,7 +31,8 @@ pub struct Asm {
 impl Asm {
   pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>

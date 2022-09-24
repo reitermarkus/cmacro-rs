@@ -1,4 +1,5 @@
 use std::{
+  fmt::Debug,
   ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, RangeFrom, RangeTo, Rem, Shl, Shr, Sub},
   str,
 };
@@ -43,7 +44,8 @@ pub enum Lit {
 impl Lit {
   pub fn parse<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + Slice<RangeFrom<usize>>
       + Slice<RangeTo<usize>>
@@ -78,7 +80,7 @@ impl Lit {
 
 fn escaped_char<I>(input: I) -> IResult<I, Vec<u8>>
 where
-  I: InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
+  I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
   <I as InputIter>::Item: AsChar + Copy,
   &'static str: FindToken<<I as InputIter>::Item>,
 {
@@ -160,7 +162,7 @@ pub struct LitChar {
 impl LitChar {
   pub fn parse<'i, I>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
+    I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
     <I as InputIter>::Item: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
@@ -223,7 +225,8 @@ pub struct LitString {
 impl LitString {
   fn parse_inner<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + Slice<RangeFrom<usize>>
       + InputIter<Item = C>
@@ -260,7 +263,8 @@ impl LitString {
 
   pub fn parse<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + Slice<RangeFrom<usize>>
       + InputIter<Item = C>
@@ -320,7 +324,8 @@ impl Eq for LitFloat {}
 impl LitFloat {
   fn from_str<I, C>(input: I) -> IResult<I, (I, Option<&'static str>)>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + Slice<RangeTo<usize>>
       + Slice<RangeFrom<usize>>
@@ -344,7 +349,8 @@ impl LitFloat {
 
   pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + Slice<RangeTo<usize>>
       + Slice<RangeFrom<usize>>
@@ -505,7 +511,7 @@ pub struct LitInt {
 impl LitInt {
   fn parse_i128<I>(base: u32) -> impl Fn(I) -> Option<i128>
   where
-    I: InputIter,
+    I: Debug + InputIter,
     <I as InputIter>::Item: AsChar,
   {
     move |input| {
@@ -522,7 +528,13 @@ impl LitInt {
 
   fn from_str<I, C>(input: I) -> IResult<I, (i128, Option<&'static str>, Option<&'static str>)>
   where
-    I: InputTake + InputLength + Compare<&'static str> + InputIter<Item = C> + InputTakeAtPosition<Item = C> + Clone,
+    I: Debug
+      + InputTake
+      + InputLength
+      + Compare<&'static str>
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + Clone,
     C: AsChar,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
@@ -557,7 +569,8 @@ impl LitInt {
 
   pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + Compare<&'static str>
       + InputIter<Item = C>
@@ -567,7 +580,7 @@ impl LitInt {
     C: AsChar,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    let (_, input) = take_one(tokens)?;
+    let (tokens, input) = take_one(tokens)?;
 
     let (_, (value, unsigned1, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;
 
@@ -813,5 +826,12 @@ mod tests {
 
     let (_, id) = LitInt::parse(&[r#"1z"#]).unwrap();
     assert_eq!(id, LitInt { value: 1, suffix: None });
+  }
+
+  #[test]
+  fn rest() {
+    let (rest, id) = LitInt::parse(&[r#"0"#]).unwrap();
+    assert_eq!(id, LitInt { value: 0, suffix: None });
+    assert!(rest.is_empty());
   }
 }

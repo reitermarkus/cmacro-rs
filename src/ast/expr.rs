@@ -1,4 +1,7 @@
-use std::ops::{RangeFrom, RangeTo};
+use std::{
+  fmt::Debug,
+  ops::{RangeFrom, RangeTo},
+};
 
 use nom::{
   branch::alt,
@@ -34,7 +37,8 @@ pub enum Expr {
 impl Expr {
   fn parse_concat<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -65,7 +69,8 @@ impl Expr {
 
   fn parse_factor<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -90,7 +95,8 @@ impl Expr {
 
   fn parse_term_prec1<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -153,7 +159,8 @@ impl Expr {
 
   fn parse_term_prec2<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -191,7 +198,8 @@ impl Expr {
 
   fn parse_term_prec3<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -209,20 +217,19 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec2(tokens)?;
 
     fold_many0(
-      pair(alt((token("*"), token("/"), token("%"))), Self::parse_term_prec2),
+      pair(
+        alt((map(token("*"), |_| BinOp::Mul), map(token("/"), |_| BinOp::Div), map(token("%"), |_| BinOp::Rem))),
+        Self::parse_term_prec2,
+      ),
       move || term.clone(),
-      |lhs, (op, rhs)| match op {
-        "*" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Mul, rhs })),
-        "/" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Div, rhs })),
-        "%" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Rem, rhs })),
-        _ => unreachable!(),
-      },
+      |lhs, (op, rhs)| Self::BinOp(Box::new(BinaryOp { lhs, op, rhs })),
     )(tokens)
   }
 
   fn parse_term_prec4<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -240,21 +247,16 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec3(tokens)?;
 
     fold_many0(
-      pair(alt((token("+"), token("-"))), Self::parse_term_prec3),
+      pair(alt((map(token("+"), |_| BinOp::Add), map(token("-"), |_| BinOp::Sub))), Self::parse_term_prec3),
       move || term.clone(),
-      |lhs, (op, rhs)| {
-        if op == "+" {
-          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Add, rhs }))
-        } else {
-          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Sub, rhs }))
-        }
-      },
+      |lhs, (op, rhs)| Self::BinOp(Box::new(BinaryOp { lhs, op, rhs })),
     )(tokens)
   }
 
   fn parse_term_prec5<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -272,21 +274,16 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec4(tokens)?;
 
     fold_many0(
-      pair(alt((token("<<"), token(">>"))), Self::parse_term_prec4),
+      pair(alt((map(token("<<"), |_| BinOp::Shl), map(token(">>"), |_| BinOp::Shr))), Self::parse_term_prec4),
       move || term.clone(),
-      |lhs, (op, rhs)| {
-        if op == "<<" {
-          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Shl, rhs }))
-        } else {
-          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Shr, rhs }))
-        }
-      },
+      |lhs, (op, rhs)| Self::BinOp(Box::new(BinaryOp { lhs, op, rhs })),
     )(tokens)
   }
 
   fn parse_term_prec6<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -304,21 +301,24 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec5(tokens)?;
 
     fold_many0(
-      pair(alt((token("<"), token("<="), token(">"), token(">="))), Self::parse_term_prec5),
+      pair(
+        alt((
+          map(token("<"), |_| BinOp::Lt),
+          map(token("<="), |_| BinOp::Lte),
+          map(token(">"), |_| BinOp::Gt),
+          map(token(">="), |_| BinOp::Gte),
+        )),
+        Self::parse_term_prec5,
+      ),
       move || term.clone(),
-      |lhs, (op, rhs)| match op {
-        "<" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Lt, rhs })),
-        "<=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Lte, rhs })),
-        ">" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Gt, rhs })),
-        ">=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Gte, rhs })),
-        _ => unreachable!(),
-      },
+      |lhs, (op, rhs)| Self::BinOp(Box::new(BinaryOp { lhs, op, rhs })),
     )(tokens)
   }
 
   fn parse_term_prec7<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -350,7 +350,8 @@ impl Expr {
 
   fn parse_term_prec8<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -376,7 +377,8 @@ impl Expr {
 
   fn parse_term_prec9<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -402,7 +404,8 @@ impl Expr {
 
   fn parse_term_prec10<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -428,7 +431,8 @@ impl Expr {
 
   fn parse_term_prec13<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -458,7 +462,8 @@ impl Expr {
 
   fn parse_term_prec14<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -478,41 +483,29 @@ impl Expr {
     fold_many0(
       pair(
         alt((
-          token("="),
-          token("+="),
-          token("-="),
-          token("*="),
-          token("/="),
-          token("%="),
-          token("<<="),
-          token(">>="),
-          token("&="),
-          token("^="),
-          token("|="),
+          map(token("="), |_| BinOp::Assign),
+          map(token("+="), |_| BinOp::AddAssign),
+          map(token("-="), |_| BinOp::SubAssign),
+          map(token("*="), |_| BinOp::MulAssign),
+          map(token("/="), |_| BinOp::DivAssign),
+          map(token("%="), |_| BinOp::RemAssign),
+          map(token("<<="), |_| BinOp::ShlAssign),
+          map(token(">>="), |_| BinOp::ShrAssign),
+          map(token("&="), |_| BinOp::BitAndAssign),
+          map(token("^="), |_| BinOp::BitXorAssign),
+          map(token("|="), |_| BinOp::BitOrAssign),
         )),
         Self::parse_term_prec14,
       ),
       move || term.clone(),
-      |lhs, (op, rhs)| match op {
-        "=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Assign, rhs })),
-        "+=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::AddAssign, rhs })),
-        "-=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::SubAssign, rhs })),
-        "*=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::MulAssign, rhs })),
-        "/=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::DivAssign, rhs })),
-        "%=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::RemAssign, rhs })),
-        "<<=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::ShlAssign, rhs })),
-        ">>=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::ShrAssign, rhs })),
-        "&=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitAndAssign, rhs })),
-        "^=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitXorAssign, rhs })),
-        "|=" => Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitOrAssign, rhs })),
-        _ => unreachable!(),
-      },
+      |lhs, (op, rhs)| Self::BinOp(Box::new(BinaryOp { lhs, op, rhs })),
     )(tokens)
   }
 
   pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -898,5 +891,17 @@ mod tests {
   fn parse_function_call() {
     let (_, expr) = Expr::parse(&["my_function", "(", "arg1", ",", "arg2", ")"]).unwrap();
     assert_eq!(expr, Expr::FunctionCall(FunctionCall { name: id!(my_function), args: vec![var!(arg1), var!(arg2)] }));
+  }
+
+  #[test]
+  fn parse_paren() {
+    let (_, expr) = Expr::parse(&["(", "-", "123456789012ULL", ")"]).unwrap();
+    assert_eq!(
+      expr,
+      Expr::UnaryOp(Box::new(UnaryOp::Minus(Expr::Literal(Lit::Int(LitInt {
+        value: 123456789012,
+        suffix: Some(BuiltInType::ULongLong)
+      })))))
+    )
   }
 }

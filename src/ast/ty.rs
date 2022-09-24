@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use nom::{
   branch::{alt, permutation},
   combinator::{map, opt},
@@ -57,18 +59,18 @@ impl ToTokens for BuiltInType {
 
 fn int_ty<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], BuiltInType>
 where
-  I: InputTake + InputLength + Compare<&'static str> + Clone,
+  I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
 {
   fn int_signedness<'i, I>(input: &'i [I]) -> IResult<&'i [I], &'static str>
   where
-    I: InputTake + InputLength + Compare<&'static str> + Clone,
+    I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
   {
     alt((keyword("unsigned"), keyword("signed")))(input)
   }
 
   fn int_longness<'i, I>(input: &'i [I]) -> IResult<&'i [I], &'static str>
   where
-    I: InputTake + InputLength + Compare<&'static str> + Clone,
+    I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
   {
     alt((keyword("short"), keyword("long")))(input)
   }
@@ -112,7 +114,7 @@ where
 
 fn ty<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], Type>
 where
-  I: InputTake + InputLength + InputIter + Compare<&'static str> + Clone + 't,
+  I: Debug + InputTake + InputLength + InputIter + Compare<&'static str> + Clone + 't,
   <I as InputIter>::Item: AsChar,
 {
   alt((
@@ -146,7 +148,7 @@ where
 
 fn const_qualifier<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], bool>
 where
-  I: InputTake + InputLength + Compare<&'static str> + Clone,
+  I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
 {
   fold_many0(keyword("const"), || false, |_, _| true)(input)
 }
@@ -162,7 +164,7 @@ pub enum Type {
 impl Type {
   pub fn parse<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+    I: Debug + InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Clone,
     <I as InputIter>::Item: AsChar,
   {
     let (tokens, ty) = delimited(const_qualifier, ty, const_qualifier)(tokens)?;

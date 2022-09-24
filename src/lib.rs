@@ -2,6 +2,7 @@
 
 use std::{
   collections::HashMap,
+  fmt::Debug,
   ops::{RangeFrom, RangeTo},
   str,
 };
@@ -38,7 +39,8 @@ pub struct VarMacro {
 impl VarMacro {
   pub fn parse<I, C>(name: I, body: &[I]) -> Result<Self, crate::Error>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -98,7 +100,7 @@ pub struct FnMacro {
 impl FnMacro {
   fn parse_args<'i, I>(input: &'i [I]) -> IResult<&'i [I], Vec<String>>
   where
-    I: InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+    I: Debug + InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Clone,
     <I as InputIter>::Item: AsChar,
   {
     all_consuming(parenthesized(alt((
@@ -123,7 +125,8 @@ impl FnMacro {
 
   pub fn parse<I, C>(name: I, args: &[I], body: &[I]) -> Result<Self, crate::Error>
   where
-    I: InputTake
+    I: Debug
+      + InputTake
       + InputLength
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
