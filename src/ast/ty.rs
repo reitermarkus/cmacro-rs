@@ -2,7 +2,7 @@ use nom::{
   branch::{alt, permutation},
   combinator::{map, opt},
   multi::fold_many0,
-  sequence::{delimited, pair, preceded},
+  sequence::{delimited, pair, preceded, terminated},
   AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake,
 };
 use proc_macro2::TokenStream;
@@ -16,6 +16,7 @@ use crate::{CodegenContext, LocalContext};
 pub enum BuiltInType {
   Float,
   Double,
+  LongDouble,
   Bool,
   Char,
   SChar,
@@ -36,6 +37,7 @@ impl ToTokens for BuiltInType {
     tokens.append_all(match self {
       Self::Float => quote! { f32 },
       Self::Double => quote! { f64 },
+      Self::LongDouble => quote! { c_longdouble },
       Self::Bool => quote! { bool },
       Self::Char => quote! { c_char },
       Self::SChar => quote! { c_schar },
@@ -72,7 +74,7 @@ where
   }
 
   alt((
-    // [const] [(un)signed] long long [int]
+    // [const] [(unsigned | signed)] long long [int]
     map(
       permutation((const_qualifier, opt(int_signedness), keyword("long"), keyword("long"), opt(keyword("int")))),
       |(_, s, _, _, _)| {
@@ -83,7 +85,7 @@ where
         }
       },
     ),
-    // [const] [(un)signed] long/short [int]
+    // [const] [(unsigned | signed)] (long | short) [int]
     map(permutation((const_qualifier, opt(int_signedness), int_longness, opt(keyword("int")))), |(_, s, i, _)| match (
       s, i,
     ) {
@@ -93,7 +95,7 @@ where
       (_, "long") => BuiltInType::Long,
       _ => unreachable!(),
     }),
-    // [const] [(un)signed] char/int
+    // [const] [(unsigned | signed)] (char | int)
     map(
       permutation((const_qualifier, opt(int_signedness), alt((keyword("char"), keyword("int"))))),
       |(_, s, i)| match (s, i) {
@@ -114,22 +116,30 @@ where
   <I as InputIter>::Item: AsChar,
 {
   alt((
-    // [const] float/double/bool/void
+    // [const] (float | [long] double | bool | void)
     map(
-      permutation((const_qualifier, alt((keyword("float"), keyword("double"), keyword("bool"))))),
-      |(_, ty)| match ty {
-        "float" => Type::BuiltIn(BuiltInType::Float),
-        "double" => Type::BuiltIn(BuiltInType::Double),
-        "bool" => Type::BuiltIn(BuiltInType::Bool),
-        "void" => Type::BuiltIn(BuiltInType::Void),
-        _ => unreachable!(),
-      },
+      delimited(
+        const_qualifier,
+        alt((
+          map(keyword("void"), |_| BuiltInType::Void),
+          map(keyword("bool"), |_| BuiltInType::Bool),
+          map(keyword("float"), |_| BuiltInType::Float),
+          map(pair(terminated(opt(keyword("long")), const_qualifier), keyword("double")), |(long, _)| {
+            if long.is_some() {
+              BuiltInType::LongDouble
+            } else {
+              BuiltInType::Double
+            }
+          }),
+        )),
+        const_qualifier,
+      ),
+      Type::BuiltIn,
     ),
     map(int_ty, Type::BuiltIn),
     // [const] <identifier>
-    map(permutation((const_qualifier, pair(opt(keyword("struct")), identifier))), |(_, (s, id))| Type::Identifier {
-      name: Identifier::Literal(id.to_owned()),
-      is_struct: s.is_some(),
+    map(delimited(const_qualifier, pair(opt(keyword("struct")), identifier), const_qualifier), |(s, id)| {
+      Type::Identifier { name: Identifier::Literal(id.to_owned()), is_struct: s.is_some() }
     }),
   ))(input)
 }
@@ -198,5 +208,123 @@ impl Type {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  macro_rules! ty {
+    (*mut $($ty:tt)*) => { Type::Ptr { ty: Box::new(ty!($($ty)*)), mutable: true } };
+    (*const $($ty:tt)*) => { Type::Ptr { ty: Box::new(ty!($($ty)*)), mutable: false } };
+    (struct $ty:ident) => { Type::Identifier { name: Identifier::Literal(stringify!($ty).to_owned()), is_struct: true } };
+    ($ty:ident) => { Type::Identifier { name: Identifier::Literal(stringify!($ty).to_owned()), is_struct: false } };
+    ($ty:path) => { Type::BuiltIn($ty) };
+  }
+
+  #[test]
+  fn parse_builtin() {
+    let (_, ty) = Type::parse(&["float"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Float));
+
+    let (_, ty) = Type::parse(&["double"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Double));
+
+    let (_, ty) = Type::parse(&["long", "double"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::LongDouble));
+
+    let (_, ty) = Type::parse(&["bool"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Bool));
+
+    let (_, ty) = Type::parse(&["char"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Char));
+
+    let (_, ty) = Type::parse(&["short"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Short));
+
+    let (_, ty) = Type::parse(&["int"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Int));
+
+    let (_, ty) = Type::parse(&["long"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Long));
+
+    let (_, ty) = Type::parse(&["long", "long"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::LongLong));
+
+    let (_, ty) = Type::parse(&["void"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Void));
+  }
+
+  #[test]
+  fn parse_identifier() {
+    let (_, ty) = Type::parse(&["MyType"]).unwrap();
+    assert_eq!(ty, ty!(MyType));
+
+    let (_, ty) = Type::parse(&["struct", "MyType"]).unwrap();
+    assert_eq!(ty, ty!(struct MyType));
+  }
+
+  #[test]
+  fn parse_signed_builtin() {
+    let (_, ty) = Type::parse(&["signed", "char"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::SChar));
+
+    let (_, ty) = Type::parse(&["signed", "short"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Short));
+
+    let (_, ty) = Type::parse(&["signed", "int"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Int));
+
+    let (_, ty) = Type::parse(&["signed", "long"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Long));
+
+    let (_, ty) = Type::parse(&["signed", "long", "long"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::LongLong));
+  }
+
+  #[test]
+  fn parse_unsigned_builtin() {
+    let (_, ty) = Type::parse(&["unsigned", "char"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::UChar));
+
+    let (_, ty) = Type::parse(&["unsigned", "short"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::UShort));
+
+    let (_, ty) = Type::parse(&["unsigned", "int"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::UInt));
+
+    let (_, ty) = Type::parse(&["unsigned", "long"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::ULong));
+
+    let (_, ty) = Type::parse(&["unsigned", "long", "long"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::ULongLong));
+  }
+
+  #[test]
+  fn parse_ptr() {
+    let (_, ty) = Type::parse(&["void", "*"]).unwrap();
+    assert_eq!(ty, ty!(*mut BuiltInType::Void));
+
+    let (_, ty) = Type::parse(&["void", "*", "const"]).unwrap();
+    assert_eq!(ty, ty!(*const BuiltInType::Void));
+
+    let (_, ty) = Type::parse(&["void", "*", "const", "*"]).unwrap();
+    assert_eq!(ty, ty!(*mut *const BuiltInType::Void));
+  }
+
+  #[test]
+  fn parse_const() {
+    let (_, ty) = Type::parse(&["const", "int"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Int));
+
+    let (_, ty) = Type::parse(&["int", "const"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Int));
+
+    let (_, ty) = Type::parse(&["const", "int", "const"]).unwrap();
+    assert_eq!(ty, ty!(BuiltInType::Int));
+
+    let (_, ty) = Type::parse(&["const", "int", "*", "const"]).unwrap();
+    assert_eq!(ty, ty!(*const BuiltInType::Int));
   }
 }

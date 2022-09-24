@@ -60,3 +60,14 @@ impl Stringify {
     quote! { ::core::stringify!(#id) }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn parse_stringify() {
+    let (_, ty) = Stringify::parse(&["#", "var"]).unwrap();
+    assert_eq!(ty, Stringify { id: Identifier::Literal("var".into()) });
+  }
+}

@@ -893,4 +893,10 @@ mod tests {
       }))
     );
   }
+
+  #[test]
+  fn parse_function_call() {
+    let (_, expr) = Expr::parse(&["my_function", "(", "arg1", ",", "arg2", ")"]).unwrap();
+    assert_eq!(expr, Expr::FunctionCall(FunctionCall { name: id!(my_function), args: vec![var!(arg1), var!(arg2)] }));
+  }
 }
