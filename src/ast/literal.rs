@@ -63,7 +63,23 @@ pub enum Lit {
 }
 
 impl Lit {
-  pub fn parse<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+  pub fn parse<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake
+      + InputLength
+      + Slice<RangeFrom<usize>>
+      + Slice<RangeTo<usize>>
+      + InputIter<Item = C>
+      + Clone
+      + InputTakeAtPosition<Item = C>
+      + Compare<&'static str>
+      + Offset
+      + ParseTo<f32>
+      + ParseTo<f64>
+      + FindSubstring<&'static str>,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputIter>::Item>,
+  {
     alt((
       map(LitChar::parse, Self::Char),
       map(LitString::parse, Self::String),
@@ -164,9 +180,9 @@ pub struct LitChar {
 }
 
 impl LitChar {
-  pub fn parse<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<'i, I>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str> + 't,
+    I: InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
     <I as InputIter>::Item: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
@@ -227,7 +243,7 @@ pub struct LitString {
 }
 
 impl LitString {
-  fn parse_inner<'i, 't, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_inner<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
     I: InputTake
       + InputLength
@@ -264,7 +280,7 @@ impl LitString {
     Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
   }
 
-  pub fn parse<'i, 't, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
     I: InputTake
       + InputLength
@@ -509,26 +525,48 @@ pub struct LitInt {
 }
 
 impl LitInt {
-  fn from_str(input: &[u8]) -> IResult<&[u8], (i128, Option<&str>, Option<&str>)> {
+  fn parse_i128<I>(base: u32) -> impl Fn(I) -> Option<i128>
+  where
+    I: InputIter,
+    <I as InputIter>::Item: AsChar,
+  {
+    move |input| {
+      let mut value = 0i128;
+
+      for c in input.iter_elements() {
+        let d = c.as_char().to_digit(base).unwrap();
+        value = value.checked_add(d as i128)?;
+      }
+
+      Some(value)
+    }
+  }
+
+  fn from_str<I, C>(input: I) -> IResult<I, (i128, Option<&'static str>, Option<&'static str>)>
+  where
+    I: InputTake + InputLength + Compare<&'static str> + InputIter<Item = C> + InputTakeAtPosition<Item = C> + Clone,
+    C: AsChar,
+    &'static str: FindToken<<I as InputIter>::Item>,
+  {
     let digits = alt((
-      map_res(preceded(tag_no_case("0x"), hex_digit1), |s| i128::from_str_radix(str::from_utf8(s).unwrap(), 16)),
-      map_res(preceded(tag_no_case("0b"), is_a("01")), |s| i128::from_str_radix(str::from_utf8(s).unwrap(), 2)),
-      map_res(preceded(tag("0"), oct_digit1), |s| i128::from_str_radix(str::from_utf8(s).unwrap(), 8)),
-      map_res(digit1, |s| str::from_utf8(s).unwrap().parse()),
+      map_opt(preceded(tag_no_case("0x"), hex_digit1), Self::parse_i128(16)),
+      map_opt(preceded(tag_no_case("0b"), is_a("01")), Self::parse_i128(2)),
+      map_opt(preceded(tag("0"), oct_digit1), Self::parse_i128(8)),
+      map_opt(digit1, Self::parse_i128(10)),
     ));
 
     let suffix = alt((
       map(
         pair(
-          map_res(tag_no_case("u"), str::from_utf8),
-          opt(map_res(alt((tag_no_case("ll"), tag_no_case("l"), tag_no_case("z"))), str::from_utf8)),
+          map(tag_no_case("u"), |_| "u"),
+          opt(alt((map(tag_no_case("ll"), |_| "ll"), map(tag_no_case("l"), |_| "l"), map(tag_no_case("z"), |_| "z")))),
         ),
         |(unsigned, size)| (Some(unsigned), size),
       ),
       map(
         pair(
-          map_res(alt((tag_no_case("ll"), tag_no_case("l"), tag_no_case("z"))), str::from_utf8),
-          opt(map_res(tag_no_case("u"), str::from_utf8)),
+          alt((map(tag_no_case("ll"), |_| "ll"), map(tag_no_case("l"), |_| "l"), map(tag_no_case("z"), |_| "z"))),
+          opt(map(tag_no_case("u"), |_| "u")),
         ),
         |(size, unsigned)| (unsigned, Some(size)),
       ),
@@ -539,7 +577,18 @@ impl LitInt {
     Ok((input, (n, unsigned, size)))
   }
 
-  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+  pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake
+      + InputLength
+      + Compare<&'static str>
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + FindSubstring<&'static str>
+      + Clone,
+    C: AsChar,
+    &'static str: FindToken<<I as InputIter>::Item>,
+  {
     let (_, input) = take_one(tokens)?;
 
     let (_, (value, unsigned1, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;
