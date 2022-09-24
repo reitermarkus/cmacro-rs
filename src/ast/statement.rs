@@ -1,3 +1,6 @@
+use std::ops::RangeFrom;
+use std::ops::RangeTo;
+
 use nom::branch::alt;
 use nom::combinator::eof;
 use nom::combinator::map;
@@ -9,7 +12,18 @@ use nom::sequence::pair;
 use nom::sequence::preceded;
 use nom::sequence::terminated;
 use nom::sequence::tuple;
+use nom::AsChar;
+use nom::Compare;
+use nom::FindSubstring;
+use nom::FindToken;
 use nom::IResult;
+use nom::InputIter;
+use nom::InputLength;
+use nom::InputTake;
+use nom::InputTakeAtPosition;
+use nom::Offset;
+use nom::ParseTo;
+use nom::Slice;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::TokenStreamExt;
@@ -37,7 +51,23 @@ pub enum Statement {
 }
 
 impl Statement {
-  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+  pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake
+      + InputLength
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + Slice<RangeFrom<usize>>
+      + Slice<RangeTo<usize>>
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + ParseTo<f64>
+      + ParseTo<f32>
+      + Offset
+      + Clone,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputIter>::Item>,
+  {
     let condition = |input| parenthesized(Expr::parse)(input);
     let block = |input| map(Self::parse, |stmt| if let Self::Block(stmts) = stmt { stmts } else { vec![stmt] })(input);
     let semicolon_or_eof = |input| alt((value((), token(";")), value((), eof)))(input);

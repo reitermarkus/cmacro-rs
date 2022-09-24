@@ -2,7 +2,6 @@ use nom::combinator::verify;
 use nom::multi::fold_many0;
 use nom::sequence::delimited;
 use nom::sequence::preceded;
-use nom::AsBytes;
 use nom::AsChar;
 use nom::Compare;
 use nom::FindSubstring;
@@ -66,13 +65,7 @@ pub enum Identifier {
 impl Identifier {
   pub fn parse<'i, 't, I, T>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: AsBytes
-      + InputIter<Item = T>
-      + InputTake
-      + InputLength
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + Copy,
+    I: InputIter<Item = T> + InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone,
     T: AsChar,
   {
     let (tokens, id) = identifier(tokens)?;

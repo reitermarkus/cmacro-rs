@@ -79,7 +79,7 @@ pub(crate) fn tokenize_name<'t>(input: &'t [u8]) -> Vec<&'t [u8]> {
 impl MacroSig {
   pub fn parse<'i, I>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Copy,
+    I: InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Clone,
     <I as InputIter>::Item: AsChar,
   {
     let (input, name) = identifier(input)?;

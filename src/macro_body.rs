@@ -1,7 +1,21 @@
+use std::ops::RangeFrom;
+use std::ops::RangeTo;
+
 use nom::branch::alt;
 use nom::combinator::all_consuming;
 use nom::combinator::map;
+use nom::AsChar;
+use nom::Compare;
+use nom::FindSubstring;
+use nom::FindToken;
 use nom::IResult;
+use nom::InputIter;
+use nom::InputLength;
+use nom::InputTake;
+use nom::InputTakeAtPosition;
+use nom::Offset;
+use nom::ParseTo;
+use nom::Slice;
 
 use crate::{
   ast::{meta, Type},
@@ -16,7 +30,23 @@ pub enum MacroBody {
 }
 
 impl MacroBody {
-  pub fn parse<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+  pub fn parse<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake
+      + InputLength
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + Slice<RangeFrom<usize>>
+      + Slice<RangeTo<usize>>
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + ParseTo<f64>
+      + ParseTo<f32>
+      + Offset
+      + Clone,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputIter>::Item>,
+  {
     let (input, _) = meta(input)?;
 
     if input.is_empty() {

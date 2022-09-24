@@ -1,10 +1,25 @@
 #![warn(missing_debug_implementations)]
 
+use std::ops::RangeFrom;
+use std::ops::RangeTo;
+use std::collections::HashMap;
+use std::str;
+
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use quote::TokenStreamExt;
-use std::collections::HashMap;
-use std::str;
+use nom::AsChar;
+use nom::Compare;
+use nom::FindSubstring;
+use nom::FindToken;
+use nom::IResult;
+use nom::InputIter;
+use nom::InputLength;
+use nom::InputTake;
+use nom::InputTakeAtPosition;
+use nom::Offset;
+use nom::ParseTo;
+use nom::Slice;
 
 pub mod ast;
 pub use ast::*;
@@ -25,7 +40,24 @@ pub struct VarMacro {
 }
 
 impl VarMacro {
-  pub fn parse<'i, 't>(name: &'t str, body: &'i [&'t [u8]]) -> Result<Self, crate::Error> {
+  pub fn parse<'i, I, C>(name: &str, body: &'i [I]) -> Result<Self, crate::Error>
+  where
+    I: InputTake
+      + InputLength
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + Slice<RangeFrom<usize>>
+      + Slice<RangeTo<usize>>
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + ParseTo<f64>
+      + ParseTo<f32>
+      + Offset
+      + Clone,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputIter>::Item>,
+
+  {
     let body = match MacroBody::parse(body) {
       Ok((_, body)) => body,
       Err(_) => return Err(crate::Error::ParserError),
@@ -67,16 +99,29 @@ pub struct FnMacro {
 }
 
 impl FnMacro {
-  pub fn parse<'i, 's, 't>(
-    sig: &'i [&'s [u8]],
-    body: &'i [&'t [u8]],
-  ) -> Result<Self, nom::Err<nom::error::Error<&'i [&'t [u8]]>>>
+  pub fn parse<'i, I, C>(
+    sig: &'i [I],
+    body: &'i [I],
+  ) -> Result<Self, nom::Err<nom::error::Error<&'i [I]>>>
+
   where
-    'i: 't,
-    'i: 's,
+    I: InputTake
+      + InputLength
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + Slice<RangeFrom<usize>>
+      + Slice<RangeTo<usize>>
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + ParseTo<f64>
+      + ParseTo<f32>
+      + Offset
+      + Clone,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputIter>::Item>,
   {
     // let sig: Vec<&'s [u8]> = tokenize_name(sig);
-    let (_, sig) = MacroSig::parse(sig).unwrap();
+    let (_, sig) = MacroSig::parse(sig)?;
     let (_, body) = MacroBody::parse(body)?;
 
     let args = sig.args.into_iter().map(|arg| (arg, MacroArgType::Unknown)).collect();

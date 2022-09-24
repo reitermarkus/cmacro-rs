@@ -129,7 +129,7 @@ where
         fold_many_m_n(
           2,
           2,
-          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(8).map(|n| n as u8)),
+          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16).map(|n| n as u8)),
           || 0,
           |acc, n| acc * 16 + n,
         ),
@@ -142,11 +142,11 @@ where
         fold_many_m_n(
           4,
           4,
-          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(8).map(|n| n as u16)),
+          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16).map(|n| n as u16)),
           || 0,
           |acc, n| acc * 16 + n,
         ),
-        |n| n.to_ne_bytes().to_vec(),
+        |n| n.to_be_bytes().to_vec(),
       ),
     ),
     preceded(
@@ -155,11 +155,11 @@ where
         fold_many_m_n(
           8,
           8,
-          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(8).map(|n| n as u32)),
+          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16).map(|n| n as u32)),
           || 0,
           |acc, n| acc * 16 + n,
         ),
-        |n| n.to_ne_bytes().to_vec(),
+        |n| n.to_be_bytes().to_vec(),
       ),
     ),
   ))(input)
@@ -534,7 +534,7 @@ impl LitInt {
 
       for c in input.iter_elements() {
         let d = c.as_char().to_digit(base).unwrap();
-        value = value.checked_add(d as i128)?;
+        value = value.checked_mul(base as i128)?.checked_add(d as i128)?;
       }
 
       Some(value)

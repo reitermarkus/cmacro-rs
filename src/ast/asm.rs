@@ -1,8 +1,22 @@
+use std::ops::RangeFrom;
+use std::ops::RangeTo;
+
 use nom::combinator::opt;
 use nom::multi::separated_list0;
 use nom::sequence::preceded;
 use nom::sequence::tuple;
+use nom::AsChar;
+use nom::Compare;
+use nom::FindSubstring;
+use nom::FindToken;
 use nom::IResult;
+use nom::InputIter;
+use nom::InputLength;
+use nom::InputTake;
+use nom::InputTakeAtPosition;
+use nom::Offset;
+use nom::ParseTo;
+use nom::Slice;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::TokenStreamExt;
@@ -23,7 +37,23 @@ pub struct Asm {
 }
 
 impl Asm {
-  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+  pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake
+      + InputLength
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + Slice<RangeFrom<usize>>
+      + Slice<RangeTo<usize>>
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + ParseTo<f64>
+      + ParseTo<f32>
+      + Offset
+      + Clone,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputIter>::Item>,
+  {
     let (tokens, (template, outputs, inputs, clobbers)) = parenthesized(tuple((
       separated_list0(tuple((meta, token(","), meta)), LitString::parse),
       opt(preceded(token(":"), separated_list0(tuple((meta, token(","), meta)), Expr::parse))),

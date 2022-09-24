@@ -1,9 +1,23 @@
+use std::ops::RangeFrom;
+use std::ops::RangeTo;
+
 use nom::branch::permutation;
 use nom::combinator::opt;
 use nom::multi::separated_list0;
 use nom::sequence::pair;
 use nom::sequence::tuple;
+use nom::AsChar;
+use nom::Compare;
+use nom::FindSubstring;
+use nom::FindToken;
 use nom::IResult;
+use nom::InputIter;
+use nom::InputLength;
+use nom::InputTake;
+use nom::InputTakeAtPosition;
+use nom::Offset;
+use nom::ParseTo;
+use nom::Slice;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::TokenStreamExt;
@@ -21,7 +35,23 @@ pub struct FunctionDecl {
 }
 
 impl FunctionDecl {
-  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+  pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake
+      + InputLength
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + Slice<RangeFrom<usize>>
+      + Slice<RangeTo<usize>>
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + ParseTo<f64>
+      + ParseTo<f32>
+      + Offset
+      + Clone,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputIter>::Item>,
+  {
     let (tokens, ((_, ret_ty), name, args)) = tuple((
       permutation((opt(token("static")), Type::parse)),
       Identifier::parse,

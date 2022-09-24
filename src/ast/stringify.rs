@@ -1,7 +1,13 @@
 use nom::combinator::map;
 use nom::sequence::preceded;
 use nom::sequence::terminated;
+use nom::AsChar;
+use nom::Compare;
+use nom::FindSubstring;
 use nom::IResult;
+use nom::InputIter;
+use nom::InputLength;
+use nom::InputTake;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::TokenStreamExt;
@@ -24,10 +30,14 @@ pub struct Stringify {
 }
 
 impl Stringify {
-  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
-    map(preceded(terminated(token::<&'t [u8]>("#"), meta), identifier), |id| Self {
-      id: Identifier::Literal(id.to_owned()),
-    })(tokens)
+  pub fn parse<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+    <I as InputIter>::Item: AsChar,
+  {
+    map(preceded(terminated(token("#"), meta), identifier), |id| Self { id: Identifier::Literal(id.to_owned()) })(
+      tokens,
+    )
   }
 
   pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
