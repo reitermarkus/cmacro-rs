@@ -57,12 +57,12 @@ impl ToTokens for BuiltInType {
   }
 }
 
-fn int_ty<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], BuiltInType> {
-  fn int_signedness<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
+fn int_ty<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], BuiltInType> {
+  fn int_signedness<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], &'static str> {
     alt((keyword("unsigned"), keyword("signed")))(input)
   }
 
-  fn int_longness<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
+  fn int_longness<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], &'static str> {
     alt((keyword("short"), keyword("long")))(input)
   }
 
@@ -103,7 +103,7 @@ fn int_ty<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], BuiltInType> {
   ))(input)
 }
 
-fn ty<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Type> {
+fn ty<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Type> {
   alt((
     // [const] float/double/bool/void
     map(
@@ -125,7 +125,7 @@ fn ty<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Type> {
   ))(input)
 }
 
-fn const_qualifier<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], bool> {
+fn const_qualifier<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], bool> {
   fold_many0(keyword("const"), || false, |_, _| true)(input)
 }
 
@@ -138,7 +138,7 @@ pub enum Type {
 }
 
 impl Type {
-  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, ty) = delimited(const_qualifier, ty, const_qualifier)(tokens)?;
 
     fold_many0(

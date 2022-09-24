@@ -19,7 +19,7 @@ pub struct Decl {
 }
 
 impl Decl {
-  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, ((static_storage, ty), name, _, rhs)) =
       tuple((permutation((opt(token("static")), Type::parse)), Identifier::parse, token("="), Expr::parse))(tokens)?;
 

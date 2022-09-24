@@ -1,8 +1,15 @@
+use nom::combinator::verify;
 use nom::multi::fold_many0;
 use nom::sequence::delimited;
 use nom::sequence::preceded;
-use nom::combinator::verify;
+use nom::AsBytes;
+use nom::AsChar;
+use nom::Compare;
+use nom::FindSubstring;
 use nom::IResult;
+use nom::InputIter;
+use nom::InputLength;
+use nom::InputTake;
 use proc_macro2::Ident;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
@@ -15,23 +22,34 @@ use super::{
 };
 use crate::{CodegenContext, LocalContext, MacroArgType};
 
-pub(crate) fn identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
-  verify(take_one, |token: &str| {
-    let mut it = token.chars();
+pub(crate) fn identifier<'i, 't, I, T>(tokens: &'i [I]) -> IResult<&'i [I], &'t str>
+where
+  I: AsBytes + InputIter<Item = T> + Copy + 't,
+  T: AsChar,
+  'i: 't,
+{
+  verify(take_one, |token: &I| {
+    let mut it = token.iter_elements().map(|i| i.as_char());
     matches!(it.next(), Some('a'..='z' | 'A'..='Z' | '_'))
       && it.all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
-  })(tokens)
+  })(tokens)?;
+
+  let bytes = tokens[0].as_bytes();
+  Ok((&tokens[1..], std::str::from_utf8(bytes).unwrap()))
 }
 
-fn concat_identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
-  if let Some(token) = tokens.first() {
-    let mut it = token.chars();
-    if it.all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9')) {
-      return Ok((&tokens[1..], token))
-    }
-  }
+fn concat_identifier<'i, 't, I, T>(tokens: &'i [I]) -> IResult<&'i [I], &'t str>
+where
+  I: AsBytes + InputIter<Item = T> + Copy + 't,
+  T: AsChar,
+  'i: 't,
+{
+  verify(take_one, |token: &I| {
+    token.iter_elements().all(|c| matches!(c.as_char(), 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
+  })(tokens)?;
 
-  Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
+  let bytes = tokens[0].as_bytes();
+  Ok((&tokens[1..], std::str::from_utf8(bytes).unwrap()))
 }
 
 /// An identifier.
@@ -48,16 +66,26 @@ pub enum Identifier {
 }
 
 impl Identifier {
-  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't, I, T>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: AsBytes
+      + InputIter<Item = T>
+      + InputTake
+      + InputLength
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + Copy,
+    T: AsChar,
+  {
     let (tokens, id) = identifier(tokens)?;
 
     fold_many0(
-      preceded(delimited(meta, token("##"), meta), concat_identifier),
-      move || Self::Literal(id.to_owned()),
+      preceded(delimited(meta::<I>, token::<I>("##"), meta::<I>), concat_identifier),
+      move || Self::Literal(id.iter_elements().map(char::from).collect()),
       |acc, item| match acc {
-        Self::Literal(id) => Self::Concat(vec![id, item.to_owned()]),
+        Self::Literal(id) => Self::Concat(vec![id, item.iter_elements().map(|c| c.as_char()).collect()]),
         Self::Concat(mut ids) => {
-          ids.push(item.to_owned());
+          ids.push(item.iter_elements().map(|c| c.as_char()).collect());
           Self::Concat(ids)
         },
       },

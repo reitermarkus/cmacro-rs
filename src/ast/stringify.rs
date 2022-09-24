@@ -24,10 +24,10 @@ pub struct Stringify {
 }
 
 impl Stringify {
-  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    map(preceded(terminated(token("#"), meta), identifier), |id| Self { id: Identifier::Literal(id.to_owned()) })(
-      tokens,
-    )
+  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+    map(preceded(terminated(token::<&'t [u8]>("#"), meta), identifier), |id| Self {
+      id: Identifier::Literal(id.to_owned()),
+    })(tokens)
   }
 
   pub(crate) fn finish<'t, 'g, C>(&mut self, ctx: &mut LocalContext<'t, 'g, C>) -> Result<Option<Type>, crate::Error>

@@ -37,7 +37,7 @@ pub enum Statement {
 }
 
 impl Statement {
-  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let condition = |input| parenthesized(Expr::parse)(input);
     let block = |input| map(Self::parse, |stmt| if let Self::Block(stmts) = stmt { stmts } else { vec![stmt] })(input);
     let semicolon_or_eof = |input| alt((value((), token(";")), value((), eof)))(input);

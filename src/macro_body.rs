@@ -16,7 +16,7 @@ pub enum MacroBody {
 }
 
 impl MacroBody {
-  pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (input, _) = meta(input)?;
 
     if input.is_empty() {

@@ -18,7 +18,7 @@ pub struct MacroSig<'t> {
   pub args: Vec<&'t str>,
 }
 
-pub(crate) fn tokenize_name(input: &[u8]) -> Vec<&str> {
+pub(crate) fn tokenize_name<'t>(input: &'t [u8]) -> Vec<&'t [u8]> {
   let mut tokens = vec![];
 
   let mut i = 0;
@@ -33,10 +33,10 @@ pub(crate) fn tokenize_name(input: &[u8]) -> Vec<&str> {
           i += 1;
         }
 
-        tokens.push(unsafe { str::from_utf8_unchecked(&input[start..i]) });
+        tokens.push(&input[start..i]);
       },
       Some(b'(' | b')' | b',') => {
-        tokens.push(unsafe { str::from_utf8_unchecked(&input[i..(i + 1)]) });
+        tokens.push(&input[i..(i + 1)]);
         i += 1;
       },
       Some(b'/') if matches!(input.get(i + 1), Some(b'*')) => {
@@ -49,14 +49,14 @@ pub(crate) fn tokenize_name(input: &[u8]) -> Vec<&str> {
           if *c == b'*' {
             if let Some(b'/') = input.get(i) {
               i += 1;
-              tokens.push(unsafe { str::from_utf8_unchecked(&input[start..i]) });
+              tokens.push(&input[start..i]);
               break
             }
           }
         }
       },
       Some(b'.') if matches!(input.get(i..(i + 3)), Some(b"...")) => {
-        tokens.push(unsafe { str::from_utf8_unchecked(&input[i..(i + 3)]) });
+        tokens.push(&input[i..(i + 3)]);
         i += 3;
       },
       Some(b' ') => {
@@ -71,7 +71,10 @@ pub(crate) fn tokenize_name(input: &[u8]) -> Vec<&str> {
 }
 
 impl<'t> MacroSig<'t> {
-  pub fn parse<'i>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self>
+  where
+    'i: 't,
+  {
     let (input, name) = identifier(input)?;
 
     let (input, args) = all_consuming(parenthesized(alt((
@@ -92,7 +95,6 @@ impl<'t> MacroSig<'t> {
         },
       ),
     ))))(input)?;
-    assert!(input.is_empty());
 
     Ok((input, MacroSig { name, args }))
   }

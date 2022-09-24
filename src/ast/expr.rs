@@ -32,7 +32,7 @@ pub enum Expr {
 }
 
 impl Expr {
-  fn parse_concat<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_concat<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let mut parse_string =
       alt((map(LitString::parse, |s| Self::Literal(Lit::String(s))), map(Stringify::parse, Self::Stringify)));
 
@@ -51,7 +51,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_factor<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_factor<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     alt((
       Self::parse_concat,
       map(Lit::parse, Self::Literal),
@@ -60,7 +60,7 @@ impl Expr {
     ))(tokens)
   }
 
-  fn parse_term_prec1<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec1<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, factor) = Self::parse_factor(tokens)?;
 
     match factor {
@@ -107,7 +107,7 @@ impl Expr {
     })(tokens)
   }
 
-  fn parse_term_prec2<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec2<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     alt((
       map(pair(parenthesized(Type::parse), Self::parse_term_prec2), |(ty, term)| {
         // TODO: Handle constness.
@@ -129,7 +129,7 @@ impl Expr {
     ))(tokens)
   }
 
-  fn parse_term_prec3<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec3<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, term) = Self::parse_term_prec2(tokens)?;
 
     fold_many0(
@@ -144,7 +144,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec4<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec4<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, term) = Self::parse_term_prec3(tokens)?;
 
     fold_many0(
@@ -160,7 +160,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec5<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec5<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, term) = Self::parse_term_prec4(tokens)?;
 
     fold_many0(
@@ -176,7 +176,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec6<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec6<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, term) = Self::parse_term_prec5(tokens)?;
 
     fold_many0(
@@ -192,7 +192,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec7<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec7<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, term) = Self::parse_term_prec6(tokens)?;
 
     fold_many0(
@@ -208,7 +208,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec8<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec8<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, term) = Self::parse_term_prec7(tokens)?;
 
     fold_many0(
@@ -218,7 +218,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec9<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec9<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, term) = Self::parse_term_prec8(tokens)?;
 
     fold_many0(
@@ -228,7 +228,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec10<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec10<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, term) = Self::parse_term_prec9(tokens)?;
 
     fold_many0(
@@ -238,7 +238,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec13<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec13<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, term) = Self::parse_term_prec10(tokens)?;
 
     // Parse ternary.
@@ -252,7 +252,7 @@ impl Expr {
     Ok((tokens, term))
   }
 
-  fn parse_term_prec14<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec14<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, term) = Self::parse_term_prec13(tokens)?;
 
     fold_many0(
@@ -290,7 +290,7 @@ impl Expr {
     )(tokens)
   }
 
-  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     Self::parse_term_prec14(tokens)
   }
 

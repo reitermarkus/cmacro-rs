@@ -20,6 +20,7 @@ use nom::sequence::pair;
 use nom::sequence::preceded;
 use nom::sequence::separated_pair;
 use nom::sequence::terminated;
+use nom::AsBytes;
 use nom::IResult;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -27,7 +28,7 @@ use quote::{ToTokens, TokenStreamExt};
 use std::num::FpCategory;
 
 use super::{
-  tokens::{meta, token},
+  tokens::{meta, take_one, token},
   ty::BuiltInType,
 };
 use crate::{CodegenContext, LocalContext};
@@ -44,7 +45,7 @@ pub enum Lit {
 }
 
 impl Lit {
-  pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     alt((
       map(LitChar::parse, Self::Char),
       map(LitString::parse, Self::String),
@@ -113,8 +114,10 @@ pub struct LitChar {
 }
 
 impl LitChar {
-  fn from_str(input: &str) -> IResult<&[u8], Vec<u8>> {
-    all_consuming(delimited(
+  pub fn parse<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+    let (_, token) = take_one(input)?;
+
+    let (_, c) = all_consuming(delimited(
       preceded(opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))), char('\'')),
       fold_many1(
         alt((preceded(char('\\'), escaped_char), map(none_of(r#"\'"#), |b| vec![b as u8]))),
@@ -126,19 +129,10 @@ impl LitChar {
         },
       ),
       char('\''),
-    ))(input.as_bytes())
-  }
+    ))(token)
+    .map_err(|err| err.map_input(|_| input))?;
 
-  pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    if let Some(token) = input.first() {
-      let input = &input[1..];
-
-      if let Ok((_, c)) = Self::from_str(token) {
-        return Ok((input, Self { repr: c }))
-      }
-    }
-
-    Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
+    Ok((input, Self { repr: c }))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
@@ -178,7 +172,7 @@ pub struct LitString {
 }
 
 impl LitString {
-  fn parse_inner<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  fn parse_inner<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     if let Some(token) = input.first() {
       let input = &input[1..];
 
@@ -203,7 +197,7 @@ impl LitString {
     Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
   }
 
-  pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (input, s) = Self::parse_inner(input)?;
 
     fold_many0(
@@ -252,47 +246,52 @@ pub enum LitFloat {
 impl Eq for LitFloat {}
 
 impl LitFloat {
-  fn from_str(input: &str) -> IResult<&str, (&str, Option<&str>)> {
+  fn from_str(input: &[u8]) -> IResult<&[u8], (&str, Option<&str>)> {
     all_consuming(map(
       pair(
-        recognize(separated_pair(
-          opt(digit1),
-          alt((value((), char('.')), value((), pair(tag_no_case("e"), opt(alt((char('+'), char('-')))))))),
-          digit1,
-        )),
-        opt(alt((tag_no_case("f"), tag_no_case("l")))),
+        map_res(
+          recognize(separated_pair(
+            opt(digit1),
+            alt((value((), char('.')), value((), pair(tag_no_case("e"), opt(alt((char('+'), char('-')))))))),
+            digit1,
+          )),
+          str::from_utf8,
+        ),
+        opt(map_res(alt((tag_no_case("f"), tag_no_case("l"))), str::from_utf8)),
       ),
       |(f, suffix): (&str, Option<&str>)| (f, suffix),
     ))(input)
   }
 
-  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    if let Some(Ok((_, (repr, size1)))) = tokens.first().copied().map(Self::from_str) {
-      let tokens = &tokens[1..];
+  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+    let (_, input) = take_one(tokens)?;
 
-      let suffix_f = alt((token("f"), token("F")));
-      let suffix_long = alt((token("l"), token("L")));
+    let (_, (repr, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;
 
-      let mut suffix = map(
-        alt((
-          cond(size1.is_none(), opt(preceded(delimited(meta, token("##"), meta), suffix_f))),
-          cond(size1.is_none() && repr.contains('.'), opt(preceded(delimited(meta, token("##"), meta), suffix_long))),
-        )),
-        |size| size.flatten(),
-      );
+    let tokens = &tokens[1..];
 
-      let (tokens, size2) = suffix(tokens)?;
-      let size = size1.or(size2);
+    let suffix_f = alt((token("f"), token("F")));
+    let suffix_long = alt((token("l"), token("L")));
 
-      let lit = match size {
-        Some("f" | "F") => repr.parse().map(Self::Float),
-        Some("l" | "L") => repr.parse().map(Self::LongDouble),
-        _ => repr.parse().map(Self::Double),
-      };
+    let mut suffix = map(
+      alt((
+        cond(size1.is_none(), opt(preceded(delimited(meta, token("##"), meta), suffix_f))),
+        cond(size1.is_none() && repr.contains('.'), opt(preceded(delimited(meta, token("##"), meta), suffix_long))),
+      )),
+      |size| size.flatten(),
+    );
 
-      if let Ok(lit) = lit {
-        return Ok((tokens, lit))
-      }
+    let (tokens, size2) = suffix(tokens)?;
+    let size = size1.or(size2);
+
+    let lit = match size {
+      Some("f" | "F") => repr.parse().map(Self::Float),
+      Some("l" | "L") => repr.parse().map(Self::LongDouble),
+      _ => repr.parse().map(Self::Double),
+    };
+
+    if let Ok(lit) = lit {
+      return Ok((tokens, lit))
     }
 
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
@@ -407,73 +406,77 @@ pub struct LitInt {
 }
 
 impl LitInt {
-  fn from_str(input: &str) -> IResult<&str, (i128, Option<&str>, Option<&str>)> {
+  fn from_str(input: &[u8]) -> IResult<&[u8], (i128, Option<&str>, Option<&str>)> {
     let digits = alt((
-      map_res(preceded(tag_no_case("0x"), hex_digit1), |n| i128::from_str_radix(n, 16)),
-      map_res(preceded(tag_no_case("0b"), is_a("01")), |n| i128::from_str_radix(n, 2)),
-      map_res(preceded(tag("0"), oct_digit1), |n| i128::from_str_radix(n, 8)),
-      map_res(digit1, |n: &str| n.parse()),
+      map_res(preceded(tag_no_case("0x"), hex_digit1), |s| i128::from_str_radix(str::from_utf8(s).unwrap(), 16)),
+      map_res(preceded(tag_no_case("0b"), is_a("01")), |s| i128::from_str_radix(str::from_utf8(s).unwrap(), 2)),
+      map_res(preceded(tag("0"), oct_digit1), |s| i128::from_str_radix(str::from_utf8(s).unwrap(), 8)),
+      map_res(digit1, |s| str::from_utf8(s).unwrap().parse()),
     ));
 
     let suffix = alt((
       map(
-        pair(tag_no_case("u"), opt(alt((tag_no_case("ll"), tag_no_case("l"), tag_no_case("z"))))),
+        pair(
+          map_res(tag_no_case("u"), str::from_utf8),
+          opt(map_res(alt((tag_no_case("ll"), tag_no_case("l"), tag_no_case("z"))), str::from_utf8)),
+        ),
         |(unsigned, size)| (Some(unsigned), size),
       ),
       map(
-        pair(alt((tag_no_case("ll"), tag_no_case("l"), tag_no_case("z"))), opt(tag_no_case("u"))),
+        pair(
+          map_res(alt((tag_no_case("ll"), tag_no_case("l"), tag_no_case("z"))), str::from_utf8),
+          opt(map_res(tag_no_case("u"), str::from_utf8)),
+        ),
         |(size, unsigned)| (unsigned, Some(size)),
       ),
       map(eof, |_| (None, None)),
     ));
 
-    let (input, (repr, (unsigned, size))) = all_consuming(pair(digits, suffix))(input)?;
-    Ok((input, (repr, unsigned, size)))
+    let (input, (n, (unsigned, size))) = all_consuming(pair(digits, suffix))(input)?;
+    Ok((input, (n, unsigned, size)))
   }
 
-  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    if let Some(Ok((_, (value, unsigned1, size1)))) = tokens.first().copied().map(Self::from_str) {
-      let tokens = &tokens[1..];
+  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+    let (_, input) = take_one(tokens)?;
 
-      let suffix_unsigned = alt((token("u"), token("U")));
-      let suffix_long = alt((token("l"), token("L")));
-      let suffix_long_long = alt((token("ll"), token("LL")));
-      let suffix_size_t = alt((token("z"), token("Z")));
+    let (_, (value, unsigned1, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;
 
-      let mut suffix = map(
-        permutation((
-          cond(unsigned1.is_none(), opt(preceded(delimited(meta, token("##"), meta), suffix_unsigned))),
-          cond(
-            size1.is_none(),
-            opt(preceded(delimited(meta, token("##"), meta), alt((suffix_long_long, suffix_long, suffix_size_t)))),
-          ),
-        )),
-        |(unsigned, size)| (unsigned.flatten(), size.flatten()),
-      );
+    let suffix_unsigned = alt((token("u"), token("U")));
+    let suffix_long = alt((token("l"), token("L")));
+    let suffix_long_long = alt((token("ll"), token("LL")));
+    let suffix_size_t = alt((token("z"), token("Z")));
 
-      let (tokens, (unsigned2, size2)) = suffix(tokens)?;
-      let unsigned = unsigned1.or(unsigned2).is_some();
-      let size = size1.or(size2);
+    let mut suffix = map(
+      permutation((
+        cond(unsigned1.is_none(), opt(preceded(delimited(meta, token("##"), meta), suffix_unsigned))),
+        cond(
+          size1.is_none(),
+          opt(preceded(delimited(meta, token("##"), meta), alt((suffix_long_long, suffix_long, suffix_size_t)))),
+        ),
+      )),
+      |(unsigned, size)| (unsigned.flatten(), size.flatten()),
+    );
 
-      let suffix = match (unsigned, size) {
-        (false, None) => None,
-        (true, None) => Some(BuiltInType::UInt),
-        (unsigned, Some(size)) => {
-          if size.eq_ignore_ascii_case("l") {
-            Some(if unsigned { BuiltInType::ULong } else { BuiltInType::Long })
-          } else if size.eq_ignore_ascii_case("ll") {
-            Some(if unsigned { BuiltInType::ULongLong } else { BuiltInType::LongLong })
-          } else {
-            None
-          }
-        },
-      };
+    let (tokens, (unsigned2, size2)) = suffix(tokens)?;
+    let unsigned = unsigned1.or(unsigned2).is_some();
+    let size = size1.or(size2);
 
-      // TODO: Handle suffix.
-      return Ok((tokens, Self { value, suffix }))
-    }
+    let suffix = match (unsigned, size) {
+      (false, None) => None,
+      (true, None) => Some(BuiltInType::UInt),
+      (unsigned, Some(size)) => {
+        if size.eq_ignore_ascii_case("l") {
+          Some(if unsigned { BuiltInType::ULong } else { BuiltInType::Long })
+        } else if size.eq_ignore_ascii_case("ll") {
+          Some(if unsigned { BuiltInType::ULongLong } else { BuiltInType::LongLong })
+        } else {
+          None
+        }
+      },
+    };
 
-    Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
+    // TODO: Handle suffix.
+    return Ok((tokens, Self { value, suffix }))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(self, _ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {

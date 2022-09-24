@@ -23,7 +23,7 @@ pub struct Asm {
 }
 
 impl Asm {
-  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, (template, outputs, inputs, clobbers)) = parenthesized(tuple((
       separated_list0(tuple((meta, token(","), meta)), LitString::parse),
       opt(preceded(token(":"), separated_list0(tuple((meta, token(","), meta)), Expr::parse))),

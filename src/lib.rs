@@ -25,7 +25,7 @@ pub struct VarMacro {
 }
 
 impl VarMacro {
-  pub fn parse<'i, 't>(name: &'t str, body: &'i [&'t str]) -> Result<Self, crate::Error> {
+  pub fn parse<'i, 't>(name: &'t str, body: &'i [&'t [u8]]) -> Result<Self, crate::Error> {
     let body = match MacroBody::parse(body) {
       Ok((_, body)) => body,
       Err(_) => return Err(crate::Error::ParserError),
@@ -60,15 +60,23 @@ impl VarMacro {
 
 /// A function-like macro.
 #[derive(Debug)]
-pub struct FnMacro<'t> {
-  pub name: &'t str,
-  pub args: Vec<(&'t str, MacroArgType)>,
+pub struct FnMacro<'s> {
+  pub name: &'s str,
+  pub args: Vec<(&'s str, MacroArgType)>,
   pub body: MacroBody,
 }
 
-impl<'t> FnMacro<'t> {
-  pub fn parse<'i>(sig: &'t str, body: &'i [&'t str]) -> Result<Self, nom::Err<nom::error::Error<&'i [&'t str]>>> {
-    let (_, sig) = MacroSig::parse(&tokenize_name(sig.as_bytes())).unwrap();
+impl<'s> FnMacro<'s> {
+  pub fn parse<'i, 't>(
+    sig: &'i [&'s [u8]],
+    body: &'i [&'t [u8]],
+  ) -> Result<Self, nom::Err<nom::error::Error<&'i [&'t [u8]]>>>
+  where
+    'i: 't,
+    'i: 's,
+  {
+    // let sig: Vec<&'s [u8]> = tokenize_name(sig);
+    let (_, sig) = MacroSig::parse(sig).unwrap();
     let (_, body) = MacroBody::parse(body)?;
 
     let args = sig.args.into_iter().map(|arg| (arg, MacroArgType::Unknown)).collect();

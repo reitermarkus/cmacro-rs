@@ -21,7 +21,7 @@ pub struct FunctionDecl {
 }
 
 impl FunctionDecl {
-  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(tokens: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
     let (tokens, ((_, ret_ty), name, args)) = tuple((
       permutation((opt(token("static")), Type::parse)),
       Identifier::parse,
