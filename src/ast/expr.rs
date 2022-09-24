@@ -1,33 +1,18 @@
-use std::ops::RangeFrom;
-use std::ops::RangeTo;
+use std::ops::{RangeFrom, RangeTo};
 
-use nom::branch::alt;
-use nom::combinator::map;
-use nom::combinator::opt;
-use nom::multi::fold_many0;
-use nom::multi::separated_list0;
-use nom::sequence::pair;
-use nom::sequence::preceded;
-use nom::sequence::tuple;
-use nom::AsChar;
-use nom::Compare;
-use nom::FindSubstring;
-use nom::FindToken;
-use nom::IResult;
-use nom::InputIter;
-use nom::InputLength;
-use nom::InputTake;
-use nom::InputTakeAtPosition;
-use nom::Offset;
-use nom::ParseTo;
-use nom::Slice;
+use nom::{
+  branch::alt,
+  combinator::{map, opt},
+  multi::{fold_many0, separated_list0},
+  sequence::{pair, preceded, tuple},
+  AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
+  ParseTo, Slice,
+};
 
 use proc_macro2::TokenStream;
-use quote::quote;
-use quote::TokenStreamExt;
+use quote::{quote, TokenStreamExt};
 
-use super::tokens::parenthesized;
-use super::*;
+use super::{tokens::parenthesized, *};
 use crate::{CodegenContext, LocalContext};
 
 /// An expression.

@@ -1,22 +1,12 @@
-use nom::branch::alt;
-use nom::branch::permutation;
-use nom::combinator::map;
-use nom::combinator::opt;
-use nom::multi::fold_many0;
-use nom::sequence::delimited;
-use nom::sequence::pair;
-use nom::sequence::preceded;
-use nom::AsChar;
-use nom::Compare;
-use nom::FindSubstring;
-use nom::IResult;
-use nom::InputIter;
-use nom::InputLength;
-use nom::InputTake;
+use nom::{
+  branch::{alt, permutation},
+  combinator::{map, opt},
+  multi::fold_many0,
+  sequence::{delimited, pair, preceded},
+  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake,
+};
 use proc_macro2::TokenStream;
-use quote::quote;
-use quote::ToTokens;
-use quote::TokenStreamExt;
+use quote::{quote, ToTokens, TokenStreamExt};
 
 use super::*;
 use crate::{CodegenContext, LocalContext};

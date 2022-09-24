@@ -1,31 +1,21 @@
 #![warn(missing_debug_implementations)]
 
-use std::ops::RangeFrom;
-use std::ops::RangeTo;
-use std::collections::HashMap;
-use std::str;
+use std::{
+  collections::HashMap,
+  ops::{RangeFrom, RangeTo},
+  str,
+};
 
+use nom::{
+  branch::alt,
+  combinator::{all_consuming, map, opt},
+  multi::separated_list0,
+  sequence::tuple,
+  AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
+  ParseTo, Slice,
+};
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::quote;
-use quote::TokenStreamExt;
-use nom::AsChar;
-use nom::Compare;
-use nom::FindSubstring;
-use nom::FindToken;
-use nom::InputIter;
-use nom::InputLength;
-use nom::InputTake;
-use nom::InputTakeAtPosition;
-use nom::Offset;
-use nom::ParseTo;
-use nom::Slice;
-use nom::IResult;
-use nom::sequence::tuple;
-use nom::multi::separated_list0;
-use nom::combinator::map;
-use nom::combinator::opt;
-use nom::combinator::all_consuming;
-use nom::branch::alt;
+use quote::{quote, TokenStreamExt};
 
 pub mod ast;
 pub use ast::*;
@@ -62,13 +52,8 @@ impl VarMacro {
       + Clone,
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
-
   {
-    let name = if let Ok((_, name)) = identifier(&[name]) {
-      name
-    } else {
-      return Err(crate::Error::ParserError)
-    };
+    let name = if let Ok((_, name)) = identifier(&[name]) { name } else { return Err(crate::Error::ParserError) };
 
     let body = match MacroBody::parse(body) {
       Ok((_, body)) => body,
@@ -136,12 +121,7 @@ impl FnMacro {
     ))))(input)
   }
 
-
-  pub fn parse<I, C>(
-    name: I,
-    args: &[I],
-    body: &[I],
-  ) -> Result<Self, crate::Error>
+  pub fn parse<I, C>(name: I, args: &[I], body: &[I]) -> Result<Self, crate::Error>
   where
     I: InputTake
       + InputLength
@@ -158,7 +138,6 @@ impl FnMacro {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-
     let (_, name) = identifier(&[name]).map_err(|_| crate::Error::ParserError)?;
 
     let (_, args) = Self::parse_args(args).map_err(|_| crate::Error::ParserError)?;

@@ -1,47 +1,26 @@
-use std::ops::RangeFrom;
-use std::ops::RangeTo;
-use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Shl, Shr, Sub};
-use std::str;
+use std::{
+  ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, RangeFrom, RangeTo, Rem, Shl, Shr, Sub},
+  str,
+};
 
-use nom::branch::alt;
-use nom::branch::permutation;
-use nom::bytes::complete::is_not;
-use nom::bytes::complete::{is_a, tag, tag_no_case};
-use nom::character::complete::anychar;
-use nom::character::complete::none_of;
-use nom::character::complete::{char, digit1, hex_digit1, oct_digit1, one_of};
-use nom::character::{is_hex_digit, is_oct_digit};
-use nom::combinator::eof;
-use nom::combinator::recognize;
-use nom::combinator::verify;
-use nom::combinator::{all_consuming, cond, map_opt};
-use nom::combinator::{map, opt};
-use nom::multi::fold_many0;
-use nom::multi::fold_many1;
-use nom::multi::fold_many_m_n;
-use nom::sequence::delimited;
-use nom::sequence::pair;
-use nom::sequence::preceded;
-use nom::sequence::separated_pair;
-use nom::sequence::terminated;
-use nom::AsBytes;
-use nom::AsChar;
-use nom::Compare;
-use nom::FindSubstring;
+use nom::{
+  branch::{alt, permutation},
+  bytes::complete::{is_a, is_not, tag, tag_no_case},
+  character::{
+    complete::{anychar, char, digit1, hex_digit1, none_of, oct_digit1, one_of},
+    is_hex_digit, is_oct_digit,
+  },
+  combinator::{all_consuming, cond, eof, map, map_opt, opt, recognize, verify},
+  multi::{fold_many0, fold_many1, fold_many_m_n},
+  sequence::{delimited, pair, preceded, separated_pair, terminated},
+  AsBytes, AsChar, Compare, FindSubstring,
+};
 
-use nom::CompareResult;
-use nom::FindToken;
-use nom::IResult;
-use nom::InputIter;
-use nom::InputLength;
-use nom::InputTake;
-use nom::InputTakeAtPosition;
-use nom::Offset;
-use nom::ParseTo;
-use nom::Slice;
+use nom::{
+  CompareResult, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, ParseTo, Slice,
+};
 use proc_macro2::TokenStream;
-use quote::quote;
-use quote::{ToTokens, TokenStreamExt};
+use quote::{quote, ToTokens, TokenStreamExt};
 use std::num::FpCategory;
 
 use super::{

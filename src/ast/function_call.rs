@@ -1,6 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::quote;
-use quote::TokenStreamExt;
+use quote::{quote, TokenStreamExt};
 
 use super::*;
 use crate::{CodegenContext, LocalContext, MacroArgType};

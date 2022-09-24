@@ -1,17 +1,10 @@
-use nom::bytes::complete::tag;
-use nom::bytes::complete::take_until;
-use nom::combinator::all_consuming;
-use nom::combinator::map_opt;
-use nom::multi::many0;
-use nom::sequence::delimited;
-use nom::sequence::pair;
-use nom::Compare;
-use nom::CompareResult;
-use nom::FindSubstring;
-use nom::IResult;
-use nom::InputLength;
-use nom::InputTake;
-use nom::Parser;
+use nom::{
+  bytes::complete::{tag, take_until},
+  combinator::{all_consuming, map_opt},
+  multi::many0,
+  sequence::{delimited, pair},
+  Compare, CompareResult, FindSubstring, IResult, InputLength, InputTake, Parser,
+};
 
 pub(crate) fn take_one<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], I>
 where

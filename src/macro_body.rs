@@ -1,21 +1,11 @@
-use std::ops::RangeFrom;
-use std::ops::RangeTo;
+use std::ops::{RangeFrom, RangeTo};
 
-use nom::branch::alt;
-use nom::combinator::all_consuming;
-use nom::combinator::map;
-use nom::AsChar;
-use nom::Compare;
-use nom::FindSubstring;
-use nom::FindToken;
-use nom::IResult;
-use nom::InputIter;
-use nom::InputLength;
-use nom::InputTake;
-use nom::InputTakeAtPosition;
-use nom::Offset;
-use nom::ParseTo;
-use nom::Slice;
+use nom::{
+  branch::alt,
+  combinator::{all_consuming, map},
+  AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
+  ParseTo, Slice,
+};
 
 use crate::{
   ast::{meta, Type},

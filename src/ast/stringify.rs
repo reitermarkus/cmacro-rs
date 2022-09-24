@@ -1,16 +1,10 @@
-use nom::combinator::map;
-use nom::sequence::preceded;
-use nom::sequence::terminated;
-use nom::AsChar;
-use nom::Compare;
-use nom::FindSubstring;
-use nom::IResult;
-use nom::InputIter;
-use nom::InputLength;
-use nom::InputTake;
+use nom::{
+  combinator::map,
+  sequence::{preceded, terminated},
+  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake,
+};
 use proc_macro2::TokenStream;
-use quote::quote;
-use quote::TokenStreamExt;
+use quote::{quote, TokenStreamExt};
 
 use super::{
   identifier::identifier,

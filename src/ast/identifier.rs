@@ -1,19 +1,11 @@
-use nom::combinator::verify;
-use nom::multi::fold_many0;
-use nom::sequence::delimited;
-use nom::sequence::preceded;
-use nom::AsChar;
-use nom::Compare;
-use nom::FindSubstring;
-use nom::IResult;
-use nom::InputIter;
-use nom::InputLength;
-use nom::InputTake;
-use proc_macro2::Ident;
-use proc_macro2::Span;
-use proc_macro2::TokenStream;
-use quote::quote;
-use quote::TokenStreamExt;
+use nom::{
+  combinator::verify,
+  multi::fold_many0,
+  sequence::{delimited, preceded},
+  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake,
+};
+use proc_macro2::{Ident, Span, TokenStream};
+use quote::{quote, TokenStreamExt};
 
 use super::{
   tokens::{meta, take_one, token},
