@@ -12,6 +12,7 @@ use nom::FindToken;
 use nom::InputIter;
 use nom::InputLength;
 use nom::InputTake;
+use nom::InputTakeAtPosition;
 use nom::Slice;
 
 use nom::branch::permutation;
@@ -221,32 +222,55 @@ pub struct LitString {
 }
 
 impl LitString {
-  fn parse_inner<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
-    if let Some(token) = input.first() {
-      let input = &input[1..];
+  fn parse_inner<'i, 't, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake
+      + InputLength
+      + Slice<RangeFrom<usize>>
+      + InputIter<Item = C>
+      + Clone
+      + InputTakeAtPosition<Item = C>
+      + Compare<&'static str>,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
+  {
+    let (input2, token) = take_one(input)?;
 
-      let res: IResult<&[u8], Vec<u8>> = all_consuming(delimited(
-        preceded(opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))), char('\"')),
-        fold_many0(
-          alt((preceded(char('\\'), escaped_char), map(is_not([b'\\', b'\"']), |b: &[u8]| b.to_vec()))),
-          Vec::new,
-          |mut acc, c| {
-            acc.extend(c);
-            acc
-          },
-        ),
-        char('\"'),
-      ))(token.as_bytes());
+    let res: IResult<I, Vec<u8>> = all_consuming(delimited(
+      preceded(opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))), char('\"')),
+      fold_many0(
+        alt((
+          preceded(char('\\'), escaped_char),
+          map(is_not(r#"\""#), |b: I| b.iter_elements().map(|c| c.as_char() as u8).collect()),
+        )),
+        Vec::new,
+        |mut acc, c| {
+          acc.extend(c);
+          acc
+        },
+      ),
+      char('\"'),
+    ))(token);
 
-      if let Ok((_, s)) = res {
-        return Ok((input, Self { repr: s }))
-      }
+    if let Ok((_, s)) = res {
+      return Ok((input2, Self { repr: s }))
     }
 
     Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
   }
 
-  pub fn parse<'i, 't>(input: &'i [&'t [u8]]) -> IResult<&'i [&'t [u8]], Self> {
+  pub fn parse<'i, 't, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
+  where
+    I: InputTake
+      + InputLength
+      + Slice<RangeFrom<usize>>
+      + InputIter<Item = C>
+      + Clone
+      + InputTakeAtPosition<Item = C>
+      + Compare<&'static str>,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
+  {
     let (input, s) = Self::parse_inner(input)?;
 
     fold_many0(
