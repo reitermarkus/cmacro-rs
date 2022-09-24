@@ -12,7 +12,6 @@ use nom::AsChar;
 use nom::Compare;
 use nom::FindSubstring;
 use nom::FindToken;
-use nom::IResult;
 use nom::InputIter;
 use nom::InputLength;
 use nom::InputTake;
@@ -20,6 +19,13 @@ use nom::InputTakeAtPosition;
 use nom::Offset;
 use nom::ParseTo;
 use nom::Slice;
+use nom::IResult;
+use nom::sequence::tuple;
+use nom::multi::separated_list0;
+use nom::combinator::map;
+use nom::combinator::opt;
+use nom::combinator::all_consuming;
+use nom::branch::alt;
 
 pub mod ast;
 pub use ast::*;
@@ -40,7 +46,7 @@ pub struct VarMacro {
 }
 
 impl VarMacro {
-  pub fn parse<'i, I, C>(name: &str, body: &'i [I]) -> Result<Self, crate::Error>
+  pub fn parse<I, C>(name: I, body: &[I]) -> Result<Self, crate::Error>
   where
     I: InputTake
       + InputLength
@@ -58,6 +64,12 @@ impl VarMacro {
     &'static str: FindToken<<I as InputIter>::Item>,
 
   {
+    let name = if let Ok((_, name)) = identifier(&[name]) {
+      name
+    } else {
+      return Err(crate::Error::ParserError)
+    };
+
     let body = match MacroBody::parse(body) {
       Ok((_, body)) => body,
       Err(_) => return Err(crate::Error::ParserError),
@@ -99,11 +111,37 @@ pub struct FnMacro {
 }
 
 impl FnMacro {
-  pub fn parse<'i, I, C>(
-    sig: &'i [I],
-    body: &'i [I],
-  ) -> Result<Self, nom::Err<nom::error::Error<&'i [I]>>>
+  fn parse_args<'i, I>(input: &'i [I]) -> IResult<&'i [I], Vec<String>>
+  where
+    I: InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+    <I as InputIter>::Item: AsChar,
+  {
+    all_consuming(parenthesized(alt((
+      map(token("..."), |var_arg| vec![var_arg.to_owned()]),
+      map(
+        tuple((
+          separated_list0(tuple((meta, token(","), meta)), identifier),
+          opt(tuple((tuple((meta, token(","), meta)), map(token("..."), |var_arg| var_arg.to_owned())))),
+        )),
+        |(arguments, var_arg)| {
+          let mut arguments = arguments.to_vec();
 
+          if let Some((_, var_arg)) = var_arg {
+            arguments.push(var_arg);
+          }
+
+          arguments
+        },
+      ),
+    ))))(input)
+  }
+
+
+  pub fn parse<I, C>(
+    name: I,
+    args: &[I],
+    body: &[I],
+  ) -> Result<Self, crate::Error>
   where
     I: InputTake
       + InputLength
@@ -120,12 +158,14 @@ impl FnMacro {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    // let sig: Vec<&'s [u8]> = tokenize_name(sig);
-    let (_, sig) = MacroSig::parse(sig)?;
-    let (_, body) = MacroBody::parse(body)?;
 
-    let args = sig.args.into_iter().map(|arg| (arg, MacroArgType::Unknown)).collect();
-    Ok(Self { name: sig.name, args, body })
+    let (_, name) = identifier(&[name]).map_err(|_| crate::Error::ParserError)?;
+
+    let (_, args) = Self::parse_args(args).map_err(|_| crate::Error::ParserError)?;
+    let (_, body) = MacroBody::parse(body).map_err(|_| crate::Error::ParserError)?;
+
+    let args = args.into_iter().map(|arg| (arg, MacroArgType::Unknown)).collect();
+    Ok(Self { name: name, args, body })
   }
 
   pub fn generate<C>(

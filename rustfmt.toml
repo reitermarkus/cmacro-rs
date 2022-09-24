@@ -4,4 +4,5 @@ use_small_heuristics = "Max"
 match_block_trailing_comma = true
 trailing_semicolon = false
 enum_discrim_align_threshold = 100
+imports_granularity = "Crate"
 # ignore = ["/"]
