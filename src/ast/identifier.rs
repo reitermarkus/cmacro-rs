@@ -3,7 +3,7 @@ use std::{fmt::Debug, ops::RangeFrom};
 use nom::{
   branch::alt,
   character::complete::{anychar, char},
-  combinator::{all_consuming, map_opt, map_parser, verify},
+  combinator::{all_consuming, map_opt, map_parser},
   multi::{fold_many0, fold_many1},
   sequence::{delimited, preceded},
   AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
@@ -18,28 +18,6 @@ use super::{
 };
 use crate::{CodegenContext, LocalContext, MacroArgType};
 
-fn digit<I>(input: I) -> IResult<I, char>
-where
-  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
-  <I as InputIter>::Item: AsChar,
-{
-  verify(anychar, |c| matches!(c, '0'..='9'))(input)
-}
-
-fn nondigit<I>(input: I) -> IResult<I, char>
-where
-  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
-  <I as InputIter>::Item: AsChar,
-{
-  map_opt(alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)), |c| {
-    if !matches!(c, '0'..='9') {
-      Some(c)
-    } else {
-      None
-    }
-  })(input)
-}
-
 pub(crate) fn identifier<I>(tokens: &[I]) -> IResult<&[I], String>
 where
   I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
@@ -48,14 +26,12 @@ where
   map_parser(take_one, |token| {
     map_opt(
       all_consuming(|token| {
-        let (token, c) = nondigit(token)?;
-
-        fold_many0(
-          alt((nondigit, digit)),
-          move || vec![c],
-          |mut s, c| {
-            s.push(c);
-            s
+        fold_many1(
+          alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
+          Vec::new,
+          |mut acc, c| {
+            acc.push(c);
+            acc
           },
         )(token)
       }),
@@ -64,13 +40,13 @@ where
         let s =
           if let Some(s) = s.and_then(|s| String::from_utf8(s).ok()) { s } else { c.into_iter().collect::<String>() };
 
-        for c in s.chars() {
-          if !matches!(c, '0'..='9' | 'A'..='Z' | 'a'..='z' | '_' | 'À'..='Ö' | 'Ø'..='ö' | 'ø'..) {
-            return None
-          }
+        let mut chars = s.chars();
+        let start = chars.next()?;
+        if unicode_ident::is_xid_start(start) || start == '_' && chars.all(unicode_ident::is_xid_continue) {
+          Some(s)
+        } else {
+          None
         }
-
-        Some(s)
       },
     )(token)
     .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))
@@ -83,10 +59,28 @@ where
   <I as InputIter>::Item: AsChar,
 {
   map_parser(take_one, |token| {
-    all_consuming(fold_many1(alt((nondigit, digit)), String::new, |mut s, c| {
-      s.push(c);
-      s
-    }))(token)
+    all_consuming(map_opt(
+      fold_many1(
+        alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
+        Vec::new,
+        |mut acc, c| {
+          acc.push(c);
+          acc
+        },
+      ),
+      |c| {
+        let s: Option<Vec<u8>> = c.iter().map(|c| if *c as u32 <= 0xff { Some(*c as u8) } else { None }).collect();
+        let s =
+          if let Some(s) = s.and_then(|s| String::from_utf8(s).ok()) { s } else { c.into_iter().collect::<String>() };
+
+        let mut chars = s.chars();
+        if chars.all(unicode_ident::is_xid_continue) {
+          Some(s)
+        } else {
+          None
+        }
+      },
+    ))(token)
     .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))
   })(tokens)
 }
@@ -205,12 +199,18 @@ mod tests {
 
     let (_, id) = Identifier::parse(&["Δx".as_bytes()]).unwrap();
     assert_eq!(id, Identifier::Literal("Δx".into()));
+
+    let (_, id) = Identifier::parse(&["_123"]).unwrap();
+    assert_eq!(id, Identifier::Literal("_123".into()));
   }
 
   #[test]
   fn parse_concat() {
     let (_, id) = Identifier::parse(&["abc", "##", "def"]).unwrap();
     assert_eq!(id, Identifier::Concat(vec!["abc".into(), "def".into()]));
+
+    let (_, id) = Identifier::parse(&["abc", "##", "_def"]).unwrap();
+    assert_eq!(id, Identifier::Concat(vec!["abc".into(), "_def".into()]));
 
     let (_, id) = Identifier::parse(&["abc", "##", "123"]).unwrap();
     assert_eq!(id, Identifier::Concat(vec!["abc".into(), "123".into()]));
