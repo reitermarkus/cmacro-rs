@@ -19,6 +19,11 @@ use super::{tokens::parenthesized, *};
 use crate::{CodegenContext, LocalContext};
 
 /// An expression.
+///
+/// ```c
+/// #define EXPR a + b
+/// #define EXPR 1 + 2
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
   Variable { name: Identifier },

@@ -18,6 +18,10 @@ use super::{tokens::parenthesized, *};
 use crate::{CodegenContext, LocalContext};
 
 /// A function declaration.
+///
+/// ```c
+/// #define function_decl void f(int a, int b, int c)
+/// ```
 #[derive(Debug)]
 pub struct FunctionDecl {
   ret_ty: Type,

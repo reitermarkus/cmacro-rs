@@ -7,6 +7,10 @@ use super::*;
 use crate::{CodegenContext, LocalContext, MacroArgType};
 
 /// A function call.
+///
+/// ```c
+/// #define function_call f(1, 2, 3)
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionCall {
   pub name: Identifier,
