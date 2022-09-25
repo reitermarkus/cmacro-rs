@@ -31,17 +31,13 @@ where
   I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
   <I as InputIter>::Item: AsChar,
 {
-  verify(anychar, |c| matches!(c, 'a'..='z' | 'A'..='Z' | '_'))(input)
-}
-
-fn identifier_nondigit<I>(input: I) -> IResult<I, char>
-where
-  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
-  <I as InputIter>::Item: AsChar,
-{
-  verify(alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), nondigit)), |c| !matches!(c, '0'..='9'))(
-    input,
-  )
+  map_opt(alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)), |c| {
+    if !matches!(c, '0'..='9') {
+      Some(c)
+    } else {
+      None
+    }
+  })(input)
 }
 
 pub(crate) fn identifier<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], String>
@@ -50,18 +46,33 @@ where
   <I as InputIter>::Item: AsChar,
 {
   map_parser(take_one, |token| {
-    all_consuming(|token| {
-      let (token, c) = identifier_nondigit(token)?;
+    map_opt(
+      all_consuming(|token| {
+        let (token, c) = nondigit(token)?;
 
-      fold_many0(
-        alt((identifier_nondigit, digit)),
-        move || c.to_string(),
-        |mut s, c| {
-          s.push(c);
-          s
-        },
-      )(token)
-    })(token)
+        fold_many0(
+          alt((nondigit, digit)),
+          move || vec![c],
+          |mut s, c| {
+            s.push(c);
+            s
+          },
+        )(token)
+      }),
+      |c| {
+        let s: Option<Vec<u8>> = c.iter().map(|c| if *c as u32 <= 0xff { Some(*c as u8) } else { None }).collect();
+        let s =
+          if let Some(s) = s.and_then(|s| String::from_utf8(s).ok()) { s } else { c.into_iter().collect::<String>() };
+
+        for c in s.chars() {
+          if !matches!(c, '0'..='9' | 'A'..='Z' | 'a'..='z' | '_' | 'À'..='Ö' | 'Ø'..='ö' | 'ø'..) {
+            return None
+          }
+        }
+
+        Some(s)
+      },
+    )(token)
     .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))
   })(tokens)
 }
@@ -72,7 +83,7 @@ where
   <I as InputIter>::Item: AsChar,
 {
   map_parser(take_one, |token| {
-    all_consuming(fold_many1(alt((identifier_nondigit, digit)), String::new, |mut s, c| {
+    all_consuming(fold_many1(alt((nondigit, digit)), String::new, |mut s, c| {
       s.push(c);
       s
     }))(token)
@@ -188,6 +199,12 @@ mod tests {
   fn parse_literal() {
     let (_, id) = Identifier::parse(&["asdf"]).unwrap();
     assert_eq!(id, Identifier::Literal("asdf".into()));
+
+    let (_, id) = Identifier::parse(&["Δx"]).unwrap();
+    assert_eq!(id, Identifier::Literal("Δx".into()));
+
+    let (_, id) = Identifier::parse(&["Δx".as_bytes()]).unwrap();
+    assert_eq!(id, Identifier::Literal("Δx".into()));
   }
 
   #[test]
