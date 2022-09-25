@@ -1,9 +1,9 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::RangeFrom};
 
 use nom::{
   combinator::map,
   sequence::{preceded, terminated},
-  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake,
+  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
@@ -28,7 +28,14 @@ pub struct Stringify {
 impl Stringify {
   pub fn parse<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: Debug + InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+    I: Debug
+      + InputTake
+      + InputLength
+      + InputIter
+      + Slice<RangeFrom<usize>>
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + Clone,
     <I as InputIter>::Item: AsChar,
   {
     map(preceded(terminated(token("#"), meta), identifier), |id| Self { id: Identifier::Literal(id.to_owned()) })(

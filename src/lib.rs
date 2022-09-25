@@ -100,7 +100,14 @@ pub struct FnMacro {
 impl FnMacro {
   fn parse_args<'i, I>(input: &'i [I]) -> IResult<&'i [I], Vec<String>>
   where
-    I: Debug + InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+    I: Debug
+      + InputTake
+      + InputLength
+      + InputIter
+      + Slice<RangeFrom<usize>>
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + Clone,
     <I as InputIter>::Item: AsChar,
   {
     all_consuming(parenthesized(alt((

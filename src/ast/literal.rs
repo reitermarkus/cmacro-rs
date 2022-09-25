@@ -78,6 +78,35 @@ impl Lit {
   }
 }
 
+pub(crate) fn universal_char<I>(input: I) -> IResult<I, u32>
+where
+  I: Debug + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone,
+  <I as InputIter>::Item: AsChar,
+{
+  alt((
+    preceded(
+      char('u'),
+      fold_many_m_n(
+        4,
+        4,
+        map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16)),
+        || 0,
+        |acc, n| acc * 16 + n,
+      ),
+    ),
+    preceded(
+      char('U'),
+      fold_many_m_n(
+        8,
+        8,
+        map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16)),
+        || 0,
+        |acc, n| acc * 16 + n,
+      ),
+    ),
+  ))(input)
+}
+
 fn escaped_char<I>(input: I) -> IResult<I, u32>
 where
   I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
@@ -111,26 +140,7 @@ where
         |acc, n| acc * 16 + n,
       ),
     ),
-    preceded(
-      char('u'),
-      fold_many_m_n(
-        4,
-        4,
-        map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16)),
-        || 0,
-        |acc, n| acc * 16 + n,
-      ),
-    ),
-    preceded(
-      char('U'),
-      fold_many_m_n(
-        8,
-        8,
-        map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16)),
-        || 0,
-        |acc, n| acc * 16 + n,
-      ),
-    ),
+    universal_char,
   ))(input)
 }
 

@@ -1,11 +1,11 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::RangeFrom};
 
 use nom::{
   branch::{alt, permutation},
   combinator::{map, opt},
   multi::fold_many0,
   sequence::{delimited, pair, preceded, terminated},
-  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake,
+  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
@@ -114,7 +114,7 @@ where
 
 fn ty<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], Type>
 where
-  I: Debug + InputTake + InputLength + InputIter + Compare<&'static str> + Clone + 't,
+  I: Debug + InputTake + InputLength + InputIter + Slice<RangeFrom<usize>> + Compare<&'static str> + Clone + 't,
   <I as InputIter>::Item: AsChar,
 {
   alt((
@@ -164,7 +164,14 @@ pub enum Type {
 impl Type {
   pub fn parse<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: Debug + InputTake + InputLength + InputIter + Compare<&'static str> + FindSubstring<&'static str> + Clone,
+    I: Debug
+      + InputTake
+      + InputLength
+      + InputIter
+      + Slice<RangeFrom<usize>>
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + Clone,
     <I as InputIter>::Item: AsChar,
   {
     let (tokens, ty) = delimited(const_qualifier, ty, const_qualifier)(tokens)?;

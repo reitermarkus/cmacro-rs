@@ -1,46 +1,83 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::RangeFrom};
 
 use nom::{
-  combinator::verify,
-  multi::fold_many0,
+  branch::alt,
+  character::complete::{anychar, char},
+  combinator::{all_consuming, map_opt, map_parser, verify},
+  multi::{fold_many0, fold_many1},
   sequence::{delimited, preceded},
-  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake,
+  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
 };
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{
+  literal::universal_char,
   tokens::{meta, take_one, token},
   Type,
 };
 use crate::{CodegenContext, LocalContext, MacroArgType};
 
-pub(crate) fn identifier<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], String>
+fn digit<I>(input: I) -> IResult<I, char>
 where
-  I: Debug + InputIter + Clone,
+  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
   <I as InputIter>::Item: AsChar,
 {
-  verify(take_one, |token: &I| {
-    let mut it = token.iter_elements().map(|i| i.as_char());
-    matches!(it.next(), Some('a'..='z' | 'A'..='Z' | '_'))
-      && it.all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
-  })(tokens)?;
+  verify(anychar, |c| matches!(c, '0'..='9'))(input)
+}
 
-  let s = tokens[0].iter_elements().map(|c| c.as_char()).collect();
-  Ok((&tokens[1..], s))
+fn nondigit<I>(input: I) -> IResult<I, char>
+where
+  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
+  <I as InputIter>::Item: AsChar,
+{
+  verify(anychar, |c| matches!(c, 'a'..='z' | 'A'..='Z' | '_'))(input)
+}
+
+fn identifier_nondigit<I>(input: I) -> IResult<I, char>
+where
+  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
+  <I as InputIter>::Item: AsChar,
+{
+  verify(alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), nondigit)), |c| !matches!(c, '0'..='9'))(
+    input,
+  )
+}
+
+pub(crate) fn identifier<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], String>
+where
+  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
+  <I as InputIter>::Item: AsChar,
+{
+  map_parser(take_one, |token| {
+    all_consuming(|token| {
+      let (token, c) = identifier_nondigit(token)?;
+
+      fold_many0(
+        alt((identifier_nondigit, digit)),
+        move || c.to_string(),
+        |mut s, c| {
+          s.push(c);
+          s
+        },
+      )(token)
+    })(token)
+    .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))
+  })(tokens)
 }
 
 fn concat_identifier<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], String>
 where
-  I: Debug + InputIter + Clone,
+  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
   <I as InputIter>::Item: AsChar,
 {
-  verify(take_one, |token: &I| {
-    token.iter_elements().all(|c| matches!(c.as_char(), 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
-  })(tokens)?;
-
-  let s = tokens[0].iter_elements().map(|c| c.as_char()).collect();
-  Ok((&tokens[1..], s))
+  map_parser(take_one, |token| {
+    all_consuming(fold_many1(alt((identifier_nondigit, digit)), String::new, |mut s, c| {
+      s.push(c);
+      s
+    }))(token)
+    .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))
+  })(tokens)
 }
 
 /// An identifier.
@@ -64,6 +101,7 @@ impl Identifier {
       + InputTake
       + InputLength
       + Compare<&'static str>
+      + Slice<std::ops::RangeFrom<usize>>
       + FindSubstring<&'static str>
       + Clone,
     T: AsChar,
