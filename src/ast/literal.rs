@@ -11,7 +11,7 @@ use nom::{
     complete::{anychar, char, digit1, hex_digit1, none_of, oct_digit1, one_of},
     is_hex_digit, is_oct_digit,
   },
-  combinator::{all_consuming, cond, eof, map, map_opt, opt, recognize, verify},
+  combinator::{all_consuming, cond, eof, map, map_opt, opt, recognize, value, verify},
   multi::{fold_many0, fold_many1, fold_many_m_n},
   sequence::{delimited, pair, preceded, separated_pair, terminated},
   AsBytes, AsChar, Compare, FindSubstring,
@@ -78,69 +78,59 @@ impl Lit {
   }
 }
 
-fn escaped_char<I>(input: I) -> IResult<I, Vec<u8>>
+fn escaped_char<I>(input: I) -> IResult<I, u32>
 where
   I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
   <I as InputIter>::Item: AsChar + Copy,
   &'static str: FindToken<<I as InputIter>::Item>,
 {
+  dbg!(&input);
+
   alt((
-    map(char('a'), |_| vec![b'\x07']),
-    map(char('b'), |_| vec![b'\x08']),
-    map(char('e'), |_| vec![b'\x1b']),
-    map(char('f'), |_| vec![b'\x0c']),
-    map(char('n'), |_| vec![b'\n']),
-    map(char('r'), |_| vec![b'\r']),
-    map(char('t'), |_| vec![b'\t']),
-    map(char('v'), |_| vec![b'\x0b']),
-    map(one_of(r#"\'"?"#), |c| vec![c as u8]),
-    map(
-      fold_many_m_n(
-        1,
-        3,
-        map_opt(verify(anychar, |c| is_oct_digit(*c as u8)), |c| c.to_digit(8).map(|n| n as u8)),
-        || 0,
-        |acc, n| acc * 8 + n,
-      ),
-      |n| vec![n],
+    map(char('a'), |_| b'\x07' as u32),
+    map(char('b'), |_| b'\x08' as u32),
+    map(char('e'), |_| b'\x1b' as u32),
+    map(char('f'), |_| b'\x0c' as u32),
+    map(char('n'), |_| b'\n' as u32),
+    map(char('r'), |_| b'\r' as u32),
+    map(char('t'), |_| b'\t' as u32),
+    map(char('v'), |_| b'\x0b' as u32),
+    map(one_of(r#"\'"?"#), |c| c as u32),
+    fold_many_m_n(
+      1,
+      3,
+      map_opt(verify(anychar, |c| is_oct_digit(*c as u8)), |c| c.to_digit(8)),
+      || 0,
+      |acc, n| acc * 8 + n,
     ),
     preceded(
       tag_no_case("x"),
-      map(
-        fold_many_m_n(
-          2,
-          2,
-          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16).map(|n| n as u8)),
-          || 0,
-          |acc, n| acc * 16 + n,
-        ),
-        |n| vec![n],
+      fold_many_m_n(
+        2,
+        2,
+        map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16)),
+        || 0,
+        |acc, n| acc * 16 + n,
       ),
     ),
     preceded(
       char('u'),
-      map(
-        fold_many_m_n(
-          4,
-          4,
-          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16).map(|n| n as u16)),
-          || 0,
-          |acc, n| acc * 16 + n,
-        ),
-        |n| n.to_be_bytes().to_vec(),
+      fold_many_m_n(
+        4,
+        4,
+        map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16)),
+        || 0,
+        |acc, n| acc * 16 + n,
       ),
     ),
     preceded(
       char('U'),
-      map(
-        fold_many_m_n(
-          8,
-          8,
-          map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16).map(|n| n as u32)),
-          || 0,
-          |acc, n| acc * 16 + n,
-        ),
-        |n| n.to_be_bytes().to_vec(),
+      fold_many_m_n(
+        8,
+        8,
+        map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16)),
+        || 0,
+        |acc, n| acc * 16 + n,
       ),
     ),
   ))(input)
@@ -156,29 +146,88 @@ where
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitChar {
-  repr: Vec<u8>,
+  repr: u32,
 }
 
 impl LitChar {
   pub fn parse<'i, I>(input: &'i [I]) -> IResult<&'i [I], Self>
   where
-    I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
+    I: Debug
+      + InputTake
+      + InputLength
+      + Slice<RangeFrom<usize>>
+      + Slice<RangeTo<usize>>
+      + Offset
+      + InputIter
+      + Clone
+      + Compare<&'static str>,
     <I as InputIter>::Item: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
     let (input2, token) = take_one(input)?;
 
-    let (_, c) = all_consuming(delimited(
-      preceded(opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))), char('\'')),
-      fold_many1(
-        alt((preceded(char('\\'), escaped_char), map(none_of(r#"\'"#), |b| vec![b.as_char() as u8]))),
-        Vec::new,
-        |mut acc, c| {
-          acc.clear();
-          acc.extend(c);
-          acc
-        },
-      ),
+    let (_, c) = all_consuming(terminated(
+      alt((
+        preceded(
+          char('\''),
+          map_opt(
+            fold_many1(
+              alt((preceded(char('\\'), escaped_char), map(none_of("\\\'\n"), |b| b.as_char() as u32))),
+              || 0u32,
+              |acc, c| c,
+            ),
+            |c| if c <= 0xff { Some(c) } else { None },
+          ),
+        ),
+        map_opt(
+          pair(
+            terminated(
+              opt(alt((value("u8", tag("u8")), value("u", tag("u")), value("U", tag("U")), value("L", tag("L"))))),
+              char('\''),
+            ),
+            fold_many1(
+              alt((preceded(char('\\'), escaped_char), map(none_of("\\\'\n"), |b| b.as_char() as u32))),
+              || 0,
+              |acc, c| {
+                let acc = if c <= u8::MAX as u32 {
+                  acc << 8 | c
+                } else if c <= u16::MAX as u32 {
+                  acc << 16 | c
+                } else {
+                  c
+                };
+
+                dbg!(acc)
+              },
+            ),
+          ),
+          |(prefix, c)| {
+            let max = match prefix {
+              Some("u8") => 0x7f,
+              Some("u") => 0xffff,
+              Some("U") | Some("L") => u32::MAX,
+              _ => 0xff,
+            };
+
+            if c <= max {
+              let c = if let Some(c) = char::from_u32(c) {
+                c as u32
+              } else {
+                let b = c.to_be_bytes();
+                if let Some(c) = str::from_utf8(&b).ok().and_then(|s| s.chars().last()) {
+                  c as u32
+                } else {
+                  c
+                }
+              };
+
+              Some(c)
+            } else {
+              None
+            }
+          },
+        ),
+      )),
       char('\''),
     ))(token)
     .map_err(|err| err.map_input(|_| input))?;
@@ -187,23 +236,19 @@ impl LitChar {
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
-    tokens.append_all(match *self.repr.as_slice() {
-      [c] => {
-        let prefix = &ctx.ffi_prefix();
-        let c = proc_macro2::Literal::u8_unsuffixed(c);
-        quote! { #c as #prefix c_char }
-      },
-      [c1, c2] => {
-        let c = u16::from_be_bytes([c1, c2]);
-        let c = proc_macro2::Literal::u16_unsuffixed(c);
-        quote! { #c as wchar_t }
-      },
-      [c1, c2, c3, c4] => {
-        let c = u32::from_be_bytes([c1, c2, c3, c4]);
-        let c = proc_macro2::Literal::u32_unsuffixed(c);
-        quote! { #c as wchar_t }
-      },
-      _ => unreachable!(),
+    let c = self.repr;
+
+
+    tokens.append_all(if c <= u8::MAX as u32 {
+      let prefix = &ctx.ffi_prefix();
+      let c = proc_macro2::Literal::u8_unsuffixed(c as u8);
+      quote! { #c as #prefix c_char }
+    } else if c <= u16::MAX as u32 {
+      let c = proc_macro2::Literal::u16_unsuffixed(c as u16);
+      quote! { #c as char16_t }
+    } else {
+      let c = proc_macro2::Literal::u32_unsuffixed(c);
+      quote! { #c as char32_t }
     })
   }
 }
@@ -242,7 +287,15 @@ impl LitString {
       preceded(opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))), char('\"')),
       fold_many0(
         alt((
-          preceded(char('\\'), escaped_char),
+          map(preceded(char('\\'), escaped_char), |c| {
+            if c <= u8::MAX as u32 {
+              vec![c as u8]
+            } else if c <= u16::MAX as u32 {
+              (c as u16).to_be_bytes().to_vec()
+            } else {
+              c.to_be_bytes().to_vec()
+            }
+          }),
           map(is_not(r#"\""#), |b: I| b.iter_elements().map(|c| c.as_char() as u8).collect()),
         )),
         Vec::new,
@@ -765,23 +818,27 @@ mod tests {
   #[test]
   fn parse_char() {
     let (rest, id) = LitChar::parse(&[r#"'a'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: vec![b'a'] });
+    assert_eq!(id, LitChar { repr: 'a' as u32 });
     assert!(rest.is_empty());
 
     let (_, id) = LitChar::parse(&[r#"'abc'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: vec![b'c'] });
+    assert_eq!(id, LitChar { repr: 'c' as u32 });
 
     let (_, id) = LitChar::parse(&[r#"'\n'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: vec![b'\n'] });
+    assert_eq!(id, LitChar { repr: '\n' as u32 });
 
-    let (_, id) = LitChar::parse(&[r#"'\uFFee'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: vec![0xff, 0xee] });
+    let (_, id) = LitChar::parse(&[r#"u'\uFFee'"#]).unwrap();
+    assert_eq!(id, LitChar { repr: 0xffee });
 
-    let (_, id) = LitChar::parse(&[r#"'\UCAFEbabe'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: vec![0xca, 0xfe, 0xba, 0xbe] });
+    let (_, id) = LitChar::parse(&[r#"U'\U0001f369'"#]).unwrap();
+    assert_eq!(id, LitChar { repr: 0x0001f369 });
 
-    let (_, id) = LitChar::parse(&[r#"'\U0001f369'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: vec![0x00, 0x01, 0xf3, 0x69] });
+    let (_, id) = LitChar::parse(&[r#"U'🍌'"#]).unwrap();
+    assert_eq!(id, LitChar { repr: 0x0001f34c });
+
+    let c: &[u8] = &[b'U', b'\'', 0x00, 0x01, 0xf3, 0x4c, b'\''];
+    let (_, id) = LitChar::parse(&[c]).unwrap();
+    assert_eq!(id, LitChar { repr: 0x0001f34c });
   }
 
   #[test]
