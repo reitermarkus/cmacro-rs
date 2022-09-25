@@ -82,20 +82,24 @@ impl Context {
 }
 
 pub trait CodegenContext {
+  /// Get the argument types for the function with the given `name`.
   #[allow(unused_variables)]
   fn function(&self, name: &str) -> Option<Vec<String>> {
     None
   }
 
+  /// Get the parsed macro with the given `name`.
   #[allow(unused_variables)]
   fn macro_variable(&self, name: &str) -> Option<Expr> {
     None
   }
 
+  /// Get the prefix for `ffi` types, e.g. `c_int`.
   fn ffi_prefix(&self) -> Option<TokenStream> {
     None
   }
 
+  /// Get the prefix for number types, e.g. `f32`.
   fn num_prefix(&self) -> Option<TokenStream> {
     None
   }

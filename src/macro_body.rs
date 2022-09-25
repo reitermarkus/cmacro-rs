@@ -16,6 +16,20 @@ use crate::{
 };
 
 /// The body of a macro.
+///
+/// Can either be a block/statement, e.g.
+///
+/// ```c
+/// #define BLOCK do { \
+///   a += b; \
+/// } while (0)
+/// ```
+///
+/// or an expression, e.g.
+///
+/// ```c
+/// #define EXPR a + b
+/// ```
 #[derive(Debug)]
 pub enum MacroBody {
   Block(Statement),
