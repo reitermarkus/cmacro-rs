@@ -202,6 +202,9 @@ mod tests {
 
     let (_, id) = Identifier::parse(&["_123"]).unwrap();
     assert_eq!(id, Identifier::Literal("_123".into()));
+
+    let (_, id) = Identifier::parse(&["__INT_MAX__"]).unwrap();
+    assert_eq!(id, Identifier::Literal("__INT_MAX__".into()));
   }
 
   #[test]
@@ -214,6 +217,9 @@ mod tests {
 
     let (_, id) = Identifier::parse(&["abc", "##", "123"]).unwrap();
     assert_eq!(id, Identifier::Concat(vec!["abc".into(), "123".into()]));
+
+    let (_, id) = Identifier::parse(&["__INT", "##", "_MAX__"]).unwrap();
+    assert_eq!(id, Identifier::Concat(vec!["__INT".into(), "_MAX__".into()]));
   }
 
   #[test]
