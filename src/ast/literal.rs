@@ -84,8 +84,6 @@ where
   <I as InputIter>::Item: AsChar + Copy,
   &'static str: FindToken<<I as InputIter>::Item>,
 {
-  dbg!(&input);
-
   alt((
     map(char('a'), |_| b'\x07' as u32),
     map(char('b'), |_| b'\x08' as u32),
@@ -174,7 +172,7 @@ impl LitChar {
             fold_many1(
               alt((preceded(char('\\'), escaped_char), map(none_of("\\\'\n"), |b| b.as_char() as u32))),
               || 0u32,
-              |acc, c| c,
+              |_, c| c,
             ),
             |c| if c <= 0xff { Some(c) } else { None },
           ),
@@ -189,15 +187,13 @@ impl LitChar {
               alt((preceded(char('\\'), escaped_char), map(none_of("\\\'\n"), |b| b.as_char() as u32))),
               || 0,
               |acc, c| {
-                let acc = if c <= u8::MAX as u32 {
+                if c <= u8::MAX as u32 {
                   acc << 8 | c
                 } else if c <= u16::MAX as u32 {
                   acc << 16 | c
                 } else {
                   c
-                };
-
-                dbg!(acc)
+                }
               },
             ),
           ),
@@ -237,7 +233,6 @@ impl LitChar {
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     let c = self.repr;
-
 
     tokens.append_all(if c <= u8::MAX as u32 {
       let prefix = &ctx.ffi_prefix();
@@ -283,28 +278,67 @@ impl LitString {
   {
     let (input2, token) = take_one(input)?;
 
-    let res: IResult<I, Vec<u8>> = all_consuming(delimited(
-      preceded(opt(alt((char('L'), terminated(char('u'), char('8')), char('U')))), char('\"')),
-      fold_many0(
-        alt((
-          map(preceded(char('\\'), escaped_char), |c| {
-            if c <= u8::MAX as u32 {
-              vec![c as u8]
-            } else if c <= u16::MAX as u32 {
-              (c as u16).to_be_bytes().to_vec()
-            } else {
-              c.to_be_bytes().to_vec()
-            }
-          }),
-          map(is_not(r#"\""#), |b: I| b.iter_elements().map(|c| c.as_char() as u8).collect()),
-        )),
-        Vec::new,
-        |mut acc, c| {
-          acc.extend(c);
-          acc
-        },
+    let res: IResult<I, Vec<u8>> = all_consuming(map_opt(
+      pair(
+        opt(alt((value("u8", tag("u8")), value("u", tag("u")), value("U", tag("U")), value("L", tag("L"))))),
+        delimited(
+          char('\"'),
+          fold_many0(
+            alt((
+              fold_many1(preceded(char('\\'), escaped_char), Vec::new, |mut acc, c| {
+                acc.push(c);
+                acc
+              }),
+              map(is_not("\\\"\n"), |b: I| b.iter_elements().map(|c| c.as_char() as u32).collect()),
+            )),
+            Vec::new,
+            |mut acc, c| {
+              acc.extend(c);
+              acc
+            },
+          ),
+          char('\"'),
+        ),
       ),
-      char('\"'),
+      |(prefix, s)| {
+        match prefix {
+          Some("u8") | Some("u") | Some("U") => {
+            if prefix == Some("u8") {
+              let s_utf8: Option<Vec<u8>> = s.iter().map(|c| if *c <= 0xff { Some(*c as u8) } else { None }).collect();
+              if let Some(s) = s_utf8.and_then(|s| String::from_utf8(s).ok()) {
+                return Some(s.into())
+              }
+            }
+
+            if prefix == Some("u") {
+              let s_utf8: Option<Vec<u16>> =
+                s.iter().map(|c| if *c <= 0xffff { Some(*c as u16) } else { None }).collect();
+              if let Some(s) = s_utf8.and_then(|s| String::from_utf16(&s).ok()) {
+                return Some(s.into())
+              }
+            }
+
+            let s: Option<String> = s.iter().map(|c| char::from_u32(*c)).collect();
+            return Some(s?.into())
+          },
+          _ => {},
+        }
+
+        let mut acc = Vec::new();
+        for c in s.into_iter() {
+          let c = if c <= u8::MAX as u32 {
+            vec![c as u8]
+          } else if c <= u16::MAX as u32 {
+            (c as u16).to_be_bytes().to_vec()
+          } else {
+            c.to_be_bytes().to_vec()
+          };
+
+          acc.extend(c);
+        }
+
+        Some(acc)
+      },
     ))(token);
 
     if let Ok((_, s)) = res {
@@ -848,6 +882,15 @@ mod tests {
 
     let (_, id) = LitString::parse(&[r#""abc\ndef""#]).unwrap();
     assert_eq!(id, LitString { repr: "abc\ndef".into() });
+
+    let (_, id) = LitString::parse(&[r#"u8"🎧""#]).unwrap();
+    assert_eq!(id, LitString { repr: "🎧".into() });
+
+    let (_, id) = LitString::parse(&[r#"u8"Put your 🎧 on.""#]).unwrap();
+    assert_eq!(id, LitString { repr: "Put your 🎧 on.".into() });
+
+    let (_, id) = LitString::parse(&[r#"u8"Put your 🎧 on.""#.as_bytes()]).unwrap();
+    assert_eq!(id, LitString { repr: "Put your 🎧 on.".into() });
   }
 
   #[test]

@@ -847,13 +847,13 @@ mod tests {
   #[test]
   fn parse_concat() {
     let (_, expr) = Expr::parse(&[r#""abc""#, r#""def""#]).unwrap();
-    assert_eq!(expr, Expr::Literal(Lit::String(LitString { repr: b"abcdef".to_vec() })));
+    assert_eq!(expr, Expr::Literal(Lit::String(LitString { repr: "abcdef".into() })));
 
     let (_, expr) = Expr::parse(&[r#""def""#, "#", "a"]).unwrap();
     assert_eq!(
       expr,
       Expr::Concat(vec![
-        Expr::Literal(Lit::String(LitString { repr: b"def".to_vec() })),
+        Expr::Literal(Lit::String(LitString { repr: "def".into() })),
         Expr::Stringify(Stringify { id: id!(a) }),
       ])
     );
