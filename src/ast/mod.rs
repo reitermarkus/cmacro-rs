@@ -4,10 +4,10 @@ pub(crate) use tokens::*;
 mod asm;
 pub use asm::*;
 
-mod unary_op;
-pub use unary_op::*;
-mod binary_op;
-pub use binary_op::*;
+mod unary_expr;
+pub use unary_expr::*;
+mod binary_expr;
+pub use binary_expr::*;
 
 mod ty;
 pub use ty::*;

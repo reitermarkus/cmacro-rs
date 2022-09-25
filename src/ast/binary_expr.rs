@@ -7,7 +7,7 @@ use super::{Lit, LitFloat, LitInt, Type};
 use crate::{CodegenContext, Expr, LocalContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BinOp {
+pub enum BinaryOp {
   /// lhs * rhs
   Mul,
   /// lhs / rhs
@@ -68,7 +68,7 @@ pub enum BinOp {
   BitOrAssign,
 }
 
-impl ToTokens for BinOp {
+impl ToTokens for BinaryOp {
   fn to_tokens(&self, tokens: &mut TokenStream) {
     tokens.append_all(match self {
       Self::Mul => quote! { * },
@@ -105,13 +105,13 @@ impl ToTokens for BinOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BinaryOp {
+pub struct BinaryExpr {
   pub lhs: Expr,
-  pub op: BinOp,
+  pub op: BinaryOp,
   pub rhs: Expr,
 }
 
-impl BinaryOp {
+impl BinaryExpr {
   pub(crate) fn finish<'g, C>(
     &mut self,
     ctx: &mut LocalContext<'g, C>,
@@ -149,12 +149,12 @@ impl BinaryOp {
     let rhs = self.rhs.to_token_stream(ctx);
 
     tokens.append_all(match self.op {
-      BinOp::Assign
-      | BinOp::AddAssign
-      | BinOp::SubAssign
-      | BinOp::BitAndAssign
-      | BinOp::BitXorAssign
-      | BinOp::BitOrAssign => {
+      BinaryOp::Assign
+      | BinaryOp::AddAssign
+      | BinaryOp::SubAssign
+      | BinaryOp::BitAndAssign
+      | BinaryOp::BitXorAssign
+      | BinaryOp::BitOrAssign => {
         quote! { { #lhs #op #rhs; #lhs } }
       },
       op => quote! { ( #lhs #op #rhs ) },

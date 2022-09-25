@@ -5,18 +5,17 @@ use std::{
 
 use nom::{
   branch::alt,
-  combinator::{map, opt},
+  combinator::{map, opt, value},
   multi::{fold_many0, separated_list0},
   sequence::{pair, preceded, tuple},
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
   ParseTo, Slice,
 };
-
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext};
+use crate::{CodegenContext, LocalContext, UnaryOp};
 
 /// An expression.
 ///
@@ -33,8 +32,8 @@ pub enum Expr {
   FieldAccess { expr: Box<Self>, field: Identifier },
   Stringify(Stringify),
   Concat(Vec<Expr>),
-  UnaryOp(Box<UnaryOp>),
-  BinOp(Box<BinaryOp>),
+  UnaryExpr(Box<UnaryExpr>),
+  BinaryOp(Box<BinaryExpr>),
   Ternary(Box<Self>, Box<Self>, Box<Self>),
   Asm(Asm),
 }
@@ -120,7 +119,7 @@ impl Expr {
 
     match factor {
       Expr::Variable { .. } | Expr::FunctionCall(..) | Expr::FieldAccess { .. } => (),
-      Expr::UnaryOp(ref op) if matches!(**op, UnaryOp::AddrOf(_)) => (),
+      Expr::UnaryExpr(ref op) if matches!(&**op, UnaryExpr { op: UnaryOp::AddrOf, .. }) => (),
       _ => return Ok((tokens, factor)),
     }
 
@@ -147,7 +146,7 @@ impl Expr {
       |acc, access| match (acc, access) {
         (Expr::Variable { name }, Access::Fn(args)) => Expr::FunctionCall(FunctionCall { name, args }),
         (acc, Access::Field { field, deref }) => {
-          let acc = if deref { Expr::UnaryOp(Box::new(UnaryOp::Deref(acc))) } else { acc };
+          let acc = if deref { Expr::UnaryExpr(Box::new(UnaryExpr { op: UnaryOp::Deref, expr: acc })) } else { acc };
 
           Expr::FieldAccess { expr: Box::new(acc), field }
         },
@@ -156,8 +155,8 @@ impl Expr {
     );
 
     map(pair(fold, opt(alt((token("++"), token("--"))))), |(expr, op)| match op {
-      Some("++") => Expr::UnaryOp(Box::new(UnaryOp::PostInc(expr))),
-      Some("--") => Expr::UnaryOp(Box::new(UnaryOp::PostDec(expr))),
+      Some("++") => Expr::UnaryExpr(Box::new(UnaryExpr { op: UnaryOp::PostInc, expr })),
+      Some("--") => Expr::UnaryExpr(Box::new(UnaryExpr { op: UnaryOp::PostDec, expr })),
       _ => expr,
     })(tokens)
   }
@@ -186,16 +185,19 @@ impl Expr {
         Expr::Cast { expr: Box::new(term), ty }
       }),
       map(
-        alt((
-          map(preceded(token("&"), Self::parse_term_prec2), UnaryOp::AddrOf),
-          map(preceded(token("++"), Self::parse_term_prec2), UnaryOp::Inc),
-          map(preceded(token("--"), Self::parse_term_prec2), UnaryOp::Dec),
-          map(preceded(token("+"), Self::parse_term_prec2), UnaryOp::Plus),
-          map(preceded(token("-"), Self::parse_term_prec2), UnaryOp::Minus),
-          map(preceded(token("!"), Self::parse_term_prec2), UnaryOp::Not),
-          map(preceded(token("~"), Self::parse_term_prec2), UnaryOp::Comp),
-        )),
-        |op| Expr::UnaryOp(Box::new(op)),
+        pair(
+          alt((
+            value(UnaryOp::AddrOf, token("&")),
+            value(UnaryOp::Inc, token("++")),
+            value(UnaryOp::Dec, token("--")),
+            value(UnaryOp::Plus, token("+")),
+            value(UnaryOp::Minus, token("-")),
+            value(UnaryOp::Not, token("!")),
+            value(UnaryOp::Comp, token("~")),
+          )),
+          Self::parse_term_prec2,
+        ),
+        |(op, expr)| Expr::UnaryExpr(Box::new(UnaryExpr { op, expr })),
       ),
       Self::parse_term_prec1,
     ))(tokens)
@@ -223,11 +225,15 @@ impl Expr {
 
     fold_many0(
       pair(
-        alt((map(token("*"), |_| BinOp::Mul), map(token("/"), |_| BinOp::Div), map(token("%"), |_| BinOp::Rem))),
+        alt((
+          map(token("*"), |_| BinaryOp::Mul),
+          map(token("/"), |_| BinaryOp::Div),
+          map(token("%"), |_| BinaryOp::Rem),
+        )),
         Self::parse_term_prec2,
       ),
       move || term.clone(),
-      |lhs, (op, rhs)| Self::BinOp(Box::new(BinaryOp { lhs, op, rhs })),
+      |lhs, (op, rhs)| Self::BinaryOp(Box::new(BinaryExpr { lhs, op, rhs })),
     )(tokens)
   }
 
@@ -252,9 +258,9 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec3(tokens)?;
 
     fold_many0(
-      pair(alt((map(token("+"), |_| BinOp::Add), map(token("-"), |_| BinOp::Sub))), Self::parse_term_prec3),
+      pair(alt((map(token("+"), |_| BinaryOp::Add), map(token("-"), |_| BinaryOp::Sub))), Self::parse_term_prec3),
       move || term.clone(),
-      |lhs, (op, rhs)| Self::BinOp(Box::new(BinaryOp { lhs, op, rhs })),
+      |lhs, (op, rhs)| Self::BinaryOp(Box::new(BinaryExpr { lhs, op, rhs })),
     )(tokens)
   }
 
@@ -279,9 +285,9 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec4(tokens)?;
 
     fold_many0(
-      pair(alt((map(token("<<"), |_| BinOp::Shl), map(token(">>"), |_| BinOp::Shr))), Self::parse_term_prec4),
+      pair(alt((map(token("<<"), |_| BinaryOp::Shl), map(token(">>"), |_| BinaryOp::Shr))), Self::parse_term_prec4),
       move || term.clone(),
-      |lhs, (op, rhs)| Self::BinOp(Box::new(BinaryOp { lhs, op, rhs })),
+      |lhs, (op, rhs)| Self::BinaryOp(Box::new(BinaryExpr { lhs, op, rhs })),
     )(tokens)
   }
 
@@ -308,15 +314,15 @@ impl Expr {
     fold_many0(
       pair(
         alt((
-          map(token("<"), |_| BinOp::Lt),
-          map(token("<="), |_| BinOp::Lte),
-          map(token(">"), |_| BinOp::Gt),
-          map(token(">="), |_| BinOp::Gte),
+          map(token("<"), |_| BinaryOp::Lt),
+          map(token("<="), |_| BinaryOp::Lte),
+          map(token(">"), |_| BinaryOp::Gt),
+          map(token(">="), |_| BinaryOp::Gte),
         )),
         Self::parse_term_prec5,
       ),
       move || term.clone(),
-      |lhs, (op, rhs)| Self::BinOp(Box::new(BinaryOp { lhs, op, rhs })),
+      |lhs, (op, rhs)| Self::BinaryOp(Box::new(BinaryExpr { lhs, op, rhs })),
     )(tokens)
   }
 
@@ -345,9 +351,9 @@ impl Expr {
       move || term.clone(),
       |lhs, (op, rhs)| {
         if op == "==" {
-          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Eq, rhs }))
+          Self::BinaryOp(Box::new(BinaryExpr { lhs, op: BinaryOp::Eq, rhs }))
         } else {
-          Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::Neq, rhs }))
+          Self::BinaryOp(Box::new(BinaryExpr { lhs, op: BinaryOp::Neq, rhs }))
         }
       },
     )(tokens)
@@ -376,7 +382,7 @@ impl Expr {
     fold_many0(
       preceded(token("&"), Self::parse_term_prec7),
       move || term.clone(),
-      |lhs, rhs| Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitAnd, rhs })),
+      |lhs, rhs| Self::BinaryOp(Box::new(BinaryExpr { lhs, op: BinaryOp::BitAnd, rhs })),
     )(tokens)
   }
 
@@ -403,7 +409,7 @@ impl Expr {
     fold_many0(
       preceded(token("^"), Self::parse_term_prec8),
       move || term.clone(),
-      |lhs, rhs| Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitXor, rhs })),
+      |lhs, rhs| Self::BinaryOp(Box::new(BinaryExpr { lhs, op: BinaryOp::BitXor, rhs })),
     )(tokens)
   }
 
@@ -430,7 +436,7 @@ impl Expr {
     fold_many0(
       preceded(token("|"), Self::parse_term_prec9),
       move || term.clone(),
-      |lhs, rhs| Self::BinOp(Box::new(BinaryOp { lhs, op: BinOp::BitOr, rhs })),
+      |lhs, rhs| Self::BinaryOp(Box::new(BinaryExpr { lhs, op: BinaryOp::BitOr, rhs })),
     )(tokens)
   }
 
@@ -488,22 +494,22 @@ impl Expr {
     fold_many0(
       pair(
         alt((
-          map(token("="), |_| BinOp::Assign),
-          map(token("+="), |_| BinOp::AddAssign),
-          map(token("-="), |_| BinOp::SubAssign),
-          map(token("*="), |_| BinOp::MulAssign),
-          map(token("/="), |_| BinOp::DivAssign),
-          map(token("%="), |_| BinOp::RemAssign),
-          map(token("<<="), |_| BinOp::ShlAssign),
-          map(token(">>="), |_| BinOp::ShrAssign),
-          map(token("&="), |_| BinOp::BitAndAssign),
-          map(token("^="), |_| BinOp::BitXorAssign),
-          map(token("|="), |_| BinOp::BitOrAssign),
+          map(token("="), |_| BinaryOp::Assign),
+          map(token("+="), |_| BinaryOp::AddAssign),
+          map(token("-="), |_| BinaryOp::SubAssign),
+          map(token("*="), |_| BinaryOp::MulAssign),
+          map(token("/="), |_| BinaryOp::DivAssign),
+          map(token("%="), |_| BinaryOp::RemAssign),
+          map(token("<<="), |_| BinaryOp::ShlAssign),
+          map(token(">>="), |_| BinaryOp::ShrAssign),
+          map(token("&="), |_| BinaryOp::BitAndAssign),
+          map(token("^="), |_| BinaryOp::BitXorAssign),
+          map(token("|="), |_| BinaryOp::BitOrAssign),
         )),
         Self::parse_term_prec14,
       ),
       move || term.clone(),
-      |lhs, (op, rhs)| Self::BinOp(Box::new(BinaryOp { lhs, op, rhs })),
+      |lhs, (op, rhs)| Self::BinaryOp(Box::new(BinaryExpr { lhs, op, rhs })),
     )(tokens)
   }
 
@@ -579,14 +585,14 @@ impl Expr {
         // TODO: Should be `*const c_char`.
         Ok(None)
       },
-      Self::UnaryOp(op) => {
+      Self::UnaryExpr(op) => {
         let ty = op.finish(ctx)?;
 
-        match &**op {
-          UnaryOp::Plus(expr @ Expr::Literal(Lit::Int(_)) | expr @ Expr::Literal(Lit::Float(_))) => {
+        match (op.op, &op.expr) {
+          (UnaryOp::Plus, expr @ Expr::Literal(Lit::Int(_)) | expr @ Expr::Literal(Lit::Float(_))) => {
             *self = expr.clone();
           },
-          UnaryOp::Minus(Expr::Literal(Lit::Int(LitInt { value: i, suffix }))) => {
+          (UnaryOp::Minus, Expr::Literal(Lit::Int(LitInt { value: i, suffix }))) => {
             let suffix = match suffix {
               Some(BuiltInType::UChar | BuiltInType::SChar) => Some(BuiltInType::SChar),
               Some(BuiltInType::UInt | BuiltInType::Int) => Some(BuiltInType::Int),
@@ -596,27 +602,27 @@ impl Expr {
             };
             *self = Expr::Literal(Lit::Int(LitInt { value: i.wrapping_neg(), suffix }));
           },
-          UnaryOp::Minus(Expr::Literal(Lit::Float(f))) => {
+          (UnaryOp::Minus, Expr::Literal(Lit::Float(f))) => {
             *self = Expr::Literal(Lit::Float(match f {
               LitFloat::Float(f) => LitFloat::Float(-f),
               LitFloat::Double(f) => LitFloat::Double(-f),
               LitFloat::LongDouble(f) => LitFloat::LongDouble(-f),
             }));
           },
-          UnaryOp::Not(Expr::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
+          (UnaryOp::Not, Expr::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
             *self = Expr::Literal(Lit::Int(LitInt { value: if *i == 0 { 1 } else { 0 }, suffix: None }));
           },
-          UnaryOp::Not(Expr::Literal(Lit::Float(f))) => {
+          (UnaryOp::Not, Expr::Literal(Lit::Float(f))) => {
             *self = Expr::Literal(Lit::Float(match f {
               LitFloat::Float(f) => LitFloat::Float(if *f == 0.0 { 1.0 } else { 0.0 }),
               LitFloat::Double(f) => LitFloat::Double(if *f == 0.0 { 1.0 } else { 0.0 }),
               LitFloat::LongDouble(f) => LitFloat::LongDouble(if *f == 0.0 { 1.0 } else { 0.0 }),
             }));
           },
-          UnaryOp::Comp(Expr::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
+          (UnaryOp::Comp, Expr::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
             *self = Expr::Literal(Lit::Int(LitInt { value: !i, suffix: None }));
           },
-          UnaryOp::Comp(Expr::Literal(Lit::Float(_) | Lit::String(_))) => {
+          (UnaryOp::Comp, Expr::Literal(Lit::Float(_) | Lit::String(_))) => {
             return Err(crate::Error::UnsupportedExpression)
           },
           _ => (),
@@ -624,12 +630,12 @@ impl Expr {
 
         Ok(ty)
       },
-      Self::BinOp(op) => {
+      Self::BinaryOp(op) => {
         let (lhs_ty, rhs_ty) = op.finish(ctx)?;
 
         // Calculate numeric expression.
         match op.op {
-          BinOp::Mul => match (&op.lhs, &op.rhs) {
+          BinaryOp::Mul => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
               *self = Expr::Literal(Lit::Float(*lhs * *rhs));
               return self.finish(ctx)
@@ -640,7 +646,7 @@ impl Expr {
             },
             _ => (),
           },
-          BinOp::Div => match (&op.lhs, &op.rhs) {
+          BinaryOp::Div => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
               *self = Expr::Literal(Lit::Float(*lhs / *rhs));
               return self.finish(ctx)
@@ -651,14 +657,14 @@ impl Expr {
             },
             _ => (),
           },
-          BinOp::Rem => match (&op.lhs, &op.rhs) {
+          BinaryOp::Rem => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs % *rhs));
               return self.finish(ctx)
             },
             _ => (),
           },
-          BinOp::Add => match (&op.lhs, &op.rhs) {
+          BinaryOp::Add => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
               *self = Expr::Literal(Lit::Float(*lhs + *rhs));
               return self.finish(ctx)
@@ -669,7 +675,7 @@ impl Expr {
             },
             _ => (),
           },
-          BinOp::Sub => match (&op.lhs, &op.rhs) {
+          BinaryOp::Sub => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
               *self = Expr::Literal(Lit::Float(*lhs - *rhs));
               return self.finish(ctx)
@@ -680,44 +686,49 @@ impl Expr {
             },
             _ => (),
           },
-          BinOp::Shl => match (&op.lhs, &op.rhs) {
+          BinaryOp::Shl => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs << *rhs));
               return self.finish(ctx)
             },
             _ => (),
           },
-          BinOp::Shr => match (&op.lhs, &op.rhs) {
+          BinaryOp::Shr => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs >> *rhs));
               return self.finish(ctx)
             },
             _ => (),
           },
-          BinOp::BitAnd => match (&op.lhs, &op.rhs) {
+          BinaryOp::BitAnd => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs & *rhs));
               return self.finish(ctx)
             },
             _ => (),
           },
-          BinOp::BitOr => match (&op.lhs, &op.rhs) {
+          BinaryOp::BitOr => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs | *rhs));
               return self.finish(ctx)
             },
             _ => (),
           },
-          BinOp::BitXor => match (&op.lhs, &op.rhs) {
+          BinaryOp::BitXor => match (&op.lhs, &op.rhs) {
             (Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
               *self = Expr::Literal(Lit::Int(*lhs ^ *rhs));
               return self.finish(ctx)
             },
             _ => (),
           },
-          BinOp::Eq | BinOp::Neq | BinOp::And | BinOp::Or | BinOp::Lt | BinOp::Lte | BinOp::Gt | BinOp::Gte => {
-            return Ok(Some(Type::BuiltIn(BuiltInType::Bool)))
-          },
+          BinaryOp::Eq
+          | BinaryOp::Neq
+          | BinaryOp::And
+          | BinaryOp::Or
+          | BinaryOp::Lt
+          | BinaryOp::Lte
+          | BinaryOp::Gt
+          | BinaryOp::Gte => return Ok(Some(Type::BuiltIn(BuiltInType::Bool))),
           _ => (),
         }
 
@@ -800,8 +811,8 @@ impl Expr {
           )
         })
       },
-      Self::UnaryOp(op) => op.to_tokens(ctx, tokens),
-      Self::BinOp(op) => op.to_tokens(ctx, tokens),
+      Self::UnaryExpr(op) => op.to_tokens(ctx, tokens),
+      Self::BinaryOp(op) => op.to_tokens(ctx, tokens),
       Self::Ternary(ref cond, ref if_branch, ref else_branch) => {
         let cond = cond.to_token_stream(ctx);
         let if_branch = if_branch.to_token_stream(ctx);
@@ -875,7 +886,10 @@ mod tests {
     let (_, expr) = Expr::parse(&["a", "->", "b"]).unwrap();
     assert_eq!(
       expr,
-      Expr::FieldAccess { expr: Box::new(Expr::UnaryOp(Box::new(UnaryOp::Deref(var!(a))))), field: id!(b) }
+      Expr::FieldAccess {
+        expr: Box::new(Expr::UnaryExpr(Box::new(UnaryExpr { op: UnaryOp::Deref, expr: var!(a) }))),
+        field: id!(b)
+      }
     );
   }
 
@@ -884,10 +898,10 @@ mod tests {
     let (_, expr) = Expr::parse(&["a", "=", "b", "=", "c"]).unwrap();
     assert_eq!(
       expr,
-      Expr::BinOp(Box::new(BinaryOp {
+      Expr::BinaryOp(Box::new(BinaryExpr {
         lhs: var!(a),
-        op: BinOp::Assign,
-        rhs: Expr::BinOp(Box::new(BinaryOp { lhs: var!(b), op: BinOp::Assign, rhs: var!(c) }),),
+        op: BinaryOp::Assign,
+        rhs: Expr::BinaryOp(Box::new(BinaryExpr { lhs: var!(b), op: BinaryOp::Assign, rhs: var!(c) }),),
       }))
     );
   }
@@ -903,10 +917,10 @@ mod tests {
     let (_, expr) = Expr::parse(&["(", "-", "123456789012ULL", ")"]).unwrap();
     assert_eq!(
       expr,
-      Expr::UnaryOp(Box::new(UnaryOp::Minus(Expr::Literal(Lit::Int(LitInt {
-        value: 123456789012,
-        suffix: Some(BuiltInType::ULongLong)
-      })))))
+      Expr::UnaryExpr(Box::new(UnaryExpr {
+        op: UnaryOp::Minus,
+        expr: Expr::Literal(Lit::Int(LitInt { value: 123456789012, suffix: Some(BuiltInType::ULongLong) }))
+      }))
     )
   }
 }
