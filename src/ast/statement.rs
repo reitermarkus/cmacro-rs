@@ -36,7 +36,7 @@ pub enum Statement {
 }
 
 impl Statement {
-  pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake

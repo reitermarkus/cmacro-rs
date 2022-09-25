@@ -37,7 +37,7 @@ pub enum MacroBody {
 }
 
 impl MacroBody {
-  pub fn parse<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I, C>(input: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake

@@ -26,7 +26,7 @@ pub struct Stringify {
 }
 
 impl Stringify {
-  pub fn parse<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -38,9 +38,7 @@ impl Stringify {
       + Clone,
     <I as InputIter>::Item: AsChar,
   {
-    map(preceded(terminated(token("#"), meta), identifier), |id| Self { id: Identifier::Literal(id.to_owned()) })(
-      tokens,
-    )
+    map(preceded(terminated(token("#"), meta), identifier), |id| Self { id: Identifier::Literal(id) })(tokens)
   }
 
   pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>

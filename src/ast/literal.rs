@@ -42,7 +42,7 @@ pub enum Lit {
 }
 
 impl Lit {
-  pub fn parse<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I, C>(input: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -158,7 +158,7 @@ pub struct LitChar {
 }
 
 impl LitChar {
-  pub fn parse<'i, I>(input: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I>(input: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -273,7 +273,7 @@ pub struct LitString {
 }
 
 impl LitString {
-  fn parse_inner<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_inner<I, C>(input: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -358,7 +358,7 @@ impl LitString {
     Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
   }
 
-  pub fn parse<'i, I, C>(input: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I, C>(input: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -444,7 +444,7 @@ impl LitFloat {
     ))(input)
   }
 
-  pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -664,7 +664,7 @@ impl LitInt {
     Ok((input, (n, unsigned, size)))
   }
 
-  pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -716,7 +716,7 @@ impl LitInt {
     };
 
     // TODO: Handle suffix.
-    return Ok((tokens, Self { value, suffix }))
+    Ok((tokens, Self { value, suffix }))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(self, _ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {

@@ -57,18 +57,18 @@ impl ToTokens for BuiltInType {
   }
 }
 
-fn int_ty<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], BuiltInType>
+fn int_ty<I>(input: &[I]) -> IResult<&[I], BuiltInType>
 where
   I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
 {
-  fn int_signedness<'i, I>(input: &'i [I]) -> IResult<&'i [I], &'static str>
+  fn int_signedness<I>(input: &[I]) -> IResult<&[I], &'static str>
   where
     I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
   {
     alt((keyword("unsigned"), keyword("signed")))(input)
   }
 
-  fn int_longness<'i, I>(input: &'i [I]) -> IResult<&'i [I], &'static str>
+  fn int_longness<I>(input: &[I]) -> IResult<&[I], &'static str>
   where
     I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
   {
@@ -112,9 +112,9 @@ where
   ))(input)
 }
 
-fn ty<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], Type>
+fn ty<I>(input: &[I]) -> IResult<&[I], Type>
 where
-  I: Debug + InputTake + InputLength + InputIter + Slice<RangeFrom<usize>> + Compare<&'static str> + Clone + 't,
+  I: Debug + InputTake + InputLength + InputIter + Slice<RangeFrom<usize>> + Compare<&'static str> + Clone,
   <I as InputIter>::Item: AsChar,
 {
   alt((
@@ -141,12 +141,12 @@ where
     map(int_ty, Type::BuiltIn),
     // [const] <identifier>
     map(delimited(const_qualifier, pair(opt(keyword("struct")), identifier), const_qualifier), |(s, id)| {
-      Type::Identifier { name: Identifier::Literal(id.to_owned()), is_struct: s.is_some() }
+      Type::Identifier { name: Identifier::Literal(id), is_struct: s.is_some() }
     }),
   ))(input)
 }
 
-fn const_qualifier<'i, 't, I>(input: &'i [I]) -> IResult<&'i [I], bool>
+fn const_qualifier<I>(input: &[I]) -> IResult<&[I], bool>
 where
   I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
 {
@@ -162,7 +162,7 @@ pub enum Type {
 }
 
 impl Type {
-  pub fn parse<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake

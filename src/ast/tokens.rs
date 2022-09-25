@@ -8,18 +8,18 @@ use nom::{
   Compare, CompareResult, FindSubstring, IResult, InputLength, InputTake, Parser,
 };
 
-pub(crate) fn take_one<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], I>
+pub(crate) fn take_one<I>(tokens: &[I]) -> IResult<&[I], I>
 where
   I: Debug + Clone,
 {
-  if tokens.len() > 0 {
+  if !tokens.is_empty() {
     return Ok((&tokens[1..], tokens[0].clone()))
   }
 
   Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Eof)))
 }
 
-pub(crate) fn comment<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], I>
+pub(crate) fn comment<I>(tokens: &[I]) -> IResult<&[I], I>
 where
   I: Debug + InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone,
 {
@@ -31,14 +31,14 @@ where
   Ok((tokens, comment))
 }
 
-pub(crate) fn meta<'i, I>(input: &'i [I]) -> IResult<&'i [I], Vec<I>>
+pub(crate) fn meta<I>(input: &[I]) -> IResult<&[I], Vec<I>>
 where
   I: Debug + InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone,
 {
   many0(comment)(input)
 }
 
-pub(crate) fn token<'i, I>(token: &'static str) -> impl Fn(&'i [I]) -> IResult<&'i [I], &'static str>
+pub(crate) fn token<I>(token: &'static str) -> impl Fn(&[I]) -> IResult<&[I], &'static str>
 where
   I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
 {
@@ -66,7 +66,6 @@ pub(crate) use token as keyword;
 pub(crate) fn parenthesized<'i, I, O, F>(f: F) -> impl FnMut(&'i [I]) -> IResult<&'i [I], O, nom::error::Error<&'i [I]>>
 where
   I: Debug + InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone + 'i,
-  O: 'i,
   F: Parser<&'i [I], O, nom::error::Error<&'i [I]>>,
 {
   delimited(pair(token("("), meta), f, pair(meta, token(")")))

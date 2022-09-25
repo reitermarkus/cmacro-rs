@@ -1,4 +1,4 @@
-pub fn tokenize_name<'t>(input: &'t [u8]) -> Vec<&'t [u8]> {
+pub fn tokenize_name(input: &[u8]) -> Vec<&[u8]> {
   let mut tokens = vec![];
 
   let mut i = 0;

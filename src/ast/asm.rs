@@ -29,7 +29,7 @@ pub struct Asm {
 }
 
 impl Asm {
-  pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake

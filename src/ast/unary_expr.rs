@@ -5,7 +5,7 @@ use super::{BuiltInType, Type};
 use crate::{CodegenContext, Expr, LocalContext};
 
 /// A unary operation.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
   /// `expr++`
   PostInc,

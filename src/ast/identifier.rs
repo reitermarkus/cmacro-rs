@@ -40,7 +40,7 @@ where
   })(input)
 }
 
-pub(crate) fn identifier<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], String>
+pub(crate) fn identifier<I>(tokens: &[I]) -> IResult<&[I], String>
 where
   I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
   <I as InputIter>::Item: AsChar,
@@ -77,7 +77,7 @@ where
   })(tokens)
 }
 
-fn concat_identifier<'i, I>(tokens: &'i [I]) -> IResult<&'i [I], String>
+fn concat_identifier<I>(tokens: &[I]) -> IResult<&[I], String>
 where
   I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
   <I as InputIter>::Item: AsChar,
@@ -105,7 +105,7 @@ pub enum Identifier {
 }
 
 impl Identifier {
-  pub fn parse<'i, 't, I, T>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I, T>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputIter<Item = T>

@@ -67,7 +67,7 @@ impl VarMacro {
       MacroBody::Expr(expr) => expr,
     };
 
-    Ok(Self { name: name.to_owned(), expr })
+    Ok(Self { name, expr })
   }
 
   pub fn generate<C>(&mut self, cx: &C) -> Result<(TokenStream, Option<Type>), crate::Error>
@@ -98,7 +98,7 @@ pub struct FnMacro {
 }
 
 impl FnMacro {
-  fn parse_args<'i, I>(input: &'i [I]) -> IResult<&'i [I], Vec<String>>
+  fn parse_args<I>(input: &[I]) -> IResult<&[I], Vec<String>>
   where
     I: Debug
       + InputTake
@@ -154,7 +154,7 @@ impl FnMacro {
     let (_, body) = MacroBody::parse(body).map_err(|_| crate::Error::ParserError)?;
 
     let args = args.into_iter().map(|arg| (arg, MacroArgType::Unknown)).collect();
-    Ok(Self { name: name, args, body })
+    Ok(Self { name, args, body })
   }
 
   pub fn generate<C>(

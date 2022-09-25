@@ -39,7 +39,7 @@ pub enum Expr {
 }
 
 impl Expr {
-  fn parse_concat<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_concat<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -71,7 +71,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_factor<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_factor<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -97,7 +97,7 @@ impl Expr {
     ))(tokens)
   }
 
-  fn parse_term_prec1<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec1<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -161,7 +161,7 @@ impl Expr {
     })(tokens)
   }
 
-  fn parse_term_prec2<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec2<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -203,7 +203,7 @@ impl Expr {
     ))(tokens)
   }
 
-  fn parse_term_prec3<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec3<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -237,7 +237,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec4<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec4<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -264,7 +264,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec5<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec5<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -291,7 +291,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec6<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec6<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -326,7 +326,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec7<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec7<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -359,7 +359,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec8<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec8<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -386,7 +386,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec9<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec9<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -413,7 +413,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec10<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec10<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -440,7 +440,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec13<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec13<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -471,7 +471,7 @@ impl Expr {
     Ok((tokens, term))
   }
 
-  fn parse_term_prec14<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  fn parse_term_prec14<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -513,7 +513,7 @@ impl Expr {
     )(tokens)
   }
 
-  pub fn parse<'i, I, C>(tokens: &'i [I]) -> IResult<&'i [I], Self>
+  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
