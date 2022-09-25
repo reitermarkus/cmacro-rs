@@ -27,11 +27,11 @@ use crate::{CodegenContext, LocalContext, UnaryOp};
 pub enum Expr {
   Variable { name: Identifier },
   FunctionCall(FunctionCall),
-  Cast { expr: Box<Expr>, ty: Type },
+  Cast { expr: Box<Self>, ty: Type },
   Literal(Lit),
   FieldAccess { expr: Box<Self>, field: Identifier },
   Stringify(Stringify),
-  Concat(Vec<Expr>),
+  Concat(Vec<Self>),
   Unary(Box<UnaryExpr>),
   Binary(Box<BinaryExpr>),
   Ternary(Box<Self>, Box<Self>, Box<Self>),
@@ -118,8 +118,8 @@ impl Expr {
     let (tokens, factor) = Self::parse_factor(tokens)?;
 
     match factor {
-      Expr::Variable { .. } | Expr::FunctionCall(..) | Expr::FieldAccess { .. } => (),
-      Expr::Unary(ref op) if matches!(&**op, UnaryExpr { op: UnaryOp::AddrOf, .. }) => (),
+      Self::Variable { .. } | Self::FunctionCall(..) | Self::FieldAccess { .. } => (),
+      Self::Unary(ref op) if matches!(&**op, UnaryExpr { op: UnaryOp::AddrOf, .. }) => (),
       _ => return Ok((tokens, factor)),
     }
 
@@ -128,9 +128,9 @@ impl Expr {
       Field { field: Identifier, deref: bool },
     }
 
-    if matches!(factor, Expr::Variable { name: Identifier::Literal(ref id) } if id == "__asm") {
+    if matches!(factor, Self::Variable { name: Identifier::Literal(ref id) } if id == "__asm") {
       if let Ok((tokens, asm)) = preceded(opt(token("volatile")), Asm::parse)(tokens) {
-        return Ok((tokens, Expr::Asm(asm)))
+        return Ok((tokens, Self::Asm(asm)))
       }
     }
 
@@ -144,19 +144,19 @@ impl Expr {
       )),
       move || factor.clone(),
       |acc, access| match (acc, access) {
-        (Expr::Variable { name }, Access::Fn(args)) => Expr::FunctionCall(FunctionCall { name, args }),
+        (Self::Variable { name }, Access::Fn(args)) => Self::FunctionCall(FunctionCall { name, args }),
         (acc, Access::Field { field, deref }) => {
-          let acc = if deref { Expr::Unary(Box::new(UnaryExpr { op: UnaryOp::Deref, expr: acc })) } else { acc };
+          let acc = if deref { Self::Unary(Box::new(UnaryExpr { op: UnaryOp::Deref, expr: acc })) } else { acc };
 
-          Expr::FieldAccess { expr: Box::new(acc), field }
+          Self::FieldAccess { expr: Box::new(acc), field }
         },
         _ => unimplemented!(),
       },
     );
 
     map(pair(fold, opt(alt((token("++"), token("--"))))), |(expr, op)| match op {
-      Some("++") => Expr::Unary(Box::new(UnaryExpr { op: UnaryOp::PostInc, expr })),
-      Some("--") => Expr::Unary(Box::new(UnaryExpr { op: UnaryOp::PostDec, expr })),
+      Some("++") => Self::Unary(Box::new(UnaryExpr { op: UnaryOp::PostInc, expr })),
+      Some("--") => Self::Unary(Box::new(UnaryExpr { op: UnaryOp::PostDec, expr })),
       _ => expr,
     })(tokens)
   }
@@ -182,7 +182,7 @@ impl Expr {
     alt((
       map(pair(parenthesized(Type::parse), Self::parse_term_prec2), |(ty, term)| {
         // TODO: Handle constness.
-        Expr::Cast { expr: Box::new(term), ty }
+        Self::Cast { expr: Box::new(term), ty }
       }),
       map(
         pair(
@@ -197,7 +197,7 @@ impl Expr {
           )),
           Self::parse_term_prec2,
         ),
-        |(op, expr)| Expr::Unary(Box::new(UnaryExpr { op, expr })),
+        |(op, expr)| Self::Unary(Box::new(UnaryExpr { op, expr })),
       ),
       Self::parse_term_prec1,
     ))(tokens)
@@ -465,7 +465,7 @@ impl Expr {
       let (tokens, if_branch) = Self::parse_term_prec7(tokens)?;
       let (tokens, _) = token(":")(tokens)?;
       let (tokens, else_branch) = Self::parse_term_prec7(tokens)?;
-      return Ok((tokens, Expr::Ternary(Box::new(term), Box::new(if_branch), Box::new(else_branch))))
+      return Ok((tokens, Self::Ternary(Box::new(term), Box::new(if_branch), Box::new(else_branch))))
     }
 
     Ok((tokens, term))
@@ -589,10 +589,10 @@ impl Expr {
         let ty = op.finish(ctx)?;
 
         match (op.op, &op.expr) {
-          (UnaryOp::Plus, expr @ Expr::Literal(Lit::Int(_)) | expr @ Expr::Literal(Lit::Float(_))) => {
+          (UnaryOp::Plus, expr @ Self::Literal(Lit::Int(_)) | expr @ Self::Literal(Lit::Float(_))) => {
             *self = expr.clone();
           },
-          (UnaryOp::Minus, Expr::Literal(Lit::Int(LitInt { value: i, suffix }))) => {
+          (UnaryOp::Minus, Self::Literal(Lit::Int(LitInt { value: i, suffix }))) => {
             let suffix = match suffix {
               Some(BuiltInType::UChar | BuiltInType::SChar) => Some(BuiltInType::SChar),
               Some(BuiltInType::UInt | BuiltInType::Int) => Some(BuiltInType::Int),
@@ -600,29 +600,29 @@ impl Expr {
               Some(BuiltInType::ULongLong | BuiltInType::LongLong) => Some(BuiltInType::LongLong),
               _ => None,
             };
-            *self = Expr::Literal(Lit::Int(LitInt { value: i.wrapping_neg(), suffix }));
+            *self = Self::Literal(Lit::Int(LitInt { value: i.wrapping_neg(), suffix }));
           },
-          (UnaryOp::Minus, Expr::Literal(Lit::Float(f))) => {
-            *self = Expr::Literal(Lit::Float(match f {
+          (UnaryOp::Minus, Self::Literal(Lit::Float(f))) => {
+            *self = Self::Literal(Lit::Float(match f {
               LitFloat::Float(f) => LitFloat::Float(-f),
               LitFloat::Double(f) => LitFloat::Double(-f),
               LitFloat::LongDouble(f) => LitFloat::LongDouble(-f),
             }));
           },
-          (UnaryOp::Not, Expr::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
-            *self = Expr::Literal(Lit::Int(LitInt { value: if *i == 0 { 1 } else { 0 }, suffix: None }));
+          (UnaryOp::Not, Self::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
+            *self = Self::Literal(Lit::Int(LitInt { value: if *i == 0 { 1 } else { 0 }, suffix: None }));
           },
-          (UnaryOp::Not, Expr::Literal(Lit::Float(f))) => {
-            *self = Expr::Literal(Lit::Float(match f {
+          (UnaryOp::Not, Self::Literal(Lit::Float(f))) => {
+            *self = Self::Literal(Lit::Float(match f {
               LitFloat::Float(f) => LitFloat::Float(if *f == 0.0 { 1.0 } else { 0.0 }),
               LitFloat::Double(f) => LitFloat::Double(if *f == 0.0 { 1.0 } else { 0.0 }),
               LitFloat::LongDouble(f) => LitFloat::LongDouble(if *f == 0.0 { 1.0 } else { 0.0 }),
             }));
           },
-          (UnaryOp::Comp, Expr::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
-            *self = Expr::Literal(Lit::Int(LitInt { value: !i, suffix: None }));
+          (UnaryOp::Comp, Self::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
+            *self = Self::Literal(Lit::Int(LitInt { value: !i, suffix: None }));
           },
-          (UnaryOp::Comp, Expr::Literal(Lit::Float(_) | Lit::String(_))) => {
+          (UnaryOp::Comp, Self::Literal(Lit::Float(_) | Lit::String(_))) => {
             return Err(crate::Error::UnsupportedExpression)
           },
           _ => (),
@@ -635,60 +635,60 @@ impl Expr {
 
         // Calculate numeric expression.
         match (op.op, &op.lhs, &op.rhs) {
-          (BinaryOp::Mul, Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
-            *self = Expr::Literal(Lit::Float(*lhs * *rhs));
+          (BinaryOp::Mul, Self::Literal(Lit::Float(lhs)), Self::Literal(Lit::Float(rhs))) => {
+            *self = Self::Literal(Lit::Float(*lhs * *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::Mul, Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
-            *self = Expr::Literal(Lit::Int(*lhs * *rhs));
+          (BinaryOp::Mul, Self::Literal(Lit::Int(lhs)), Self::Literal(Lit::Int(rhs))) => {
+            *self = Self::Literal(Lit::Int(*lhs * *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::Div, Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
-            *self = Expr::Literal(Lit::Float(*lhs / *rhs));
+          (BinaryOp::Div, Self::Literal(Lit::Float(lhs)), Self::Literal(Lit::Float(rhs))) => {
+            *self = Self::Literal(Lit::Float(*lhs / *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::Div, Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
-            *self = Expr::Literal(Lit::Int(*lhs / *rhs));
+          (BinaryOp::Div, Self::Literal(Lit::Int(lhs)), Self::Literal(Lit::Int(rhs))) => {
+            *self = Self::Literal(Lit::Int(*lhs / *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::Rem, Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
-            *self = Expr::Literal(Lit::Int(*lhs % *rhs));
+          (BinaryOp::Rem, Self::Literal(Lit::Int(lhs)), Self::Literal(Lit::Int(rhs))) => {
+            *self = Self::Literal(Lit::Int(*lhs % *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::Add, Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
-            *self = Expr::Literal(Lit::Float(*lhs + *rhs));
+          (BinaryOp::Add, Self::Literal(Lit::Float(lhs)), Self::Literal(Lit::Float(rhs))) => {
+            *self = Self::Literal(Lit::Float(*lhs + *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::Add, Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
-            *self = Expr::Literal(Lit::Int(*lhs + *rhs));
+          (BinaryOp::Add, Self::Literal(Lit::Int(lhs)), Self::Literal(Lit::Int(rhs))) => {
+            *self = Self::Literal(Lit::Int(*lhs + *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::Sub, Expr::Literal(Lit::Float(lhs)), Expr::Literal(Lit::Float(rhs))) => {
-            *self = Expr::Literal(Lit::Float(*lhs - *rhs));
+          (BinaryOp::Sub, Self::Literal(Lit::Float(lhs)), Self::Literal(Lit::Float(rhs))) => {
+            *self = Self::Literal(Lit::Float(*lhs - *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::Sub, Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
-            *self = Expr::Literal(Lit::Int(*lhs - *rhs));
+          (BinaryOp::Sub, Self::Literal(Lit::Int(lhs)), Self::Literal(Lit::Int(rhs))) => {
+            *self = Self::Literal(Lit::Int(*lhs - *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::Shl, Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
-            *self = Expr::Literal(Lit::Int(*lhs << *rhs));
+          (BinaryOp::Shl, Self::Literal(Lit::Int(lhs)), Self::Literal(Lit::Int(rhs))) => {
+            *self = Self::Literal(Lit::Int(*lhs << *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::Shr, Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
-            *self = Expr::Literal(Lit::Int(*lhs >> *rhs));
+          (BinaryOp::Shr, Self::Literal(Lit::Int(lhs)), Self::Literal(Lit::Int(rhs))) => {
+            *self = Self::Literal(Lit::Int(*lhs >> *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::BitAnd, Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
-            *self = Expr::Literal(Lit::Int(*lhs & *rhs));
+          (BinaryOp::BitAnd, Self::Literal(Lit::Int(lhs)), Self::Literal(Lit::Int(rhs))) => {
+            *self = Self::Literal(Lit::Int(*lhs & *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::BitOr, Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
-            *self = Expr::Literal(Lit::Int(*lhs | *rhs));
+          (BinaryOp::BitOr, Self::Literal(Lit::Int(lhs)), Self::Literal(Lit::Int(rhs))) => {
+            *self = Self::Literal(Lit::Int(*lhs | *rhs));
             self.finish(ctx)
           },
-          (BinaryOp::BitXor, Expr::Literal(Lit::Int(lhs)), Expr::Literal(Lit::Int(rhs))) => {
-            *self = Expr::Literal(Lit::Int(*lhs ^ *rhs));
+          (BinaryOp::BitXor, Self::Literal(Lit::Int(lhs)), Self::Literal(Lit::Int(rhs))) => {
+            *self = Self::Literal(Lit::Int(*lhs ^ *rhs));
             self.finish(ctx)
           },
           (
