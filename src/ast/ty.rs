@@ -7,7 +7,7 @@ use nom::{
   sequence::{delimited, pair, preceded, terminated},
   AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
 };
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens, TokenStreamExt};
 
 use super::*;
@@ -75,18 +75,18 @@ impl ToTokens for BuiltInType {
 
 fn int_ty<I>(input: &[I]) -> IResult<&[I], BuiltInType>
 where
-  I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
+  I: Debug + InputTake + InputLength + Slice<std::ops::RangeFrom<usize>> + Compare<&'static str> + Clone,
 {
   fn int_signedness<I>(input: &[I]) -> IResult<&[I], &'static str>
   where
-    I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
+    I: Debug + InputTake + InputLength + Slice<std::ops::RangeFrom<usize>> + Compare<&'static str> + Clone,
   {
     alt((keyword("unsigned"), keyword("signed")))(input)
   }
 
   fn int_longness<I>(input: &[I]) -> IResult<&[I], &'static str>
   where
-    I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
+    I: Debug + InputTake + InputLength + Slice<std::ops::RangeFrom<usize>> + Compare<&'static str> + Clone,
   {
     alt((keyword("short"), keyword("long")))(input)
   }
@@ -164,7 +164,7 @@ where
 
 fn const_qualifier<I>(input: &[I]) -> IResult<&[I], bool>
 where
-  I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
+  I: Debug + InputTake + InputLength + Slice<std::ops::RangeFrom<usize>> + Compare<&'static str> + Clone,
 {
   fold_many0(keyword("const"), || false, |_, _| true)(input)
 }
@@ -211,7 +211,71 @@ impl Type {
   {
     match self {
       Self::BuiltIn(_) => Ok(None),
-      Self::Identifier { name, .. } => name.finish(ctx),
+      Self::Identifier { name, .. } => {
+        name.finish(ctx)?;
+
+        if let Identifier::Literal(id) = name {
+          if let Some(ty) = ctx.resolve_ty(id.as_str()) {
+            match ty.as_str() {
+              "float" => {
+                *self = Type::BuiltIn(BuiltInType::Float);
+              },
+              "double" => {
+                *self = Type::BuiltIn(BuiltInType::Double);
+              },
+              "long double" => {
+                *self = Type::BuiltIn(BuiltInType::LongDouble);
+              },
+              "bool" => {
+                *self = Type::BuiltIn(BuiltInType::Bool);
+              },
+              "char" => {
+                *self = Type::BuiltIn(BuiltInType::Char);
+              },
+              "signed char" => {
+                *self = Type::BuiltIn(BuiltInType::SChar);
+              },
+              "unsigned char" => {
+                *self = Type::BuiltIn(BuiltInType::UChar);
+              },
+              "short" => {
+                *self = Type::BuiltIn(BuiltInType::Short);
+              },
+              "unsigned short" => {
+                *self = Type::BuiltIn(BuiltInType::UShort);
+              },
+              "int" => {
+                *self = Type::BuiltIn(BuiltInType::Int);
+              },
+              "unsigned int" => {
+                *self = Type::BuiltIn(BuiltInType::UInt);
+              },
+              "long" => {
+                *self = Type::BuiltIn(BuiltInType::Long);
+              },
+              "unsigned long" => {
+                *self = Type::BuiltIn(BuiltInType::ULong);
+              },
+              "long long" => {
+                *self = Type::BuiltIn(BuiltInType::LongLong);
+              },
+              "unsigned long long" => {
+                *self = Type::BuiltIn(BuiltInType::ULongLong);
+              },
+              "void" => {
+                *self = Type::BuiltIn(BuiltInType::Void);
+              },
+              _ => {
+                *self = Type::Identifier { name: Identifier::Literal(ty), is_struct: false };
+              },
+            }
+
+            return self.finish(ctx)
+          }
+        }
+
+        Ok(None)
+      },
       Self::Ptr { ty, .. } => ty.finish(ctx),
     }
   }
@@ -312,6 +376,12 @@ mod tests {
 
     let (_, ty) = Type::parse(&["struct", "MyType"]).unwrap();
     assert_eq!(ty, ty!(struct MyType));
+  }
+
+  #[test]
+  fn parse_all_consuming() {
+    let (_, ty) = Type::parse(&["int8_t"]).unwrap();
+    assert_eq!(ty, ty!(int8_t));
   }
 
   #[test]

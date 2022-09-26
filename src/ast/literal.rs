@@ -641,6 +641,7 @@ impl LitInt {
     I: Debug
       + InputTake
       + InputLength
+      + Slice<std::ops::RangeFrom<usize>>
       + Compare<&'static str>
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>
@@ -683,6 +684,7 @@ impl LitInt {
     I: Debug
       + InputTake
       + InputLength
+      + Slice<std::ops::RangeFrom<usize>>
       + Compare<&'static str>
       + InputIter<Item = C>
       + InputTakeAtPosition<Item = C>

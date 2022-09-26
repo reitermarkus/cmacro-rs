@@ -1,11 +1,11 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::RangeFrom};
 
 use nom::{
   bytes::complete::{tag, take_until},
-  combinator::{all_consuming, map_opt},
+  combinator::{all_consuming, map_parser, opt, value},
   multi::many0,
-  sequence::{delimited, pair},
-  Compare, CompareResult, FindSubstring, IResult, InputLength, InputTake, Parser,
+  sequence::{delimited, pair, preceded},
+  Compare, FindSubstring, IResult, InputLength, InputTake, Parser, Slice,
 };
 
 pub(crate) fn take_one<I>(tokens: &[I]) -> IResult<&[I], I>
@@ -40,23 +40,12 @@ where
 
 pub(crate) fn token<I>(token: &'static str) -> impl Fn(&[I]) -> IResult<&[I], &'static str>
 where
-  I: Debug + InputTake + InputLength + Compare<&'static str> + Clone,
+  I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + Compare<&'static str> + Clone,
 {
-  move |tokens: &[I]| {
-    map_opt(take_one, |token2: I| {
-      let token2 = if token2.input_len() >= 2 && token2.take(2).compare("\\\n") == CompareResult::Ok {
-        // TODO: Fix in tokenizer/lexer.
-        let (_, token2) = token2.take_split(2);
-        token2
-      } else {
-        token2
-      };
-
-      if token2.compare(token) == CompareResult::Ok {
-        Some(token)
-      } else {
-        None
-      }
+  move |tokens| {
+    map_parser(take_one, |token2| {
+      all_consuming(preceded(opt(tag("\\\n")), value(token, tag(token))))(token2)
+        .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))
     })(tokens)
   }
 }
@@ -65,7 +54,14 @@ pub(crate) use token as keyword;
 
 pub(crate) fn parenthesized<'i, I, O, F>(f: F) -> impl FnMut(&'i [I]) -> IResult<&'i [I], O, nom::error::Error<&'i [I]>>
 where
-  I: Debug + InputTake + InputLength + Compare<&'static str> + FindSubstring<&'static str> + Clone + 'i,
+  I: Debug
+    + InputTake
+    + InputLength
+    + Slice<std::ops::RangeFrom<usize>>
+    + Compare<&'static str>
+    + FindSubstring<&'static str>
+    + Clone
+    + 'i,
   F: Parser<&'i [I], O, nom::error::Error<&'i [I]>>,
 {
   delimited(pair(token("("), meta), f, pair(meta, token(")")))

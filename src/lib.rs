@@ -101,7 +101,7 @@ impl VarMacro {
   }
 
   /// Evaluate the value and type of this macro and generate corresponding Rust code.
-  pub fn generate<C>(&mut self, cx: C) -> Result<(TokenStream, Option<Type>), crate::Error>
+  pub fn generate<C>(&mut self, cx: C) -> Result<(TokenStream, Option<TokenStream>), crate::Error>
   where
     C: CodegenContext,
   {
@@ -111,6 +111,7 @@ impl VarMacro {
 
     let ty = self.value.finish(&mut ctx)?;
     self.value.to_tokens(&mut ctx, &mut tokens);
+    let ty = ty.map(|ty| ty.to_token_stream(&mut ctx));
 
     Ok((tokens, ty))
   }

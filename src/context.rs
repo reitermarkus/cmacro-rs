@@ -56,6 +56,10 @@ where
     self.global_context.macro_arg_ty(macro_name, arg_name)
   }
 
+  fn resolve_ty(&self, ty: &str) -> Option<String> {
+    self.global_context.resolve_ty(ty)
+  }
+
   fn macro_variable(&self, name: &str) -> Option<Expr> {
     self.global_context.macro_variable(name)
   }
@@ -80,6 +84,12 @@ pub trait CodegenContext {
   /// Get the type for the given macro argument.
   #[allow(unused_variables)]
   fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
+    None
+  }
+
+  /// Resolve the given type.
+  #[allow(unused_variables)]
+  fn resolve_ty(&self, ty: &str) -> Option<String> {
     None
   }
 
@@ -110,6 +120,10 @@ where
 
   fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
     T::macro_arg_ty(self, macro_name, arg_name)
+  }
+
+  fn resolve_ty(&self, ty: &str) -> Option<String> {
+    T::resolve_ty(self, ty)
   }
 
   fn macro_variable(&self, name: &str) -> Option<Expr> {
