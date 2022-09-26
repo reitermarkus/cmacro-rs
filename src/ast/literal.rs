@@ -28,7 +28,7 @@ use super::{
   tokens::{meta, take_one, token},
   ty::BuiltInType,
 };
-use crate::{CodegenContext, LocalContext};
+use crate::{CodegenContext, LocalContext, Type};
 
 /// A literal.
 ///
@@ -73,6 +73,17 @@ impl Lit {
     ))(input)
   }
 
+  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  where
+    C: CodegenContext,
+  {
+    match self {
+      Self::Char(c) => c.finish(ctx),
+      Self::String(s) => s.finish(ctx),
+      Self::Float(f) => f.finish(ctx),
+      Self::Int(i) => i.finish(ctx),
+    }
+  }
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     match self {
       Self::Char(c) => c.to_tokens(ctx, tokens),
@@ -247,6 +258,18 @@ impl LitChar {
     Ok((input2, Self { repr: c }))
   }
 
+  #[allow(unused_variables)]
+  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  where
+    C: CodegenContext,
+  {
+    if self.repr <= u8::MAX as u32 {
+      Ok(Some(Type::BuiltIn(BuiltInType::Char)))
+    } else {
+      Ok(None)
+    }
+  }
+
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     let c = self.repr;
 
@@ -390,6 +413,14 @@ impl LitString {
     )(input)
   }
 
+  #[allow(unused_variables)]
+  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  where
+    C: CodegenContext,
+  {
+    Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
+  }
+
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     let mut bytes = self.repr.clone();
     bytes.push(0);
@@ -506,6 +537,18 @@ impl LitFloat {
     }
 
     Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Float)))
+  }
+
+  #[allow(unused_variables)]
+  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  where
+    C: CodegenContext,
+  {
+    Ok(Some(match self {
+      Self::Float(_) => Type::BuiltIn(BuiltInType::Float),
+      Self::Double(_) => Type::BuiltIn(BuiltInType::Double),
+      Self::LongDouble(_) => Type::BuiltIn(BuiltInType::LongDouble),
+    }))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
@@ -733,6 +776,14 @@ impl LitInt {
 
     // TODO: Handle suffix.
     Ok((tokens, Self { value, suffix }))
+  }
+
+  #[allow(unused_variables)]
+  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  where
+    C: CodegenContext,
+  {
+    Ok(None)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(self, _ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {

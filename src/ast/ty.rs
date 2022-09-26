@@ -282,9 +282,13 @@ impl Type {
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     match self {
-      Self::BuiltIn(ty) => match ty {
-        BuiltInType::Float | BuiltInType::Double | BuiltInType::Bool => ty.to_tokens(tokens),
-        ty => tokens.append_all(quote! { ::core::ffi::#ty }),
+      Self::BuiltIn(ty) => {
+        let prefix = ctx.ffi_prefix();
+
+        match ty {
+          BuiltInType::Float | BuiltInType::Double | BuiltInType::Bool => ty.to_tokens(tokens),
+          ty => tokens.append_all(quote! { #prefix #ty }),
+        }
       },
       Self::Identifier { name, .. } => name.to_tokens(ctx, tokens),
       Self::Ptr { ty, mutable } => {

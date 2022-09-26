@@ -576,7 +576,7 @@ impl Expr {
         Ok(ty)
       },
       Self::FunctionCall(call) => call.finish(ctx),
-      Self::Literal(_) => Ok(None),
+      Self::Literal(lit) => lit.finish(ctx),
       Self::FieldAccess { expr, field } => {
         expr.finish(ctx)?;
         field.finish(ctx)?;
