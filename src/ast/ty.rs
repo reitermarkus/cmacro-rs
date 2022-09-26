@@ -7,7 +7,7 @@ use nom::{
   sequence::{delimited, pair, preceded, terminated},
   AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
 };
-use proc_macro2::{Ident, Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 
 use super::*;

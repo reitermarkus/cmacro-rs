@@ -11,7 +11,7 @@ use quote::{quote, TokenStreamExt};
 use super::{
   identifier::identifier,
   tokens::{meta, token},
-  Identifier, Type,
+  BuiltInType, Identifier, Type,
 };
 use crate::{CodegenContext, LocalContext, MacroArgType};
 
@@ -51,8 +51,7 @@ impl Stringify {
         *arg_ty = MacroArgType::Expr;
       }
 
-      // TODO: Should be `*const c_char`.
-      Ok(None)
+      Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
     } else {
       unreachable!()
     }
@@ -65,7 +64,13 @@ impl Stringify {
   pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
     let id = self.id.to_token_stream(ctx);
 
-    quote! { ::core::stringify!(#id) }
+    let ffi_prefix = ctx.ffi_prefix();
+    let trait_prefix = ctx.num_prefix();
+
+    quote! {
+      #trait_prefix concat!(#trait_prefix stringify!(#id), '\0').as_ptr()
+        as *const #ffi_prefix c_char
+    }
   }
 }
 
