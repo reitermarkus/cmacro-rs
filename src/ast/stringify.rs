@@ -48,13 +48,16 @@ impl Stringify {
   {
     if let Identifier::Literal(ref id) = self.id {
       if let Some(arg_ty) = ctx.arg_type_mut(id.as_str()) {
-        *arg_ty = MacroArgType::Expr;
-      }
+        if *arg_ty != MacroArgType::Ident {
+          *arg_ty = MacroArgType::Expr;
+        }
 
-      Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
-    } else {
-      unreachable!()
+        return Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
+      }
     }
+
+    // Only macro arguments can be stringified.
+    Err(crate::Error::UnsupportedExpression)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
