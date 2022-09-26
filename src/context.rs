@@ -2,7 +2,7 @@ use super::*;
 
 /// Type of a macro argument.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MacroArgType {
+pub(crate) enum MacroArgType {
   /// `ident` type
   Ident,
   /// `expr` type

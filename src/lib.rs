@@ -59,8 +59,10 @@ pub use context::*;
 /// ```
 #[derive(Debug, Clone)]
 pub struct VarMacro {
-  name: String,
-  value: Expr,
+  /// The name of this variable macro.
+  pub name: String,
+  /// The value of this variable macro.
+  pub value: Expr,
 }
 
 impl VarMacro {
@@ -111,16 +113,6 @@ impl VarMacro {
     self.value.to_tokens(&mut ctx, &mut tokens);
 
     Ok((tokens, ty))
-  }
-
-  /// The name of this variable macro.
-  pub fn name(&self) -> &str {
-    &self.name
-  }
-
-  /// The value of this variable macro.
-  pub fn value(&self) -> &Expr {
-    &self.value
   }
 }
 
@@ -178,9 +170,12 @@ impl VarMacro {
 /// ```
 #[derive(Debug)]
 pub struct FnMacro {
-  name: String,
-  args: Vec<String>,
-  body: MacroBody,
+  /// The name of this function macro.
+  pub name: String,
+  /// The arguments of this function macro.
+  pub args: Vec<String>,
+  /// The body of this function macro.
+  pub body: MacroBody,
 }
 
 impl FnMacro {
@@ -330,20 +325,5 @@ impl FnMacro {
     }
 
     Ok(tokens)
-  }
-
-  /// The name of this function macro.
-  pub fn name(&self) -> &str {
-    &self.name
-  }
-
-  /// The arguments of this function macro.
-  pub fn args(&self) -> &[String] {
-    &self.args
-  }
-
-  /// The body of this function macro.
-  pub fn body(&self) -> &MacroBody {
-    &self.body
   }
 }
