@@ -23,6 +23,7 @@ pub struct Decl {
 }
 
 impl Decl {
+  /// Parse a variable declaration.
   pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug

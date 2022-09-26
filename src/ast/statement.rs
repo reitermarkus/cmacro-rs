@@ -26,16 +26,24 @@ use crate::{CodegenContext, LocalContext};
 /// } while (0)
 /// ```
 #[derive(Debug)]
+#[allow(missing_docs)]
 pub enum Statement {
+  /// An expression.
   Expr(Expr),
+  /// A function declaration.
   FunctionDecl(FunctionDecl),
+  /// A variable declaration.
   Decl(Decl),
+  /// A block containing multiple statements.
   Block(Vec<Self>),
+  /// An if-condition.
   If { condition: Expr, if_branch: Vec<Statement>, else_branch: Vec<Statement> },
+  /// A do-while condition.
   DoWhile { block: Vec<Statement>, condition: Expr },
 }
 
 impl Statement {
+  /// Parse a statement.
   pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug

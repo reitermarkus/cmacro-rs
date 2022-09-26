@@ -6,6 +6,7 @@ use quote::{quote, ToTokens, TokenStreamExt};
 use super::{Lit, LitFloat, LitInt, Type};
 use crate::{CodegenContext, Expr, LocalContext};
 
+/// A binary expression operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOp {
   /// lhs * rhs
@@ -104,10 +105,14 @@ impl ToTokens for BinaryOp {
   }
 }
 
+/// A binary expression.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinaryExpr {
+  /// Left-hand side expression.
   pub lhs: Expr,
+  /// Expression operator.
   pub op: BinaryOp,
+  /// Right-hand side expression.
   pub rhs: Expr,
 }
 

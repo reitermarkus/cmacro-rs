@@ -35,13 +35,18 @@ use crate::{CodegenContext, LocalContext};
 /// Also see [`LitChar`], [`LitString`], [`LitFloat`] and [`LitInt`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lit {
+  /// A character literal.
   Char(LitChar),
+  /// A string literal.
   String(LitString),
+  /// A floating-point literal.
   Float(LitFloat),
+  /// An integer literal.
   Int(LitInt),
 }
 
 impl Lit {
+  /// Parse a literal.
   pub fn parse<I, C>(input: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
@@ -158,6 +163,7 @@ pub struct LitChar {
 }
 
 impl LitChar {
+  /// Parse a character literal.
   pub fn parse<I>(input: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
@@ -358,6 +364,7 @@ impl LitString {
     Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
   }
 
+  /// Parse a string literal.
   pub fn parse<I, C>(input: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
@@ -411,8 +418,11 @@ impl PartialEq<&str> for LitString {
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LitFloat {
+  /// A `float`.
   Float(f32),
+  /// A `double`.
   Double(f64),
+  /// A `long double`.
   LongDouble(f64),
 }
 
@@ -444,6 +454,7 @@ impl LitFloat {
     ))(input)
   }
 
+  /// Parse a floating-point literal.
   pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
@@ -601,7 +612,9 @@ impl Div for LitFloat {
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LitInt {
+  /// The integer value.
   pub value: i128,
+  /// The literal suffix, if any.
   pub suffix: Option<BuiltInType>,
 }
 
@@ -664,6 +677,7 @@ impl LitInt {
     Ok((input, (n, unsigned, size)))
   }
 
+  /// Parse an integer literal.
   pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug

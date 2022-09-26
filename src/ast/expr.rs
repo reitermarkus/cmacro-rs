@@ -24,6 +24,7 @@ use crate::{CodegenContext, LocalContext, UnaryOp};
 /// #define EXPR 1 + 2
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[allow(missing_docs)]
 pub enum Expr {
   Variable { name: Identifier },
   FunctionCall(FunctionCall),
@@ -513,6 +514,7 @@ impl Expr {
     )(tokens)
   }
 
+  /// Parse an expression.
   pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug

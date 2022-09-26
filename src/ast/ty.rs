@@ -16,21 +16,37 @@ use crate::{CodegenContext, LocalContext};
 /// A built-in type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltInType {
+  /// `float`
   Float,
+  /// `double`
   Double,
+  /// `long double`
   LongDouble,
+  /// `bool`
   Bool,
+  /// `char`
   Char,
+  /// `signed char`
   SChar,
+  /// `unsigned char`
   UChar,
+  /// `short`
   Short,
+  /// `unsigned short`
   UShort,
+  /// `int`
   Int,
+  /// `unsigned int`
   UInt,
+  /// `long`
   Long,
+  /// `unsigned long`
   ULong,
+  /// `long long`
   LongLong,
+  /// `unsigned long long`
   ULongLong,
+  /// `void`
   Void,
 }
 
@@ -156,12 +172,18 @@ where
 /// A type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
+  /// A built-in type.
   BuiltIn(BuiltInType),
+  /// A type identifier.
+  #[allow(missing_docs)]
   Identifier { name: Identifier, is_struct: bool },
+  /// A pointer type.
+  #[allow(missing_docs)]
   Ptr { ty: Box<Self>, mutable: bool },
 }
 
 impl Type {
+  /// Parse a type.
   pub fn parse<I>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug

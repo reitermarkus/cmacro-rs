@@ -86,19 +86,25 @@ where
 }
 
 /// An identifier.
-///
-/// ```c
-/// #define ID asdf
-/// #define ID abc ## def
-/// #define ID abc ## 123
-/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Identifier {
+  /// A literal identifier, e.g.
+  ///
+  /// ```c
+  /// #define ID asdf
+  /// ```
   Literal(String),
+  /// A concatenated identifier, e.g.
+  ///
+  /// ```c
+  /// #define ID abc ## def
+  /// #define ID abc ## 123
+  /// ```
   Concat(Vec<String>),
 }
 
 impl Identifier {
+  /// Parse an identifier.
   pub fn parse<I, T>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug

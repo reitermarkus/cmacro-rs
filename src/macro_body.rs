@@ -16,28 +16,32 @@ use crate::{
 };
 
 /// The body of a macro.
-///
-/// Can either be a block/statement, e.g.
-///
-/// ```c
-/// #define BLOCK do { \
-///   a += b; \
-/// } while (0)
-/// ```
-///
-/// or an expression, e.g.
-///
-/// ```c
-/// #define EXPR a + b
-/// ```
 #[derive(Debug)]
 pub enum MacroBody {
-  Block(Statement),
+  /// A statement, e.g.
+  ///
+  /// ```c
+  /// #define BLOCK do { \
+  ///   a += b; \
+  /// } while (0)
+  /// ```
+  ///
+  /// or
+  ///
+  /// ```c
+  /// #define STMT a += b;
+  /// ```
+  Statement(Statement),
+  /// An expression, e.g.
+  ///
+  /// ```c
+  /// #define EXPR a + b
+  /// ```
   Expr(Expr),
 }
 
 impl MacroBody {
-  pub fn parse<I, C>(input: &[I]) -> IResult<&[I], Self>
+  pub(crate) fn parse<I, C>(input: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -58,13 +62,11 @@ impl MacroBody {
     let (input, _) = meta(input)?;
 
     if input.is_empty() {
-      return Ok((input, MacroBody::Block(Statement::Block(vec![]))))
+      return Ok((input, Self::Statement(Statement::Block(vec![]))))
     }
 
-    let (input, body) = alt((
-      all_consuming(map(Expr::parse, MacroBody::Expr)),
-      all_consuming(map(Statement::parse, MacroBody::Block)),
-    ))(input)?;
+    let (input, body) =
+      alt((all_consuming(map(Expr::parse, Self::Expr)), all_consuming(map(Statement::parse, Self::Statement))))(input)?;
 
     Ok((input, body))
   }
@@ -74,7 +76,7 @@ impl MacroBody {
     C: CodegenContext,
   {
     match self {
-      Self::Block(stmt) => stmt.finish(ctx),
+      Self::Statement(stmt) => stmt.finish(ctx),
       Self::Expr(expr) => expr.finish(ctx),
     }
   }

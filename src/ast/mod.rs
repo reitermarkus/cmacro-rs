@@ -1,3 +1,5 @@
+//! This module contains all types needed for parsing a macro to an abstract syntax tree.
+
 mod tokens;
 pub(crate) use tokens::*;
 

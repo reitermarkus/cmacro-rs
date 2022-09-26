@@ -4,7 +4,7 @@ use quote::{quote, TokenStreamExt};
 use super::{BuiltInType, Type};
 use crate::{CodegenContext, Expr, LocalContext};
 
-/// A unary operation.
+/// A unary expression operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
   /// `expr++`
@@ -29,10 +29,12 @@ pub enum UnaryOp {
   AddrOf,
 }
 
-/// A unary operation.
+/// A unary expression.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryExpr {
+  /// Expression operator.
   pub op: UnaryOp,
+  /// Expression.
   pub expr: Expr,
 }
 

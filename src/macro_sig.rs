@@ -1,3 +1,4 @@
+/// Tokenize a macro name or signature.
 pub fn tokenize_name(input: &[u8]) -> Vec<&[u8]> {
   let mut tokens = vec![];
 

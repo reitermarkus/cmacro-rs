@@ -26,6 +26,7 @@ pub struct Stringify {
 }
 
 impl Stringify {
+  /// Parse a stringification expression.
   pub fn parse<I>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug

@@ -1,11 +1,10 @@
-use crate::ast::Type;
-
 /// A parsing or codegen error.
 #[derive(Debug)]
 pub enum Error {
+  /// Variable is unknown.
   UnknownVariable,
-  InvalidVarMacro,
+  /// Parsing failed.
   ParserError,
+  /// Cannot evaluate expression.
   UnsupportedExpression,
-  IncompatibleTypes(Option<Type>, Option<Type>),
 }

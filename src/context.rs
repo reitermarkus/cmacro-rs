@@ -48,7 +48,7 @@ impl<'g, C> CodegenContext for LocalContext<'g, C>
 where
   C: CodegenContext,
 {
-  fn function(&self, name: &str) -> Option<Vec<String>> {
+  fn function(&self, name: &str) -> Option<(Vec<String>, Type)> {
     self.global_context.function(name)
   }
 
@@ -65,26 +65,11 @@ where
   }
 }
 
-/// Global code generation context.
-#[derive(Debug, Default)]
-pub struct Context {
-  pub functions: HashMap<String, Vec<String>>,
-  pub variables: HashMap<String, String>,
-  pub macro_variables: HashMap<String, Expr>,
-  pub ffi_prefix: Option<TokenStream>,
-  pub num_prefix: Option<TokenStream>,
-}
-
-impl Context {
-  pub fn add_var_macro(&mut self, var_macro: VarMacro) {
-    self.macro_variables.insert(var_macro.name, var_macro.expr);
-  }
-}
-
+/// Context for code generation.
 pub trait CodegenContext {
-  /// Get the argument types for the function with the given `name`.
+  /// Get the argument types and return type for the function with the given `name`.
   #[allow(unused_variables)]
-  fn function(&self, name: &str) -> Option<Vec<String>> {
+  fn function(&self, name: &str) -> Option<(Vec<String>, Type)> {
     None
   }
 
@@ -105,20 +90,25 @@ pub trait CodegenContext {
   }
 }
 
-impl CodegenContext for Context {
-  fn function(&self, name: &str) -> Option<Vec<String>> {
-    self.functions.get(name).cloned()
+impl<T> CodegenContext for &T
+where
+  T: CodegenContext,
+{
+  fn function(&self, name: &str) -> Option<(Vec<String>, Type)> {
+    T::function(self, name)
   }
 
   fn macro_variable(&self, name: &str) -> Option<Expr> {
-    self.macro_variables.get(name).cloned()
+    T::macro_variable(self, name)
   }
 
   fn ffi_prefix(&self) -> Option<TokenStream> {
-    self.ffi_prefix.clone()
+    T::ffi_prefix(self)
   }
 
   fn num_prefix(&self) -> Option<TokenStream> {
-    self.num_prefix.clone()
+    T::num_prefix(self)
   }
 }
+
+impl CodegenContext for () {}

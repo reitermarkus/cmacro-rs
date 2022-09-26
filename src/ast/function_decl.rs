@@ -30,6 +30,7 @@ pub struct FunctionDecl {
 }
 
 impl FunctionDecl {
+  /// Parse a function declaration.
   pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug

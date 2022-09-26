@@ -13,8 +13,10 @@ use crate::{CodegenContext, LocalContext, MacroArgType};
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionCall {
-  pub name: Identifier,
-  pub args: Vec<Expr>,
+  /// The function name identifier.
+  pub(crate) name: Identifier,
+  /// The function arguments.
+  pub(crate) args: Vec<Expr>,
 }
 
 impl FunctionCall {
@@ -28,9 +30,13 @@ impl FunctionCall {
       arg.finish(ctx)?;
     }
 
+    let mut ty = None;
+
     if let Identifier::Literal(ref function_name) = self.name {
-      if let Some(known_args) = ctx.function(function_name.as_str()) {
+      if let Some((known_args, known_ret_ty)) = ctx.function(function_name.as_str()) {
         if known_args.len() == self.args.len() {
+          ty = Some(known_ret_ty);
+
           for (arg, known_arg_type) in self.args.iter_mut().zip(known_args.iter()) {
             arg.finish(ctx)?;
 
@@ -53,7 +59,7 @@ impl FunctionCall {
     }
 
     // TODO: Get function return type from context.
-    Ok(None)
+    Ok(ty)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
