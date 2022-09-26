@@ -143,7 +143,6 @@ impl Identifier {
       for id in ids {
         if let Some(arg_ty) = ctx.arg_type_mut(id.as_str()) {
           *arg_ty = MacroArgType::Ident;
-          ctx.export_as_macro = true;
 
           if let Some(non_arg_id) = non_arg_id.take() {
             new_ids.push(non_arg_id);
@@ -177,7 +176,7 @@ impl Identifier {
       Self::Literal(ref s) => {
         let id = Ident::new(s, Span::call_site());
 
-        if ctx.is_macro_arg(s) {
+        if ctx.export_as_macro && ctx.is_macro_arg(s) {
           quote! { $#id }
         } else {
           quote! { #id }

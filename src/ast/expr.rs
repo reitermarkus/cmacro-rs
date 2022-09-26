@@ -15,7 +15,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext, UnaryOp};
+use crate::{CodegenContext, LocalContext, MacroArgType, UnaryOp};
 
 /// An expression.
 ///
@@ -547,12 +547,17 @@ impl Expr {
         Ok(Some(ty.clone()))
       },
       Self::Variable { ref mut name } => {
-        let ty = name.finish(ctx)?;
+        let mut ty = name.finish(ctx)?;
 
         if let Identifier::Literal(id) = name {
+          // Expand variable-like macro.
           if let Some(expr) = ctx.macro_variable(id.as_str()) {
             *self = expr;
             return self.finish(ctx)
+          }
+
+          if let Some(MacroArgType::Known(arg_ty)) = ctx.arg_type_mut(id.as_str()) {
+            ty = Some(arg_ty.clone());
           }
 
           if !ctx.is_variable_known(id.as_str()) {

@@ -5,7 +5,7 @@
 //! Both variable-like macros (e.g. `#define VAR 4 + 7 * 82`) as well as function-like macros
 //! (e.g. `#define FUNC(a, b, c) a + b * c`) are supported.
 //!
-//! See the [`VarMacro::parse`] and [`FnMacro::parse`] functions on how to parse macros.
+//! See the [`VarMacro`] and [`FnMacro`] functions on how to parse macros.
 
 #![warn(missing_debug_implementations)]
 #![warn(missing_docs)]
@@ -127,6 +127,26 @@ impl VarMacro {
 /// A function-like macro.
 ///
 /// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), cmacro::Error> {
+/// use cmacro::{FnMacro, CodegenContext};
+///
+/// // #define FUNC(a, b, c) a + b * c
+/// let name = "FUNC";
+/// let args = ["(", "a", ",", "b", ",", "c", ")"];
+/// let value = ["a", "+", "b", "*", "c"];
+///
+/// let mut fn_macro = FnMacro::parse(name, &args, &value)?;
+/// let output = fn_macro.generate(())?;
+/// assert_eq!(
+///   output.to_string(),
+///   "macro_rules ! FUNC { ($ a : expr , $ b : expr , $ c : expr) => { ($ a + ($ b * $ c)) } ; }",
+/// );
+/// # Ok(())
+/// # }
+/// ```
+///
 /// ```
 /// # fn main() -> Result<(), cmacro::Error> {
 /// use cmacro::{FnMacro, CodegenContext};
@@ -134,7 +154,12 @@ impl VarMacro {
 /// struct Context;
 ///
 /// impl CodegenContext for Context {
-///
+///   fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
+///     match (macro_name, arg_name) {
+///       ("FUNC", "a" | "b" | "c") => Some("u32".into()),
+///       _ => None,
+///     }
+///   }
 /// }
 ///
 /// // #define FUNC(a, b, c) a + b * c
@@ -143,10 +168,10 @@ impl VarMacro {
 /// let value = ["a", "+", "b", "*", "c"];
 ///
 /// let mut fn_macro = FnMacro::parse(name, &args, &value)?;
-/// let output = fn_macro.generate(|_, _| None, |_| None, ())?;
+/// let output = fn_macro.generate(Context)?;
 /// assert_eq!(
 ///   output.to_string(),
-///   "macro_rules ! FUNC { ($ a : expr , $ b : expr , $ c : expr) => { (a + (b * c)) } ; }",
+///   "# [allow (non_snake_case)] # [inline (always)] pub unsafe extern \"C\" fn FUNC (mut a : u32 , mut b : u32 , mut c : u32) -> u32 { (a + (b * c)) }",
 /// );
 /// # Ok(())
 /// # }
@@ -154,7 +179,7 @@ impl VarMacro {
 #[derive(Debug)]
 pub struct FnMacro {
   name: String,
-  args: Vec<(String, MacroArgType)>,
+  args: Vec<String>,
   body: MacroBody,
 }
 
@@ -214,43 +239,32 @@ impl FnMacro {
     let (_, args) = Self::parse_args(args).map_err(|_| crate::Error::ParserError)?;
     let (_, body) = MacroBody::parse(body).map_err(|_| crate::Error::ParserError)?;
 
-    let args = args.into_iter().map(|arg| (arg, MacroArgType::Unknown)).collect();
     Ok(Self { name, args, body })
   }
 
   /// Infer the type of this function macro and generate corresponding Rust code.
-  pub fn generate<C>(
-    &mut self,
-    mut variable_type: impl FnMut(&str, &str) -> Option<syn::Type>,
-    mut return_type: impl FnMut(&str) -> Option<syn::Type>,
-    cx: C,
-  ) -> Result<TokenStream, crate::Error>
+  pub fn generate<C>(&mut self, cx: C) -> Result<TokenStream, crate::Error>
   where
     C: CodegenContext,
   {
     let mut tokens = TokenStream::new();
 
     let mut args = HashMap::new();
-    for (arg, ty) in self.args.clone() {
-      args.insert(arg, ty);
+    for arg in &self.args {
+      let ty = if let Some(arg_ty) = cx.macro_arg_ty(&self.name, arg) {
+        MacroArgType::Known(Type::try_from(syn::parse_str::<syn::Type>(&arg_ty).unwrap())?)
+      } else {
+        MacroArgType::Unknown
+      };
+
+      args.insert(arg.to_owned(), ty);
     }
 
     let mut ctx = LocalContext { args, export_as_macro: false, global_context: &cx };
-    self.body.finish(&mut ctx)?;
+    let ret_ty = self.body.finish(&mut ctx)?;
 
-    let mut export_as_macro = ctx.is_variadic() || !ctx.args.iter().all(|(_, ty)| *ty == MacroArgType::Unknown);
-    let func_args = self
-      .args
-      .iter()
-      .filter_map(|(arg, _)| {
-        let id = Ident::new(arg, Span::call_site());
-        variable_type(&self.name, arg).map(|ty| quote! { #id: #ty })
-      })
-      .collect::<Vec<_>>();
-
-    if func_args.len() != self.args.len() {
-      export_as_macro = true;
-    }
+    let export_as_macro = ctx.is_variadic() || !ctx.args.iter().all(|(_, ty)| matches!(*ty, MacroArgType::Known(_)));
+    ctx.export_as_macro = export_as_macro;
 
     let name = Ident::new(&self.name, Span::call_site());
 
@@ -264,10 +278,11 @@ impl FnMacro {
       let args = self
         .args
         .iter()
-        .map(|(arg, ty)| {
+        .map(|arg| {
           let id = Ident::new(arg, Span::call_site());
+          let ty = ctx.args.get(arg).unwrap();
 
-          if *ty == MacroArgType::Ident {
+          if matches!(ty, MacroArgType::Ident) {
             quote! { $#id:ident }
           } else {
             quote! { $#id:expr }
@@ -283,7 +298,22 @@ impl FnMacro {
         }
       })
     } else {
-      let return_type = return_type(&self.name).map(|ty| {
+      let func_args = self
+        .args
+        .iter()
+        .map(|arg| {
+          if let Some(MacroArgType::Known(ty)) = ctx.args.remove(arg) {
+            let id = Ident::new(arg, Span::call_site());
+            let ty = ty.to_token_stream(&mut ctx);
+            quote! { #id: #ty }
+          } else {
+            unreachable!()
+          }
+        })
+        .collect::<Vec<_>>();
+
+      let return_type = ret_ty.map(|ty| {
+        let ty = ty.to_token_stream(&mut ctx);
         quote! { -> #ty }
       });
 
@@ -304,11 +334,11 @@ impl FnMacro {
 
   /// The name of this function macro.
   pub fn name(&self) -> &str {
-    self.name.as_str()
+    &self.name
   }
 
   /// The arguments of this function macro.
-  pub fn args(&self) -> &[(String, MacroArgType)] {
+  pub fn args(&self) -> &[String] {
     &self.args
   }
 

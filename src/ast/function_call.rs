@@ -35,7 +35,9 @@ impl FunctionCall {
     if let Identifier::Literal(ref function_name) = self.name {
       if let Some((known_args, known_ret_ty)) = ctx.function(function_name.as_str()) {
         if known_args.len() == self.args.len() {
-          ty = Some(known_ret_ty);
+          if let Ok(y) = syn::parse_str::<syn::Type>(&known_ret_ty) {
+            ty = Some(Type::try_from(y)?);
+          }
 
           for (arg, known_arg_type) in self.args.iter_mut().zip(known_args.iter()) {
             arg.finish(ctx)?;
@@ -45,7 +47,9 @@ impl FunctionCall {
             if let Expr::Variable { name: Identifier::Literal(ref name) } = arg {
               if let Some(arg_type) = ctx.arg_type_mut(name) {
                 if *arg_type == MacroArgType::Unknown {
-                  *arg_type = MacroArgType::Known(known_arg_type.clone());
+                  if let Ok(ty) = syn::parse_str::<syn::Type>(known_arg_type) {
+                    *arg_type = MacroArgType::Known(Type::try_from(ty)?);
+                  }
                 }
               }
             }

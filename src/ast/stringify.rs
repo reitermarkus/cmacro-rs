@@ -13,7 +13,7 @@ use super::{
   tokens::{meta, token},
   Identifier, Type,
 };
-use crate::{CodegenContext, LocalContext};
+use crate::{CodegenContext, LocalContext, MacroArgType};
 
 /// Stringification of a macro argument.
 ///
@@ -47,8 +47,8 @@ impl Stringify {
     C: CodegenContext,
   {
     if let Identifier::Literal(ref id) = self.id {
-      if ctx.is_macro_arg(id) {
-        ctx.export_as_macro = true;
+      if let Some(arg_ty) = ctx.arg_type_mut(id.as_str()) {
+        *arg_ty = MacroArgType::Expr;
       }
 
       // TODO: Should be `*const c_char`.

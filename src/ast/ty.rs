@@ -242,6 +242,24 @@ impl Type {
   }
 }
 
+impl TryFrom<syn::Type> for Type {
+  type Error = crate::Error;
+
+  fn try_from(ty: syn::Type) -> Result<Self, Self::Error> {
+    match ty {
+      syn::Type::Ptr(ptr_ty) => {
+        Ok(Self::Ptr { ty: Box::new(Self::try_from(*ptr_ty.elem)?), mutable: ptr_ty.mutability.is_some() })
+      },
+      syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
+      syn::Type::Verbatim(ty) => Ok(Self::Identifier { name: Identifier::Literal(ty.to_string()), is_struct: false }),
+      syn::Type::Path(path_ty) => {
+        Ok(Self::Identifier { name: Identifier::Literal(path_ty.to_token_stream().to_string()), is_struct: false })
+      },
+      _ => Err(crate::Error::ParserError),
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

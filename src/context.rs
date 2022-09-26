@@ -8,7 +8,7 @@ pub enum MacroArgType {
   /// `expr` type
   Expr,
   /// known type
-  Known(String),
+  Known(Type),
   /// unknown type
   Unknown,
 }
@@ -31,7 +31,7 @@ impl<'g, C> LocalContext<'g, C> {
   }
 
   pub fn is_macro_arg(&self, name: &str) -> bool {
-    self.args.get(name).map(|ty| self.export_as_macro || *ty != MacroArgType::Unknown).unwrap_or(false)
+    self.args.get(name).is_some()
   }
 }
 
@@ -48,8 +48,12 @@ impl<'g, C> CodegenContext for LocalContext<'g, C>
 where
   C: CodegenContext,
 {
-  fn function(&self, name: &str) -> Option<(Vec<String>, Type)> {
+  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
     self.global_context.function(name)
+  }
+
+  fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
+    self.global_context.macro_arg_ty(macro_name, arg_name)
   }
 
   fn macro_variable(&self, name: &str) -> Option<Expr> {
@@ -69,7 +73,13 @@ where
 pub trait CodegenContext {
   /// Get the argument types and return type for the function with the given `name`.
   #[allow(unused_variables)]
-  fn function(&self, name: &str) -> Option<(Vec<String>, Type)> {
+  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
+    None
+  }
+
+  /// Get the type for the given macro argument.
+  #[allow(unused_variables)]
+  fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
     None
   }
 
@@ -94,8 +104,12 @@ impl<T> CodegenContext for &T
 where
   T: CodegenContext,
 {
-  fn function(&self, name: &str) -> Option<(Vec<String>, Type)> {
+  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
     T::function(self, name)
+  }
+
+  fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
+    T::macro_arg_ty(self, macro_name, arg_name)
   }
 
   fn macro_variable(&self, name: &str) -> Option<Expr> {
