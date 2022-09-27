@@ -328,3 +328,27 @@ impl FnMacro {
     Ok(tokens)
   }
 }
+
+pub fn expand(var_macros: &mut HashMap<String, Vec<String>>, fn_macros: &mut HashMap<String, (Vec<String>, Vec<String>)>) {
+  enum Part {
+    Token(String),
+    Identifier(String),
+    Stringify(String),
+    Concat(Vec<String>),
+    Call(String, Vec<Self>),
+  }
+  
+  for (name, tokens) in var_macros {
+    fold_many0(
+      alt((
+        map(pair(identifier, parenthesized(separated_list0(token(","), raw_part))), |(name, args)| Part::Call(name, args)),
+        map(preceded(token("#"), identifier), |id| Part::Stringify),
+        map(pair(terminated(identifier, token("##")), separated_list1(token("##"), take_one)), |(id, mut ids)| { ids.insert(0, id); Part::Concat(ids)),
+        map(identifier, |id| Part::Identifier(id)),
+        map(take_one, |t| Part::Token),
+      )),
+      Vec::new,
+      |mut acc, item| { acc.push(item); acc},
+    )(tokens);
+  }
+}
