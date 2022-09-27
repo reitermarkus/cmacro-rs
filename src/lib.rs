@@ -338,17 +338,72 @@ pub fn expand(var_macros: &mut HashMap<String, Vec<String>>, fn_macros: &mut Has
     Call(String, Vec<Self>),
   }
   
+  impl Part {
+    fn expand(&self, var_macros: &HashMap<&str, Vec<Part>) {
+      let mut tokens = Vec::new();
+      
+      match self {
+        Self::Token(t) => tokens.push(t),
+        Self::Identifier(id) => {
+          if let Some(var) = var_macros.get(id) {
+            tokens.extend(var.expand(var_macros));
+          } else {
+            tokens.push(id);
+          }
+        },
+        Self::Stringify(id) => {
+          tokens.push("#".into());
+          tokens.push(id);
+        },
+        Self::Concat(ids) => {
+          for (i, id) in ids.iter().enumerate() {
+            if i > 0 {
+              tokens.push("##".into());
+            }
+            
+            tokens.push(id);          
+          }
+        },
+        Self::Call(n, args) => {
+          tokens.push(n);
+          
+          for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+              tokens.push(",".into());
+            }
+            
+            tokens.push(arg.expand(var_macros));          
+          }
+        },
+      }
+    }
+  }
+  
+  let mut vars = HashMap::new();
   for (name, tokens) in var_macros {
-    fold_many0(
+    let (_, parts) = fold_many0(
       alt((
-        map(pair(identifier, parenthesized(separated_list0(token(","), raw_part))), |(name, args)| Part::Call(name, args)),
-        map(preceded(token("#"), identifier), |id| Part::Stringify),
-        map(pair(terminated(identifier, token("##")), separated_list1(token("##"), take_one)), |(id, mut ids)| { ids.insert(0, id); Part::Concat(ids)),
-        map(identifier, |id| Part::Identifier(id)),
-        map(take_one, |t| Part::Token),
+        map(
+          pair(identifier, parenthesized(separated_list0(token(","), raw_part))), 
+          |(name, args)| Part::Call(name, args),
+        ),
+        map(preceded(token("#"), identifier), Part::Stringify),
+        map(pair(terminated(identifier, token("##")), separated_list1(token("##"), take_one)), |(id, mut ids)| { 
+          ids.insert(0, id); 
+          Part::Concat(ids)
+        },
+        map(identifier, Part::Identifier),
+        map(take_one, Part::Token),
       )),
       Vec::new,
-      |mut acc, item| { acc.push(item); acc},
-    )(tokens);
+      |mut acc, item| { 
+        acc.push(item); 
+        acc
+      },
+    )(tokens).unwrap();
+    
+    vars.insert(name, parts);
   }
+    
+  
 }
