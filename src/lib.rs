@@ -339,14 +339,14 @@ pub fn expand(var_macros: &mut HashMap<String, Vec<String>>, fn_macros: &mut Has
   }
   
   impl Part {
-    fn expand(&self, var_macros: &HashMap<&str, Vec<Part>) {
+    fn expand(&self, var_macros: &HashMap<&str, Vec<Part>, fn_macros: &HashMap<&str, (Vec<Part>, Vec<Part>)>) -> Vec<String> {
       let mut tokens = Vec::new();
       
       match self {
         Self::Token(t) => tokens.push(t),
         Self::Identifier(id) => {
           if let Some(var) = var_macros.get(id) {
-            tokens.extend(var.expand(var_macros));
+            tokens.extend(var.expand(var_macros, fn_macros));
           } else {
             tokens.push(id);
           }
@@ -365,17 +365,23 @@ pub fn expand(var_macros: &mut HashMap<String, Vec<String>>, fn_macros: &mut Has
           }
         },
         Self::Call(n, args) => {
-          tokens.push(n);
+          if let Some(f) = fn_macros.get(n) {
+            todo!()
+          } else {
+            tokens.extend(Self::Identifier(n));
           
-          for (i, arg) in args.iter().enumerate() {
-            if i > 0 {
-              tokens.push(",".into());
-            }
+            for (i, arg) in args.iter().enumerate() {
+              if i > 0 { 
+                tokens.push(",".into());
+              }
             
-            tokens.push(arg.expand(var_macros));          
+              tokens.extend(arg.expand(var_macros, fn_macros));          
+            }
           }
         },
       }
+      
+      tokens
     }
   }
   
