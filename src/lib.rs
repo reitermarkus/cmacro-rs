@@ -13,6 +13,7 @@
 use std::{
   collections::HashMap,
   fmt::Debug,
+  mem,
   ops::{RangeFrom, RangeTo},
   str,
 };
@@ -342,49 +343,128 @@ impl FnMacro {
 ///   ("STRINGIFY", vec!["#", "A"]),
 /// ]);
 ///
-/// let plus = interpolate_var_macros("PLUS", None, var_macros.get("PLUS").unwrap(), &var_macros);
+/// let fn_macros = HashMap::new();
+///
+/// let plus = interpolate_var_macros("PLUS", None, var_macros.get("PLUS").unwrap(), &var_macros, &fn_macros);
 /// assert_eq!(plus, vec!["1", "+", "2"]);
 ///
-/// let concat = interpolate_var_macros("CONCAT", None, var_macros.get("CONCAT").unwrap(), &var_macros);
+/// let concat = interpolate_var_macros("CONCAT", None, var_macros.get("CONCAT").unwrap(), &var_macros, &fn_macros);
 /// assert_eq!(concat, vec!["A", "##", "B"]);
 ///
-/// let stringify = interpolate_var_macros("STRINGIFY", None, var_macros.get("STRINGIFY").unwrap(), &var_macros);
+/// let stringify = interpolate_var_macros("STRINGIFY", None, var_macros.get("STRINGIFY").unwrap(), &var_macros, &fn_macros);
 /// assert_eq!(stringify, vec!["#", "A"]);
 /// ```
 pub fn interpolate_var_macros<'t>(
   macro_name: &str,
-  macro_args: Option<&[&str]>,
+  macro_args: Option<&HashMap<&'t str, Option<&[&'t str]>>>,
   tokens: &[&'t str],
   var_macros: &HashMap<&str, Vec<&'t str>>,
+  fn_macros: &HashMap<&str, (Vec<&'t str>, Vec<&'t str>)>,
 ) -> Vec<&'t str> {
   fn interpolate_var_macros_inner<'t>(
     start_name: &str,
     macro_name: &str,
-    macro_args: Option<&[&str]>,
+    macro_args: Option<&HashMap<&'t str, Option<&[&'t str]>>>,
     tokens: &[&'t str],
     var_macros: &HashMap<&str, Vec<&'t str>>,
+    fn_macros: &HashMap<&str, (Vec<&'t str>, Vec<&'t str>)>,
   ) -> Vec<&'t str> {
     let mut output = vec![];
 
     let mut dont_interpolate_next = false;
 
-    for (i, token) in tokens.iter().enumerate() {
+    let mut it = tokens.iter().peekable();
+
+    while let Some(token) = it.next() {
+      if let Some(tokens) = macro_args.and_then(|args| args.get(token)) {
+        if let Some(tokens) = tokens {
+          output.extend(*tokens);
+        } else {
+          output.push(*token);
+        }
+
+        continue
+      }
+
       // Don't interpolate self or function-like macro arguments.
-      if *token == start_name || *token == macro_name || macro_args.map(|args| args.contains(token)).unwrap_or(false) {
+      if *token == start_name || *token == macro_name {
         output.push(*token);
         continue
       }
 
       // Don't interpolate stringification or identifier concatenation.
-      if (i > 0 && tokens.get(i - 1).map(|t| *t == "#" || *t == "##").unwrap_or(false))
-        || tokens.get(i + 1).map(|t| *t == "##").unwrap_or(false)
-      {
-        output.push(*token);
+      if *token == "#" || *token == "##" {
+        output.push(token);
+        if let Some(token) = it.next() {
+          output.push(token);
+        }
+
         continue
       }
 
+      // Don't interpolate identifier concatenation.
+      if it.peek().as_deref() == Some(&&"##") {
+        output.push(token);
+        continue
+      }
+
+      if let Some((fn_args, tokens)) = fn_macros.get(token) {
+        let mut paren_level = 0;
+
+        let mut args = vec![];
+
+        let mut jt = it.clone();
+        let mut arg = vec![];
+
+        for token in &mut jt {
+          dbg!(&args);
+          dbg!(&arg);
+
+          if *token == "(" {
+            if paren_level != 0 {
+              arg.push(*token);
+            }
+
+            paren_level += 1;
+          } else if *token == ")" {
+            paren_level -= 1;
+
+            if paren_level == 0 {
+              args.push(mem::take(&mut arg));
+            } else {
+              arg.push(*token);
+            }
+          } else if *token == "," && paren_level == 1 {
+            args.push(mem::take(&mut arg))
+          } else {
+            arg.push(*token);
+          }
+
+          if paren_level == 0 {
+            break
+          }
+        }
+
+        if args.len() == fn_args.len() {
+          let args = args
+            .into_iter()
+            .map(|arg| interpolate_var_macros_inner(start_name, token, None, &arg, var_macros, fn_macros))
+            .collect::<Vec<_>>();
+
+          let args = fn_args
+            .iter()
+            .zip(args.iter())
+            .map(|(&name, arg)| (name, Some(arg.as_slice())))
+            .collect::<HashMap<&str, Option<&[&str]>>>();
+
+          it = jt;
+          output.extend(interpolate_var_macros_inner(start_name, token, Some(&args), &tokens, var_macros, fn_macros));
+          continue
+        }
+      }
+
       if let Some(tokens) = var_macros.get(token) {
-        output.extend(interpolate_var_macros_inner(start_name, token, None, &tokens, var_macros))
+        output.extend(interpolate_var_macros_inner(start_name, token, None, &tokens, var_macros, fn_macros))
       } else {
         output.push(token);
       }
@@ -393,7 +473,7 @@ pub fn interpolate_var_macros<'t>(
     output
   }
 
-  interpolate_var_macros_inner(macro_name, macro_name, macro_args, tokens, var_macros)
+  interpolate_var_macros_inner(macro_name, macro_name, macro_args, tokens, var_macros, fn_macros)
 }
 
 /// ```
@@ -405,6 +485,7 @@ pub fn interpolate_var_macros<'t>(
 ///   ("A", vec!["1"]),
 ///   ("B", vec!["2"]),
 ///   ("PLUS", vec!["A", "+", "B"]),
+///   ("A_TIMES_B", vec!["TIMES", "(", "A", ",", "B", ")"]),
 /// ]);
 ///
 /// let mut fn_macros = HashMap::from([
@@ -417,12 +498,14 @@ pub fn interpolate_var_macros<'t>(
 ///   ("A", vec!["1"]),
 ///   ("B", vec!["2"]),
 ///   ("PLUS", vec!["1", "+", "2"]),
+///   ("A_TIMES_B", vec!["1", "*", "2"]),
 /// ]);
 /// let expanded_fn_macros = HashMap::from([
 ///   ("TIMES", (vec!["A", "B"], vec!["A", "*", "B"])),
 ///   ("TIMES_B", (vec!["A"], vec!["A", "*", "2"])),
 /// ]);
 /// assert_eq!(var_macros, expanded_var_macros);
+/// assert_eq!(fn_macros, expanded_fn_macros);
 /// ```
 pub fn expand_macros<'t>(
   var_macros: &mut HashMap<&str, Vec<&'t str>>,
@@ -432,15 +515,17 @@ pub fn expand_macros<'t>(
   let var_macro_names = var_macros.keys().cloned().collect::<Vec<_>>();
   for macro_name in var_macro_names {
     let tokens = var_macros.get(macro_name).unwrap();
-    let tokens = interpolate_var_macros(macro_name, None, tokens, var_macros);
+    let tokens = interpolate_var_macros(macro_name, None, tokens, var_macros, fn_macros);
     var_macros.insert(macro_name, tokens);
   }
 
-  /// Interpolate variable macros in function macros.
+  // Interpolate variable macros in function macros.
   let fn_macro_names = fn_macros.keys().cloned().collect::<Vec<_>>();
   for macro_name in fn_macro_names {
     let (args, tokens) = fn_macros.remove(macro_name).unwrap();
-    let tokens = interpolate_var_macros(macro_name, Some(&args), &tokens, var_macros);
+    let args2 =
+      args.iter().zip(args.iter()).map(|(&arg, &arg2)| (arg, None)).collect::<HashMap<&str, Option<&[&str]>>>();
+    let tokens = interpolate_var_macros(macro_name, Some(&args2), &tokens, var_macros, fn_macros);
     fn_macros.insert(macro_name, (args, tokens));
   }
 }
