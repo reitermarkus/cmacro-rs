@@ -26,6 +26,19 @@ impl FunctionCall {
   {
     self.name.finish(ctx)?;
 
+    if let Identifier::Literal(name) = &self.name {
+      if let Some(expr) = ctx.macro_variable(name) {
+        match expr {
+          Expr::Variable { name } => {
+            let mut name = name.clone();
+            name.finish(ctx)?;
+            self.name = name;
+          },
+          _ => return Err(crate::Error::UnsupportedExpression),
+        }
+      }
+    }
+
     for arg in self.args.iter_mut() {
       arg.finish(ctx)?;
     }
