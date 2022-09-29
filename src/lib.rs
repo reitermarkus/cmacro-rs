@@ -260,7 +260,7 @@ impl FnMacro {
     let mut ctx = LocalContext { args, export_as_macro: false, global_context: &cx };
     let ret_ty = self.body.finish(&mut ctx)?;
 
-    let export_as_macro = ctx.is_variadic() || !ctx.args.iter().all(|(_, ty)| matches!(*ty, MacroArgType::Known(_)));
+    let export_as_macro = ctx.is_variadic() || !ctx.args.iter().all(|(_, ty)| matches!(*ty, MacroArgType::Known(_))) || ret_ty.is_none();
     ctx.export_as_macro = export_as_macro;
 
     let name = Ident::new(&self.name, Span::call_site());
@@ -309,9 +309,14 @@ impl FnMacro {
         })
         .collect::<Vec<_>>();
 
-      let return_type = ret_ty.map(|ty| {
+
+      let return_type = ret_ty.and_then(|ty| {
+        if ty.is_void() {
+          return None
+        }
+
         let ty = ty.to_token_stream(&mut ctx);
-        quote! { -> #ty }
+        Some(quote! { -> #ty })
       });
 
       let semicolon = if return_type.is_none() { Some(quote! { ; }) } else { None };

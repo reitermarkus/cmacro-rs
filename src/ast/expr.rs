@@ -182,7 +182,6 @@ impl Expr {
   {
     alt((
       map(pair(parenthesized(Type::parse), Self::parse_term_prec2), |(ty, term)| {
-        // TODO: Handle constness.
         Self::Cast { expr: Box::new(term), ty }
       }),
       map(
@@ -739,7 +738,7 @@ impl Expr {
       Self::Cast { ref expr, ref ty } => {
         let expr = expr.to_token_stream(ctx);
 
-        tokens.append_all(if matches!(ty, Type::Identifier { name: Identifier::Literal(id), .. } if id == "void") {
+        tokens.append_all(if ty.is_void() {
           quote! { { drop(#expr) } }
         } else {
           let ty = ty.to_token_stream(ctx);

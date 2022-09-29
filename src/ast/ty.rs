@@ -205,6 +205,10 @@ impl Type {
     )(tokens)
   }
 
+  pub fn is_void(&self) -> bool {
+    matches!(self, Self::BuiltIn(BuiltInType::Void))
+  }
+
   pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,

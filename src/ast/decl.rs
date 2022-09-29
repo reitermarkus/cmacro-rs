@@ -56,8 +56,7 @@ impl Decl {
     self.name.finish(ctx)?;
     self.rhs.finish(ctx)?;
 
-    // A declaration has no type.
-    Ok(None)
+    Ok(Some(Type::BuiltIn(BuiltInType::Void)))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
