@@ -170,7 +170,7 @@ impl VarMacro {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FnMacro {
   /// The name of this function macro.
   pub name: String,

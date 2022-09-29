@@ -25,7 +25,7 @@ use crate::{CodegenContext, LocalContext};
 ///   call(); \
 /// } while (0)
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(missing_docs)]
 pub enum Statement {
   /// An expression.

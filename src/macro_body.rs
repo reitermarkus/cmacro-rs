@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// The body of a macro.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MacroBody {
   /// A statement, e.g.
   ///
