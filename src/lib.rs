@@ -193,7 +193,7 @@ impl FnMacro {
       + Clone,
     <I as InputIter>::Item: AsChar,
   {
-    all_consuming(parenthesized(alt((
+    all_consuming(alt((
       map(token("..."), |var_arg| vec![var_arg.to_owned()]),
       map(
         tuple((
@@ -210,7 +210,7 @@ impl FnMacro {
           arguments
         },
       ),
-    ))))(input)
+    )))(input)
   }
 
   /// Parse a function-like macro from a name, arguments and body tokens.
@@ -330,6 +330,8 @@ impl FnMacro {
   }
 }
 
+/// Interpolate macros in other macros.
+///
 /// ```
 /// use std::collections::HashMap;
 ///
@@ -370,8 +372,6 @@ pub fn interpolate_var_macros<'t>(
     fn_macros: &HashMap<&str, (Vec<&'t str>, Vec<&'t str>)>,
   ) -> Vec<&'t str> {
     let mut output = vec![];
-
-    let mut dont_interpolate_next = false;
 
     let mut it = tokens.iter().peekable();
 
@@ -417,9 +417,6 @@ pub fn interpolate_var_macros<'t>(
         let mut arg = vec![];
 
         for token in &mut jt {
-          dbg!(&args);
-          dbg!(&arg);
-
           if *token == "(" {
             if paren_level != 0 {
               arg.push(*token);
@@ -476,6 +473,8 @@ pub fn interpolate_var_macros<'t>(
   interpolate_var_macros_inner(macro_name, macro_name, macro_args, tokens, var_macros, fn_macros)
 }
 
+/// Expand macros.
+///
 /// ```
 /// use std::collections::HashMap;
 ///
@@ -527,185 +526,5 @@ pub fn expand_macros<'t>(
       args.iter().zip(args.iter()).map(|(&arg, &arg2)| (arg, None)).collect::<HashMap<&str, Option<&[&str]>>>();
     let tokens = interpolate_var_macros(macro_name, Some(&args2), &tokens, var_macros, fn_macros);
     fn_macros.insert(macro_name, (args, tokens));
-  }
-}
-
-pub fn expand(
-  var_macros: &mut HashMap<String, Vec<String>>,
-  fn_macros: &mut HashMap<String, (Vec<String>, Vec<String>)>,
-) {
-  use nom::{
-    multi::{fold_many1, separated_list1},
-    sequence::{pair, preceded, terminated},
-  };
-
-  use nom::multi::fold_many0;
-
-  enum Part {
-    Token(String),
-    Identifier(String),
-    Stringify(String),
-    Concat(Vec<String>),
-    Call(String, Vec<Self>),
-  }
-
-  // impl Part {
-  //   fn expand(&self, args: HashMap<String, Self>, var_macros: &HashMap<&str, Vec<Part>, fn_macros: &HashMap<&str, (Vec<Part>, Vec<Part>)>) -> Vec<String> {
-  //     let mut tokens = Vec::new();
-  //
-  //     match self {
-  //       Self::Token(t) => tokens.push(t),
-  //       Self::Identifier(id) => {
-  //         if let Some(arg) = args.get(id) {
-  //           tokens.push(arg.expand(HashMap::new(), var_macros, fn_macros));
-  //         } else if let Some(var) = var_macros.get(id) {
-  //           for t in var {
-  //             tokens.extend(t.expand(HashMap::new(), var_macros, fn_macros));
-  //           }
-  //         } else {
-  //           tokens.push(id);
-  //         }
-  //       },
-  //       Self::Stringify(id) => {
-  //         tokens.push("#".into());
-  //         tokens.push(id);
-  //       },
-  //       Self::Concat(ids) => {
-  //         for (i, id) in ids.iter().enumerate() {
-  //           if i > 0 {
-  //             tokens.push("##".into());
-  //           }
-  //
-  //           tokens.push(id);
-  //         }
-  //       },
-  //       Self::Call(n, args) => {
-  //         if let Some((fn_args, fn_tokens)) = fn_macros.get(n) {
-  //           let args = args.iter().zip(fn_args.iter()).collect::<HashMap<_, _>>();
-  //
-  //           for t in fn_tokens {
-  //             tokens.extend(t.expand(args, var_macros, fn_macros));
-  //           }
-  //         } else {
-  //           tokens.extend(Self::Identifier(n).expand(var_macros, fn_macros));
-  //
-  //           for (i, arg) in args.iter().enumerate() {
-  //             if i > 0 {
-  //               tokens.push(",".into());
-  //             }
-  //
-  //             tokens.extend(arg.expand(var_macros, fn_macros));
-  //           }
-  //         }
-  //       },
-  //     }
-  //
-  //     tokens
-  //   }
-  // }
-
-  fn expand_fn_macro(
-    name: &str,
-    args: &[&str],
-    tokens: &[&str],
-    var_macros: &HashMap<String, Vec<String>>,
-    fn_macros: &HashMap<String, (Vec<String>, Vec<String>)>,
-  ) -> Vec<String> {
-    todo!()
-  }
-
-  fn expand_var_macro(
-    name: &str,
-    tokens: &[&str],
-    var_macros: &HashMap<String, Vec<String>>,
-    fn_macros: &HashMap<String, (Vec<String>, Vec<String>)>,
-  ) -> Vec<String> {
-    let (_, parts) = fold_many0(
-      alt((
-        // map(
-        //   pair(
-        //     identifier,
-        //     parenthesized(separated_list0(
-        //       token(","),
-        //       fold_many1(take_one, Vec::new, |mut acc, token| {
-        //         acc.push(token);
-        //         acc
-        //       }),
-        //     )),
-        //   ),
-        //   |(name, args)| {
-        //
-        //       if let Some(arg) = fn_macros.get(name) {
-        //         tokens.push(arg.expand(HashMap::new(), var_macros, fn_macros));
-        //
-        //
-        //       } else if let Some(var) = var_macros.get(id) {
-        //
-        //
-        //
-        //         for t in var {
-        //           tokens.extend(t.expand(HashMap::new(), var_macros, fn_macros));
-        //         }
-        //       } else {
-        //         let mut call = vec![name];
-        //         call.push("(".into());
-        //
-        //         tokens.push(name);
-        //
-        //         for (i, arg) in args.into_iter().enumerate() {
-        //           if i > 0 {
-        //             call.push(",".into());
-        //           }
-        //
-        //           call.push(arg);
-        //         }
-        //
-        //         call.push(")".into());
-        //         call
-        //       }
-        //     },
-        //   },
-        // ),
-        map(preceded(token("#"), identifier), |id: String| vec!["#".into(), id]),
-        map(
-          pair(terminated(identifier, token("##")), separated_list1(token("##"), take_one)),
-          |(id, ids): (String, Vec<&str>)| {
-            let mut concat = vec![id];
-
-            for id in ids {
-              concat.push("##".into());
-              concat.push(id.to_owned());
-            }
-
-            concat
-          },
-        ),
-        map(identifier, |id: String| -> Vec<String> {
-          if let Some(tokens) = var_macros.get(&id) {
-            let tokens = tokens.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
-            expand_var_macro(&id, &tokens, var_macros, fn_macros)
-          } else {
-            vec![id.to_string()]
-          }
-        }),
-        map(take_one, |token: &str| -> Vec<String> { vec![token.to_string()] }),
-      )),
-      Vec::new,
-      |mut acc, item| {
-        acc.extend(item);
-        acc
-      },
-    )(tokens)
-    .unwrap();
-
-    parts
-  }
-
-  // let mut vars = HashMap::new();
-  for (name, tokens) in var_macros.iter() {
-    let tokens = tokens.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
-
-    expand_var_macro(name, &tokens, var_macros, fn_macros);
-    // vars.insert(name, parts);
   }
 }
