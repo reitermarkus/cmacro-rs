@@ -21,8 +21,8 @@ use std::{
 use nom::{
   branch::alt,
   combinator::{all_consuming, map, opt},
-  multi::separated_list0,
-  sequence::tuple,
+  multi::{fold_many1, separated_list0},
+  sequence::{preceded, tuple},
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
   ParseTo, Slice,
 };
@@ -197,13 +197,16 @@ impl FnMacro {
       map(token("..."), |var_arg| vec![var_arg.to_owned()]),
       map(
         tuple((
-          separated_list0(tuple((meta, token(","), meta)), identifier),
-          opt(tuple((tuple((meta, token(","), meta)), map(token("..."), |var_arg| var_arg.to_owned())))),
+          fold_many1(preceded(meta, identifier), Vec::new, |mut acc, arg| {
+            acc.push(arg);
+            acc
+          }),
+          preceded(meta, opt(map(token("..."), |var_arg| var_arg.to_owned()))),
         )),
         |(arguments, var_arg)| {
           let mut arguments = arguments.to_vec();
 
-          if let Some((_, var_arg)) = var_arg {
+          if let Some(var_arg) = var_arg {
             arguments.push(var_arg);
           }
 
@@ -249,7 +252,8 @@ impl FnMacro {
     let mut args = HashMap::new();
     for arg in &self.args {
       let ty = if let Some(arg_ty) = cx.macro_arg_ty(&self.name, arg) {
-        MacroArgType::Known(Type::try_from(syn::parse_str::<syn::Type>(&arg_ty).unwrap())?)
+        let arg_ty = syn::parse_str::<syn::Type>(&arg_ty).unwrap();
+        MacroArgType::Known(Type::try_from(arg_ty)?)
       } else {
         MacroArgType::Unknown
       };
@@ -260,7 +264,8 @@ impl FnMacro {
     let mut ctx = LocalContext { args, export_as_macro: false, global_context: &cx };
     let ret_ty = self.body.finish(&mut ctx)?;
 
-    let export_as_macro = ctx.is_variadic() || !ctx.args.iter().all(|(_, ty)| matches!(*ty, MacroArgType::Known(_))) || ret_ty.is_none();
+    let export_as_macro =
+      ctx.is_variadic() || !ctx.args.iter().all(|(_, ty)| matches!(*ty, MacroArgType::Known(_))) || ret_ty.is_none();
     ctx.export_as_macro = export_as_macro;
 
     let name = Ident::new(&self.name, Span::call_site());
@@ -308,7 +313,6 @@ impl FnMacro {
           }
         })
         .collect::<Vec<_>>();
-
 
       let return_type = ret_ty.and_then(|ty| {
         if ty.is_void() {
