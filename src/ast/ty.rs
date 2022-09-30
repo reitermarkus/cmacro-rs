@@ -177,6 +177,8 @@ pub enum Type {
   /// A type identifier.
   #[allow(missing_docs)]
   Identifier { name: Identifier, is_struct: bool },
+  /// A type path.
+  Path { leading_colon: bool, segments: Vec<Identifier> },
   /// A pointer type.
   #[allow(missing_docs)]
   Ptr { ty: Box<Self>, mutable: bool },
@@ -280,6 +282,7 @@ impl Type {
 
         Ok(None)
       },
+      Self::Path { .. } => Ok(None),
       Self::Ptr { ty, .. } => ty.finish(ctx),
     }
   }
@@ -295,6 +298,11 @@ impl Type {
         }
       },
       Self::Identifier { name, .. } => name.to_tokens(ctx, tokens),
+      Self::Path { segments, leading_colon } => {
+        let leading_colon = if *leading_colon { Some(quote! {  :: }) } else { None };
+        let ids = segments.iter().map(|id| id.to_token_stream(ctx));
+        tokens.append_all(quote! { #leading_colon #(#ids)::* })
+      },
       Self::Ptr { ty, mutable } => {
         let ty = ty.to_token_stream(ctx);
 
@@ -324,9 +332,10 @@ impl TryFrom<syn::Type> for Type {
       },
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
       syn::Type::Verbatim(ty) => Ok(Self::Identifier { name: Identifier::Literal(ty.to_string()), is_struct: false }),
-      syn::Type::Path(path_ty) => {
-        Ok(Self::Identifier { name: Identifier::Literal(path_ty.to_token_stream().to_string()), is_struct: false })
-      },
+      syn::Type::Path(path_ty) => Ok(Self::Path {
+        leading_colon: path_ty.path.leading_colon.is_some(),
+        segments: path_ty.path.segments.iter().map(|s| Identifier::Literal(s.ident.to_string())).collect(),
+      }),
       _ => Err(crate::Error::ParserError),
     }
   }

@@ -174,6 +174,10 @@ impl Identifier {
   pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
     match self {
       Self::Literal(ref s) => {
+        if s.is_empty() {
+          return quote! {}
+        }
+
         let id = Ident::new(s, Span::call_site());
 
         if ctx.export_as_macro && ctx.is_macro_arg(s) {
