@@ -181,8 +181,9 @@ impl Expr {
     &'static str: FindToken<<I as InputIter>::Item>,
   {
     alt((
-      map(pair(parenthesized(Type::parse), Self::parse_term_prec2), |(ty, term)| {
-        Self::Cast { expr: Box::new(term), ty }
+      map(pair(parenthesized(Type::parse), Self::parse_term_prec2), |(ty, term)| Self::Cast {
+        expr: Box::new(term),
+        ty,
       }),
       map(
         pair(
