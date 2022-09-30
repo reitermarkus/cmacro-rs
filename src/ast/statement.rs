@@ -132,8 +132,7 @@ impl Statement {
       },
     }
 
-    // TODO: Check if this should be `void`.
-    Ok(None)
+    Ok(Some(Type::BuiltIn(BuiltInType::Void)))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
