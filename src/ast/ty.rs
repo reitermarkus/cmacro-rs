@@ -211,6 +211,28 @@ impl Type {
     matches!(self, Self::BuiltIn(BuiltInType::Void))
   }
 
+  pub fn from_resolved_type(resolved_type: &str) -> Self {
+    match resolved_type {
+      "float" => Type::BuiltIn(BuiltInType::Float),
+      "double" => Type::BuiltIn(BuiltInType::Double),
+      "long double" => Type::BuiltIn(BuiltInType::LongDouble),
+      "bool" => Type::BuiltIn(BuiltInType::Bool),
+      "char" => Type::BuiltIn(BuiltInType::Char),
+      "signed char" => Type::BuiltIn(BuiltInType::SChar),
+      "unsigned char" => Type::BuiltIn(BuiltInType::UChar),
+      "short" => Type::BuiltIn(BuiltInType::Short),
+      "unsigned short" => Type::BuiltIn(BuiltInType::UShort),
+      "int" => Type::BuiltIn(BuiltInType::Int),
+      "unsigned int" => Type::BuiltIn(BuiltInType::UInt),
+      "long" => Type::BuiltIn(BuiltInType::Long),
+      "unsigned long" => Type::BuiltIn(BuiltInType::ULong),
+      "long long" => Type::BuiltIn(BuiltInType::LongLong),
+      "unsigned long long" => Type::BuiltIn(BuiltInType::ULongLong),
+      "void" => Type::BuiltIn(BuiltInType::Void),
+      ty => Type::Identifier { name: Identifier::Literal(ty.to_owned()), is_struct: false },
+    }
+  }
+
   pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
@@ -222,59 +244,7 @@ impl Type {
 
         if let Identifier::Literal(id) = name {
           if let Some(ty) = ctx.resolve_ty(id.as_str()) {
-            match ty.as_str() {
-              "float" => {
-                *self = Type::BuiltIn(BuiltInType::Float);
-              },
-              "double" => {
-                *self = Type::BuiltIn(BuiltInType::Double);
-              },
-              "long double" => {
-                *self = Type::BuiltIn(BuiltInType::LongDouble);
-              },
-              "bool" => {
-                *self = Type::BuiltIn(BuiltInType::Bool);
-              },
-              "char" => {
-                *self = Type::BuiltIn(BuiltInType::Char);
-              },
-              "signed char" => {
-                *self = Type::BuiltIn(BuiltInType::SChar);
-              },
-              "unsigned char" => {
-                *self = Type::BuiltIn(BuiltInType::UChar);
-              },
-              "short" => {
-                *self = Type::BuiltIn(BuiltInType::Short);
-              },
-              "unsigned short" => {
-                *self = Type::BuiltIn(BuiltInType::UShort);
-              },
-              "int" => {
-                *self = Type::BuiltIn(BuiltInType::Int);
-              },
-              "unsigned int" => {
-                *self = Type::BuiltIn(BuiltInType::UInt);
-              },
-              "long" => {
-                *self = Type::BuiltIn(BuiltInType::Long);
-              },
-              "unsigned long" => {
-                *self = Type::BuiltIn(BuiltInType::ULong);
-              },
-              "long long" => {
-                *self = Type::BuiltIn(BuiltInType::LongLong);
-              },
-              "unsigned long long" => {
-                *self = Type::BuiltIn(BuiltInType::ULongLong);
-              },
-              "void" => {
-                *self = Type::BuiltIn(BuiltInType::Void);
-              },
-              _ => {
-                *self = Type::Identifier { name: Identifier::Literal(ty), is_struct: false };
-              },
-            }
+            *self = Self::from_resolved_type(&ty);
 
             return self.finish(ctx)
           }

@@ -75,7 +75,6 @@ impl FunctionCall {
       arg.finish(ctx)?;
     }
 
-    // TODO: Get function return type from context.
     Ok(ty)
   }
 
