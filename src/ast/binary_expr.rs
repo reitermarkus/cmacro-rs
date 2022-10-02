@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 
-use super::{Lit, LitFloat, LitInt, Type};
+use super::{BuiltInType, Identifier, Lit, LitFloat, LitInt, Type};
 use crate::{CodegenContext, Expr, LocalContext};
 
 /// A binary expression operator.
@@ -124,6 +124,21 @@ impl BinaryExpr {
   where
     C: CodegenContext,
   {
+    let max_ty_cast = |expr: &Expr| {
+      if let Expr::Variable { name: Identifier::Literal(id) } = expr {
+        return Some(Type::BuiltIn(match id.as_str() {
+          "__SCHAR_MAX__" => BuiltInType::UChar,
+          "__SHRT_MAX__" => BuiltInType::UShort,
+          "__INT_MAX__" => BuiltInType::UInt,
+          "__LONG_MAX__" => BuiltInType::ULong,
+          "__LONG_LONG_MAX__" => BuiltInType::ULongLong,
+          _ => return None,
+        }))
+      }
+
+      None
+    };
+
     // Cast mixed float and int expression.
     match (&self.lhs, &self.rhs) {
       (Expr::Literal(Lit::Int(LitInt { value: lhs, suffix: None })), Expr::Literal(Lit::Float(_))) => {
@@ -141,6 +156,16 @@ impl BinaryExpr {
           LitFloat::Double(*rhs as f64)
         };
         self.rhs = Expr::Literal(Lit::Float(f));
+      },
+      (lhs, rhs @ Expr::Literal(Lit::Int(_))) => {
+        if let Some(lhs_ty) = max_ty_cast(lhs) {
+          self.lhs = Expr::Cast { ty: lhs_ty, expr: Box::new(lhs.clone()) };
+        }
+      },
+      (lhs @ Expr::Literal(Lit::Int(_)), rhs) => {
+        if let Some(rhs_ty) = max_ty_cast(rhs) {
+          self.rhs = Expr::Cast { ty: rhs_ty, expr: Box::new(rhs.clone()) };
+        }
       },
       _ => (),
     }
