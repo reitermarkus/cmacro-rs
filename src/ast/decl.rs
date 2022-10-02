@@ -15,6 +15,7 @@ use crate::{CodegenContext, LocalContext};
 
 /// A variable declaration.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(missing_docs)]
 pub struct Decl {
   pub ty: Type,
   pub name: Identifier,

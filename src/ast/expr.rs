@@ -744,7 +744,7 @@ impl Expr {
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     match self {
       Self::Cast { ref expr, ref ty } => tokens.append_all(match (ty, &**expr) {
-        (Type::Ptr { ty, mutable }, Expr::Literal(Lit::Int(LitInt { value: 0, .. }))) => {
+        (Type::Ptr { mutable, .. }, Expr::Literal(Lit::Int(LitInt { value: 0, .. }))) => {
           let prefix = ctx.num_prefix();
 
           if *mutable {

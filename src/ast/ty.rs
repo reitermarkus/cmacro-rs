@@ -178,6 +178,7 @@ pub enum Type {
   #[allow(missing_docs)]
   Identifier { name: Identifier, is_struct: bool },
   /// A type path.
+  #[allow(missing_docs)]
   Path { leading_colon: bool, segments: Vec<Identifier> },
   /// A pointer type.
   #[allow(missing_docs)]
@@ -207,11 +208,12 @@ impl Type {
     )(tokens)
   }
 
+  /// Check if this type is `void`.
   pub fn is_void(&self) -> bool {
     matches!(self, Self::BuiltIn(BuiltInType::Void))
   }
 
-  pub fn from_resolved_type(resolved_type: &str) -> Self {
+  pub(crate) fn from_resolved_type(resolved_type: &str) -> Self {
     match resolved_type {
       "float" => Type::BuiltIn(BuiltInType::Float),
       "double" => Type::BuiltIn(BuiltInType::Double),

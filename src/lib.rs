@@ -21,7 +21,7 @@ use std::{
 use nom::{
   branch::alt,
   combinator::{all_consuming, map, opt},
-  multi::{fold_many1, separated_list0},
+  multi::fold_many1,
   sequence::{preceded, tuple},
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
   ParseTo, Slice,
@@ -531,9 +531,9 @@ pub fn expand_macros<'t>(
   let fn_macro_names = fn_macros.keys().cloned().collect::<Vec<_>>();
   for macro_name in fn_macro_names {
     let (args, tokens) = fn_macros.remove(macro_name).unwrap();
-    let args2 =
-      args.iter().zip(args.iter()).map(|(&arg, &arg2)| (arg, None)).collect::<HashMap<&str, Option<&[&str]>>>();
-    let tokens = interpolate_var_macros(macro_name, Some(&args2), &tokens, var_macros, fn_macros);
+    let arg_names =
+      args.iter().zip(args.iter()).map(|(&arg, _)| (arg, None)).collect::<HashMap<&str, Option<&[&str]>>>();
+    let tokens = interpolate_var_macros(macro_name, Some(&arg_names), &tokens, var_macros, fn_macros);
     fn_macros.insert(macro_name, (args, tokens));
   }
 }
