@@ -84,7 +84,7 @@ impl FunctionCall {
 
     let args = self.args.iter().map(|arg| match arg {
       Expr::Cast { ty: Type::Ptr { ty, mutable }, expr } => match **expr {
-        Expr::Literal(Lit::Int(LitInt { value, .. })) if value == 0 => {
+        Expr::Literal(Lit::Int(LitInt { value: 0, .. })) => {
           let prefix = ctx.num_prefix();
 
           if *mutable {

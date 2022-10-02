@@ -743,16 +743,27 @@ impl Expr {
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     match self {
-      Self::Cast { ref expr, ref ty } => {
-        let expr = expr.to_token_stream(ctx);
+      Self::Cast { ref expr, ref ty } => tokens.append_all(match (ty, &**expr) {
+        (Type::Ptr { ty, mutable }, Expr::Literal(Lit::Int(LitInt { value: 0, .. }))) => {
+          let prefix = ctx.num_prefix();
 
-        tokens.append_all(if ty.is_void() {
-          quote! { { drop(#expr) } }
-        } else {
-          let ty = ty.to_token_stream(ctx);
-          quote! { #expr as #ty }
-        })
-      },
+          if *mutable {
+            quote! { #prefix ptr::null_mut() }
+          } else {
+            quote! { #prefix ptr::null() }
+          }
+        },
+        (ty, expr) => {
+          let expr = expr.to_token_stream(ctx);
+
+          if ty.is_void() {
+            quote! { { drop(#expr) } }
+          } else {
+            let ty = ty.to_token_stream(ctx);
+            quote! { #expr as #ty }
+          }
+        },
+      }),
       Self::Variable { name: Identifier::Literal(id) } if id == "NULL" => {
         tokens.append_all(quote! { ::core::ptr::null_mut() });
       },
