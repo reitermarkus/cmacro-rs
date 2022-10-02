@@ -243,6 +243,11 @@ impl Type {
         name.finish(ctx)?;
 
         if let Identifier::Literal(id) = name {
+          if let Some(Expr::Variable { name }) = ctx.macro_variable(id) {
+            *self = Self::Identifier { name: name.clone(), is_struct: false };
+            return self.finish(ctx)
+          }
+
           if let Some(ty) = ctx.resolve_ty(id.as_str()) {
             *self = Self::from_resolved_type(&ty);
 

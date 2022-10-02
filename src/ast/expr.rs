@@ -581,6 +581,13 @@ impl Expr {
         expr.finish(ctx)?;
         field.finish(ctx)?;
 
+        if let Identifier::Literal(id) = &field {
+          if let Some(Expr::Variable { name }) = ctx.macro_variable(id.as_str()) {
+            *field = name.clone();
+            return self.finish(ctx)
+          }
+        }
+
         Ok(None)
       },
       Self::Stringify(stringify) => stringify.finish(ctx),
