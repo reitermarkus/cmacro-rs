@@ -830,18 +830,6 @@ impl Expr {
 mod tests {
   use super::*;
 
-  macro_rules! id {
-    ($name:ident) => {
-      Identifier::Literal(String::from(stringify!($name)))
-    };
-  }
-
-  macro_rules! var {
-    ($name:ident) => {
-      Expr::Variable { name: id!($name) }
-    };
-  }
-
   #[test]
   fn parse_stringify() {
     let (_, expr) = Expr::parse(&["#", "a"]).unwrap();

@@ -16,10 +16,10 @@ use crate::{CodegenContext, LocalContext};
 /// A variable declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Decl {
-  ty: Type,
-  name: Identifier,
-  rhs: Expr,
-  is_static: bool,
+  pub ty: Type,
+  pub name: Identifier,
+  pub rhs: Expr,
+  pub is_static: bool,
 }
 
 impl Decl {

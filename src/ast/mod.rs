@@ -37,3 +37,6 @@ pub use decl::*;
 
 mod stringify;
 pub use stringify::*;
+
+mod test_macros;
+pub(crate) use test_macros::*;

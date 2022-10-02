@@ -128,7 +128,7 @@ impl VarMacro {
 ///
 /// // #define FUNC(a, b, c) a + b * c
 /// let name = "FUNC";
-/// let args = ["(", "a", ",", "b", ",", "c", ")"];
+/// let args = ["a", "b", "c"];
 /// let value = ["a", "+", "b", "*", "c"];
 ///
 /// let mut fn_macro = FnMacro::parse(name, &args, &value)?;
@@ -158,7 +158,7 @@ impl VarMacro {
 ///
 /// // #define FUNC(a, b, c) a + b * c
 /// let name = "FUNC";
-/// let args = ["(", "a", ",", "b", ",", "c", ")"];
+/// let args = ["a", "b", "c"];
 /// let value = ["a", "+", "b", "*", "c"];
 ///
 /// let mut fn_macro = FnMacro::parse(name, &args, &value)?;

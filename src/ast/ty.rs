@@ -320,14 +320,6 @@ impl TryFrom<syn::Type> for Type {
 mod tests {
   use super::*;
 
-  macro_rules! ty {
-    (*mut $($ty:tt)*) => { Type::Ptr { ty: Box::new(ty!($($ty)*)), mutable: true } };
-    (*const $($ty:tt)*) => { Type::Ptr { ty: Box::new(ty!($($ty)*)), mutable: false } };
-    (struct $ty:ident) => { Type::Identifier { name: Identifier::Literal(stringify!($ty).to_owned()), is_struct: true } };
-    ($ty:ident) => { Type::Identifier { name: Identifier::Literal(stringify!($ty).to_owned()), is_struct: false } };
-    ($ty:path) => { Type::BuiltIn($ty) };
-  }
-
   #[test]
   fn parse_builtin() {
     let (_, ty) = Type::parse(&["float"]).unwrap();

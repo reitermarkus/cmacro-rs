@@ -6,7 +6,7 @@ use std::{
 use nom::{
   branch::alt,
   combinator::{eof, map, opt, value},
-  multi::separated_list0,
+  multi::many0,
   sequence::{delimited, pair, preceded, terminated, tuple},
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
   ParseTo, Slice,
@@ -25,7 +25,7 @@ use crate::{CodegenContext, LocalContext};
 ///   call(); \
 /// } while (0)
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub enum Statement {
   /// An expression.
@@ -68,10 +68,6 @@ impl Statement {
 
     alt((
       map(
-        delimited(terminated(token("{"), meta), separated_list0(meta, Self::parse), preceded(meta, token("}"))),
-        Self::Block,
-      ),
-      map(
         tuple((
           preceded(terminated(token("if"), meta), condition),
           block,
@@ -87,9 +83,13 @@ impl Statement {
         preceded(terminated(token("do"), meta), pair(block, preceded(token("while"), condition))),
         |(block, condition)| Self::DoWhile { block, condition },
       ),
+      map(
+        delimited(terminated(token("{"), meta), many0(preceded(meta, Self::parse)), preceded(meta, token("}"))),
+        Self::Block,
+      ),
       map(terminated(FunctionDecl::parse, semicolon_or_eof), Self::FunctionDecl),
-      map(terminated(Decl::parse, alt((token(";"), map(eof, |_| "")))), Self::Decl),
-      map(terminated(Expr::parse, alt((token(";"), map(eof, |_| "")))), Self::Expr),
+      map(terminated(Decl::parse, semicolon_or_eof), Self::Decl),
+      map(terminated(Expr::parse, semicolon_or_eof), Self::Expr),
     ))(tokens)
   }
 
@@ -189,5 +189,95 @@ impl Statement {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn parse_expr() {
+    let (_, stmt) = Statement::parse(&["a", "+=", "2", ";"]).unwrap();
+    assert_eq!(
+      stmt,
+      Statement::Expr(Expr::Binary(Box::new(BinaryExpr { lhs: var!(a), op: BinaryOp::AddAssign, rhs: lit!(2) })))
+    );
+  }
+
+  #[test]
+  fn parse_empty_block() {
+    let (_, stmt) = Statement::parse(&["{", "}"]).unwrap();
+    assert_eq!(stmt, Statement::Block(vec![]));
+  }
+
+  #[test]
+  fn parse_block() {
+    let (_, stmt) = Statement::parse(&["{", "int", "a", "=", "0", ";", "}"]).unwrap();
+    assert_eq!(
+      stmt,
+      Statement::Block(vec![Statement::Decl(Decl {
+        ty: ty!(BuiltInType::Int),
+        name: id!(a),
+        rhs: lit!(0),
+        is_static: false
+      })])
+    );
+  }
+
+  #[test]
+  fn parse_if_stmt() {
+    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "b", ";"]).unwrap();
+    assert_eq!(
+      stmt,
+      Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
+    );
+  }
+
+  #[test]
+  fn parse_if_else_stmt() {
+    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "b", ";", "else", "c", ";"]).unwrap();
+    assert_eq!(
+      stmt,
+      Statement::If {
+        condition: var!(a),
+        if_branch: vec![Statement::Expr(var!(b))],
+        else_branch: vec![Statement::Expr(var!(c))],
+      }
+    );
+  }
+
+  #[test]
+  fn parse_if_block() {
+    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "{", "b", ";", "}"]).unwrap();
+    assert_eq!(
+      stmt,
+      Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
+    );
+  }
+
+  #[test]
+  fn parse_if_else_block() {
+    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "{", "b", ";", "}", "else", "{", "c", ";", "}"]).unwrap();
+    assert_eq!(
+      stmt,
+      Statement::If {
+        condition: var!(a),
+        if_branch: vec![Statement::Expr(var!(b))],
+        else_branch: vec![Statement::Expr(var!(c))]
+      }
+    );
+  }
+
+  #[test]
+  fn parse_do_while_stmt() {
+    let (_, stmt) = Statement::parse(&["do", "a", ";", "while", "(", "b", ")"]).unwrap();
+    assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
+  }
+
+  #[test]
+  fn parse_do_while_block() {
+    let (_, stmt) = Statement::parse(&["do", "{", "a", ";", "}", "while", "(", "b", ")"]).unwrap();
+    assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
   }
 }

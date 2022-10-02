@@ -45,6 +45,12 @@ pub enum Lit {
   Int(LitInt),
 }
 
+impl From<i32> for Lit {
+  fn from(n: i32) -> Lit {
+    Lit::Int(LitInt { value: n.into(), suffix: None })
+  }
+}
+
 impl Lit {
   /// Parse a literal.
   pub fn parse<I, C>(input: &[I]) -> IResult<&[I], Self>
