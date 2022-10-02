@@ -21,7 +21,7 @@ use std::{
 use nom::{
   branch::alt,
   combinator::{all_consuming, map, opt},
-  multi::fold_many1,
+  multi::fold_many0,
   sequence::{preceded, tuple},
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
   ParseTo, Slice,
@@ -197,7 +197,7 @@ impl FnMacro {
       map(token("..."), |var_arg| vec![var_arg.to_owned()]),
       map(
         tuple((
-          fold_many1(preceded(meta, identifier), Vec::new, |mut acc, arg| {
+          fold_many0(preceded(meta, identifier), Vec::new, |mut acc, arg| {
             acc.push(arg);
             acc
           }),
