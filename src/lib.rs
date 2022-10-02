@@ -412,7 +412,7 @@ pub fn interpolate_var_macros<'t>(
       }
 
       // Don't interpolate identifier concatenation.
-      if it.peek().as_deref() == Some(&&"##") {
+      if it.peek() == Some(&&"##") {
         output.push(token);
         continue
       }
@@ -464,13 +464,13 @@ pub fn interpolate_var_macros<'t>(
             .collect::<HashMap<&str, Option<&[&str]>>>();
 
           it = jt;
-          output.extend(interpolate_var_macros_inner(start_name, token, Some(&args), &tokens, var_macros, fn_macros));
+          output.extend(interpolate_var_macros_inner(start_name, token, Some(&args), tokens, var_macros, fn_macros));
           continue
         }
       }
 
       if let Some(tokens) = var_macros.get(token) {
-        output.extend(interpolate_var_macros_inner(start_name, token, None, &tokens, var_macros, fn_macros))
+        output.extend(interpolate_var_macros_inner(start_name, token, None, tokens, var_macros, fn_macros))
       } else {
         output.push(token);
       }

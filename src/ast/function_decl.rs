@@ -22,7 +22,7 @@ use crate::{CodegenContext, LocalContext};
 /// ```c
 /// #define function_decl void f(int a, int b, int c)
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionDecl {
   ret_ty: Type,
   name: Identifier,

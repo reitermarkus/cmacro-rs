@@ -583,7 +583,7 @@ impl Expr {
 
         if let Identifier::Literal(id) = &field {
           if let Some(Expr::Variable { name }) = ctx.macro_variable(id.as_str()) {
-            *field = name.clone();
+            *field = name;
             return self.finish(ctx)
           }
         }

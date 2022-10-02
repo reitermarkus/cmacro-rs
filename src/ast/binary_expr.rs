@@ -157,12 +157,12 @@ impl BinaryExpr {
         };
         self.rhs = Expr::Literal(Lit::Float(f));
       },
-      (lhs, rhs @ Expr::Literal(Lit::Int(_))) => {
+      (lhs, Expr::Literal(Lit::Int(_))) => {
         if let Some(lhs_ty) = max_ty_cast(lhs) {
           self.lhs = Expr::Cast { ty: lhs_ty, expr: Box::new(lhs.clone()) };
         }
       },
-      (lhs @ Expr::Literal(Lit::Int(_)), rhs) => {
+      (Expr::Literal(Lit::Int(_)), rhs) => {
         if let Some(rhs_ty) = max_ty_cast(rhs) {
           self.rhs = Expr::Cast { ty: rhs_ty, expr: Box::new(rhs.clone()) };
         }

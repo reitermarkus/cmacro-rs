@@ -30,7 +30,7 @@ impl FunctionCall {
       if let Some(expr) = ctx.macro_variable(name) {
         match expr {
           Expr::Variable { name } => {
-            let mut name = name.clone();
+            let mut name = name;
             name.finish(ctx)?;
             self.name = name;
           },
