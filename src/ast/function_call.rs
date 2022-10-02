@@ -82,17 +82,30 @@ impl FunctionCall {
     let mut name = TokenStream::new();
     self.name.to_tokens(ctx, &mut name);
 
-    let args = self.args.iter().map(|arg| {
-      let into = matches!(arg, Expr::Variable { .. })
-        && !matches!(arg, Expr::Variable { name: Identifier::Literal(id) } if id == "NULL");
+    let args = self.args.iter().map(|arg| match arg {
+      Expr::Cast { ty: Type::Ptr { ty, mutable }, expr } => match **expr {
+        Expr::Literal(Lit::Int(LitInt { value, .. })) if value == 0 => {
+          let prefix = ctx.num_prefix();
 
-      let arg = arg.to_token_stream(ctx);
-
-      if into {
-        return quote! { #arg.into() }
-      }
-
-      arg
+          if *mutable {
+            quote! { #prefix ptr::null_mut() }
+          } else {
+            quote! { #prefix ptr::null() }
+          }
+        },
+        _ => {
+          let arg = arg.to_token_stream(ctx);
+          quote! { (#arg).cast() }
+        },
+      },
+      arg @ Expr::Literal(_) => {
+        let arg = arg.to_token_stream(ctx);
+        quote! { #arg }
+      },
+      _ => {
+        let arg = arg.to_token_stream(ctx);
+        quote! { (#arg).into() }
+      },
     });
 
     tokens.append_all(quote! {
