@@ -438,6 +438,11 @@ impl LitString {
       [#(#bytes),*].as_ptr() as *const #prefix c_char
     })
   }
+
+  /// Get the raw string representation as bytes.
+  pub fn as_bytes(&self) -> &[u8] {
+    &self.repr
+  }
 }
 
 impl PartialEq<&str> for LitString {
