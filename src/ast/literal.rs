@@ -13,7 +13,7 @@ use nom::{
   },
   combinator::{all_consuming, cond, eof, map, map_opt, opt, recognize, value, verify},
   multi::{fold_many0, fold_many1, fold_many_m_n},
-  sequence::{delimited, pair, preceded, separated_pair, terminated},
+  sequence::{delimited, pair, preceded, terminated, tuple},
   AsBytes, AsChar, Compare, FindSubstring,
 };
 
@@ -481,11 +481,22 @@ impl LitFloat {
 
     C: AsChar,
   {
+    let decimal = |input| recognize(pair(char('.'), digit1))(input);
+    let scientific = |input| recognize(tuple((tag_no_case("e"), opt(alt((char('+'), char('-')))), digit1)))(input);
+
     all_consuming(pair(
-      recognize(separated_pair(
-        opt(digit1),
-        alt((recognize(char('.')), recognize(pair(tag_no_case("e"), opt(alt((char('+'), char('-')))))))),
-        digit1,
+      alt((
+        recognize(pair(
+          alt((
+            // 1.1 | .1
+            recognize(pair(opt(digit1), decimal)),
+            // 1.
+            recognize(pair(digit1, char('.'))),
+          )),
+          opt(scientific),
+        )),
+        // 1e1
+        recognize(pair(digit1, scientific)),
       )),
       opt(alt((map(tag_no_case("f"), |_| "f"), map(tag_no_case("l"), |_| "l")))),
     ))(input)
@@ -966,6 +977,9 @@ mod tests {
     let (_, id) = LitString::parse(&[r#""abc\ndef""#]).unwrap();
     assert_eq!(id, LitString { repr: "abc\ndef".into() });
 
+    let (_, id) = LitString::parse(&[r#""escaped\"quote""#]).unwrap();
+    assert_eq!(id, LitString { repr: r#"escaped"quote"#.into() });
+
     let (_, id) = LitString::parse(&[r#"u8"🎧""#]).unwrap();
     assert_eq!(id, LitString { repr: "🎧".into() });
 
@@ -986,6 +1000,18 @@ mod tests {
 
     let (_, id) = LitFloat::parse(&[r#"12.34L"#]).unwrap();
     assert_eq!(id, LitFloat::LongDouble(12.34));
+
+    let (_, id) = LitFloat::parse(&[r#".1"#]).unwrap();
+    assert_eq!(id, LitFloat::Double(0.1));
+
+    let (_, id) = LitFloat::parse(&[r#"1."#]).unwrap();
+    assert_eq!(id, LitFloat::Double(1.0));
+
+    let (_, id) = LitFloat::parse(&[r#"1e1"#]).unwrap();
+    assert_eq!(id, LitFloat::Double(10.0));
+
+    let (_, id) = LitFloat::parse(&[r#"1e-1f"#]).unwrap();
+    assert_eq!(id, LitFloat::Float(0.1));
   }
 
   #[test]
@@ -1002,6 +1028,9 @@ mod tests {
     let (_, id) = LitInt::parse(&[r#"1U"#]).unwrap();
     assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::UInt) });
 
+    let (_, id) = LitInt::parse(&[r#"3L"#]).unwrap();
+    assert_eq!(id, LitInt { value: 3, suffix: Some(BuiltInType::Long) });
+
     let (_, id) = LitInt::parse(&[r#"1ULL"#]).unwrap();
     assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
 
@@ -1013,6 +1042,21 @@ mod tests {
 
     let (_, id) = LitInt::parse(&[r#"1z"#]).unwrap();
     assert_eq!(id, LitInt { value: 1, suffix: None });
+
+    let (_, id) = LitInt::parse(&[r#"28Z"#]).unwrap();
+    assert_eq!(id, LitInt { value: 28, suffix: None });
+
+    let (_, id) = LitInt::parse(&[r#"0xff"#]).unwrap();
+    assert_eq!(id, LitInt { value: 0xff, suffix: None });
+
+    let (_, id) = LitInt::parse(&[r#"0XFF"#]).unwrap();
+    assert_eq!(id, LitInt { value: 0xff, suffix: None });
+
+    let (_, id) = LitInt::parse(&[r#"0b101"#]).unwrap();
+    assert_eq!(id, LitInt { value: 0b101, suffix: None });
+
+    let (_, id) = LitInt::parse(&[r#"0B1100"#]).unwrap();
+    assert_eq!(id, LitInt { value: 0b1100, suffix: None });
   }
 
   #[test]
