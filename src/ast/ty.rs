@@ -11,7 +11,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 
 use super::*;
-use crate::{CodegenContext, LocalContext};
+use crate::{CodegenContext, LocalContext, VarMacro};
 
 /// A built-in type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -245,8 +245,8 @@ impl Type {
         name.finish(ctx)?;
 
         if let Identifier::Literal(id) = name {
-          if let Some(Expr::Variable { name }) = ctx.macro_variable(id) {
-            *self = Self::Identifier { name, is_struct: false };
+          if let Some(VarMacro { value: Expr::Variable { name }, .. }) = ctx.variable_macro(id) {
+            *self = Self::Identifier { name: name.clone(), is_struct: false };
             return self.finish(ctx)
           }
 

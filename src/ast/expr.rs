@@ -15,7 +15,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext, MacroArgType, UnaryOp};
+use crate::{CodegenContext, LocalContext, MacroArgType, UnaryOp, VarMacro};
 
 /// An expression.
 ///
@@ -551,8 +551,8 @@ impl Expr {
 
         if let Identifier::Literal(id) = name {
           // Expand variable-like macro.
-          if let Some(expr) = ctx.macro_variable(id.as_str()) {
-            *self = expr;
+          if let Some(var_macro) = ctx.variable_macro(id.as_str()) {
+            *self = var_macro.value.clone();
             return self.finish(ctx)
           }
 
@@ -582,8 +582,8 @@ impl Expr {
         field.finish(ctx)?;
 
         if let Identifier::Literal(id) = &field {
-          if let Some(Expr::Variable { name }) = ctx.macro_variable(id.as_str()) {
-            *field = name;
+          if let Some(VarMacro { value: Expr::Variable { name }, .. }) = ctx.variable_macro(id.as_str()) {
+            *field = name.clone();
             return self.finish(ctx)
           }
         }

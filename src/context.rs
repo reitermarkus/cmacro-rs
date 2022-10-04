@@ -40,7 +40,7 @@ where
   C: CodegenContext,
 {
   pub fn is_variable_known(&self, id: &str) -> bool {
-    self.args.contains_key(id) || self.macro_variable(id).is_some()
+    self.args.contains_key(id) || self.variable_macro(id).is_some()
   }
 }
 
@@ -60,8 +60,12 @@ where
     self.global_context.resolve_ty(ty)
   }
 
-  fn macro_variable(&self, name: &str) -> Option<Expr> {
-    self.global_context.macro_variable(name)
+  fn function_macro(&self, name: &str) -> Option<&FnMacro> {
+    self.global_context.function_macro(name)
+  }
+
+  fn variable_macro(&self, name: &str) -> Option<&VarMacro> {
+    self.global_context.variable_macro(name)
   }
 
   fn ffi_prefix(&self) -> Option<TokenStream> {
@@ -93,9 +97,15 @@ pub trait CodegenContext {
     None
   }
 
-  /// Get the parsed macro with the given `name`.
+  /// Get the parsed function-like macro with the given `name`.
   #[allow(unused_variables)]
-  fn macro_variable(&self, name: &str) -> Option<Expr> {
+  fn function_macro(&self, name: &str) -> Option<&FnMacro> {
+    None
+  }
+
+  /// Get the parsed variable-like macro with the given `name`.
+  #[allow(unused_variables)]
+  fn variable_macro(&self, name: &str) -> Option<&VarMacro> {
     None
   }
 
@@ -126,8 +136,12 @@ where
     T::resolve_ty(self, ty)
   }
 
-  fn macro_variable(&self, name: &str) -> Option<Expr> {
-    T::macro_variable(self, name)
+  fn function_macro(&self, name: &str) -> Option<&FnMacro> {
+    T::function_macro(self, name)
+  }
+
+  fn variable_macro(&self, name: &str) -> Option<&VarMacro> {
+    T::variable_macro(self, name)
   }
 
   fn ffi_prefix(&self) -> Option<TokenStream> {

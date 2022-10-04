@@ -27,10 +27,10 @@ impl FunctionCall {
     self.name.finish(ctx)?;
 
     if let Identifier::Literal(name) = &self.name {
-      if let Some(expr) = ctx.macro_variable(name) {
-        match expr {
+      if let Some(var_macro) = ctx.variable_macro(name) {
+        match &var_macro.value {
           Expr::Variable { name } => {
-            let mut name = name;
+            let mut name = name.clone();
             name.finish(ctx)?;
             self.name = name;
           },
