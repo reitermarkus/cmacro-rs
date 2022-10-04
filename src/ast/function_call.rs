@@ -27,7 +27,11 @@ impl FunctionCall {
     self.name.finish(ctx)?;
 
     if let Identifier::Literal(name) = &self.name {
-      if let Some(var_macro) = ctx.variable_macro(name) {
+      if let Some(fn_macro) = ctx.function_macro(name) {
+        let fn_macro = fn_macro.clone();
+        // TODO
+        // fn_macro.generate(ctx)?;
+      } else if let Some(var_macro) = ctx.variable_macro(name) {
         match &var_macro.value {
           Expr::Variable { name } => {
             let mut name = name.clone();
