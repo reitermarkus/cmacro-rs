@@ -108,7 +108,12 @@ impl VarMacro {
   {
     let mut tokens = TokenStream::new();
 
-    let mut ctx = LocalContext { args: HashMap::new(), export_as_macro: false, global_context: &cx };
+    let mut ctx = LocalContext {
+      args: HashMap::new(),
+      arg_values: Default::default(),
+      export_as_macro: false,
+      global_context: &cx,
+    };
 
     let ty = self.value.finish(&mut ctx)?;
     self.value.to_tokens(&mut ctx, &mut tokens);
@@ -242,6 +247,18 @@ impl FnMacro {
     Ok(Self { name, args, body })
   }
 
+  pub(crate) fn call<C>(mut self, args: &[Expr], cx: &C) -> Result<MacroBody, crate::Error>
+  where
+    C: CodegenContext,
+  {
+    let arg_values = self.args.into_iter().zip(args.iter()).collect();
+    let mut ctx = LocalContext { args: Default::default(), arg_values, export_as_macro: false, global_context: cx };
+
+    self.body.finish(&mut ctx)?;
+
+    Ok(self.body)
+  }
+
   /// Infer the type of this function macro and generate corresponding Rust code.
   pub fn generate<C>(&mut self, cx: C) -> Result<TokenStream, crate::Error>
   where
@@ -261,7 +278,7 @@ impl FnMacro {
       args.insert(arg.to_owned(), ty);
     }
 
-    let mut ctx = LocalContext { args, export_as_macro: false, global_context: &cx };
+    let mut ctx = LocalContext { args, arg_values: Default::default(), export_as_macro: false, global_context: &cx };
     let ret_ty = self.body.finish(&mut ctx)?;
 
     let export_as_macro =

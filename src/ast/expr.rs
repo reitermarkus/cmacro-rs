@@ -15,7 +15,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext, MacroArgType, UnaryOp, VarMacro};
+use crate::{CodegenContext, LocalContext, MacroArgType, MacroBody, UnaryOp};
 
 /// An expression.
 ///
@@ -551,8 +551,8 @@ impl Expr {
 
         if let Identifier::Literal(id) = name {
           // Expand variable-like macro.
-          if let Some(var_macro) = ctx.variable_macro(id.as_str()) {
-            *self = var_macro.value.clone();
+          if let Some(expr) = ctx.variable_macro_value(id.as_str()) {
+            *self = expr.clone();
             return self.finish(ctx)
           }
 
@@ -575,14 +575,32 @@ impl Expr {
 
         Ok(ty)
       },
-      Self::FunctionCall(call) => call.finish(ctx),
+      Self::FunctionCall(call) => {
+        let ty = call.finish(ctx)?;
+
+        if let Identifier::Literal(name) = &call.name {
+          if let Some(fn_macro) = ctx.function_macro(&name) {
+            let fn_macro = fn_macro.clone();
+            match fn_macro.call(&call.args, ctx.global_context)? {
+              MacroBody::Statement(_) => return Err(crate::Error::UnsupportedExpression),
+              MacroBody::Expr(expr) => {
+                *self = expr;
+                return self.finish(ctx)
+              },
+            }
+          }
+        }
+
+        // Type should only be set if calling an actual function, not a function macro.
+        Ok(ty)
+      },
       Self::Literal(lit) => lit.finish(ctx),
       Self::FieldAccess { expr, field } => {
         expr.finish(ctx)?;
         field.finish(ctx)?;
 
         if let Identifier::Literal(id) = &field {
-          if let Some(VarMacro { value: Expr::Variable { name }, .. }) = ctx.variable_macro(id.as_str()) {
+          if let Some(Expr::Variable { name }) = ctx.variable_macro_value(id.as_str()) {
             *field = name.clone();
             return self.finish(ctx)
           }

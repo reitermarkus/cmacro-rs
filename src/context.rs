@@ -17,6 +17,7 @@ pub(crate) enum MacroArgType {
 #[derive(Debug)]
 pub(crate) struct LocalContext<'g, C> {
   pub(crate) args: HashMap<String, MacroArgType>,
+  pub(crate) arg_values: HashMap<String, &'g Expr>,
   pub(crate) export_as_macro: bool,
   pub(crate) global_context: &'g C,
 }
@@ -41,6 +42,14 @@ where
 {
   pub fn is_variable_known(&self, id: &str) -> bool {
     self.args.contains_key(id) || self.variable_macro(id).is_some()
+  }
+
+  pub fn variable_macro_value(&self, name: &str) -> Option<&Expr> {
+    self
+      .arg_values
+      .get(name)
+      .map(|expr| *expr)
+      .or_else(|| CodegenContext::variable_macro(self, name).map(|var_macro| &var_macro.value))
   }
 }
 
