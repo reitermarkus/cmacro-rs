@@ -245,7 +245,7 @@ impl Type {
         name.finish(ctx)?;
 
         if let Identifier::Literal(id) = name {
-          if let Some(Expr::Variable { name }) = ctx.variable_macro_value(id) {
+          if let Some(Expr::Variable { name }) = ctx.arg_value(id).or_else(|| ctx.variable_macro_value(id)) {
             *self = Self::Identifier { name: name.clone(), is_struct: false };
             return self.finish(ctx)
           }

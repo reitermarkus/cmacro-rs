@@ -109,7 +109,7 @@ impl VarMacro {
     let mut tokens = TokenStream::new();
 
     let mut ctx = LocalContext {
-      args: HashMap::new(),
+      arg_types: HashMap::new(),
       arg_values: Default::default(),
       export_as_macro: false,
       global_context: &cx,
@@ -252,7 +252,8 @@ impl FnMacro {
     C: CodegenContext,
   {
     let arg_values = self.args.into_iter().zip(args.iter()).collect();
-    let mut ctx = LocalContext { args: Default::default(), arg_values, export_as_macro: false, global_context: cx };
+    let mut ctx =
+      LocalContext { arg_types: Default::default(), arg_values, export_as_macro: false, global_context: cx };
 
     self.body.finish(&mut ctx)?;
 
@@ -266,23 +267,28 @@ impl FnMacro {
   {
     let mut tokens = TokenStream::new();
 
-    let mut args = HashMap::new();
-    for arg in &self.args {
-      let ty = if let Some(arg_ty) = cx.macro_arg_ty(&self.name, arg) {
-        let arg_ty = syn::parse_str::<syn::Type>(&arg_ty).unwrap();
-        MacroArgType::Known(Type::try_from(arg_ty)?)
-      } else {
-        MacroArgType::Unknown
-      };
+    let arg_types = self
+      .args
+      .iter()
+      .map(|arg| {
+        let ty = if let Some(arg_ty) = cx.macro_arg_ty(&self.name, arg) {
+          let arg_ty = syn::parse_str::<syn::Type>(&arg_ty).unwrap();
+          MacroArgType::Known(Type::try_from(arg_ty)?)
+        } else {
+          MacroArgType::Unknown
+        };
 
-      args.insert(arg.to_owned(), ty);
-    }
+        Ok((arg.to_owned(), ty))
+      })
+      .collect::<Result<_, _>>()?;
 
-    let mut ctx = LocalContext { args, arg_values: Default::default(), export_as_macro: false, global_context: &cx };
+    let mut ctx =
+      LocalContext { arg_types, arg_values: Default::default(), export_as_macro: false, global_context: &cx };
     let ret_ty = self.body.finish(&mut ctx)?;
 
-    let export_as_macro =
-      ctx.is_variadic() || !ctx.args.iter().all(|(_, ty)| matches!(*ty, MacroArgType::Known(_))) || ret_ty.is_none();
+    let export_as_macro = ctx.is_variadic()
+      || !ctx.arg_types.iter().all(|(_, ty)| matches!(*ty, MacroArgType::Known(_)))
+      || ret_ty.is_none();
     ctx.export_as_macro = export_as_macro;
 
     let name = Ident::new(&self.name, Span::call_site());
@@ -299,7 +305,7 @@ impl FnMacro {
         .iter()
         .map(|arg| {
           let id = Ident::new(arg, Span::call_site());
-          let ty = ctx.args.get(arg).unwrap();
+          let ty = ctx.arg_type(arg).unwrap();
 
           if matches!(ty, MacroArgType::Ident) {
             quote! { $#id:ident }
@@ -321,7 +327,7 @@ impl FnMacro {
         .args
         .iter()
         .map(|arg| {
-          if let Some(MacroArgType::Known(ty)) = ctx.args.remove(arg) {
+          if let Some(MacroArgType::Known(ty)) = ctx.arg_types.remove(arg) {
             let id = Ident::new(arg, Span::call_site());
             let ty = ty.to_token_stream(&mut ctx);
             quote! { #id: #ty }

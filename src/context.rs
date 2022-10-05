@@ -14,9 +14,9 @@ pub(crate) enum MacroArgType {
 }
 
 /// Local code generation context.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct LocalContext<'g, C> {
-  pub(crate) args: HashMap<String, MacroArgType>,
+  pub(crate) arg_types: HashMap<String, MacroArgType>,
   pub(crate) arg_values: HashMap<String, &'g Expr>,
   pub(crate) export_as_macro: bool,
   pub(crate) global_context: &'g C,
@@ -24,15 +24,19 @@ pub(crate) struct LocalContext<'g, C> {
 
 impl<'g, C> LocalContext<'g, C> {
   pub fn is_variadic(&self) -> bool {
-    self.args.contains_key("...")
+    self.arg_types.contains_key("...")
+  }
+
+  pub fn arg_type(&self, name: &str) -> Option<&MacroArgType> {
+    self.arg_types.get(name)
   }
 
   pub fn arg_type_mut(&mut self, name: &str) -> Option<&mut MacroArgType> {
-    self.args.get_mut(name)
+    self.arg_types.get_mut(name)
   }
 
   pub fn is_macro_arg(&self, name: &str) -> bool {
-    self.args.get(name).is_some()
+    self.arg_types.get(name).is_some()
   }
 }
 
@@ -40,16 +44,29 @@ impl<C> LocalContext<'_, C>
 where
   C: CodegenContext,
 {
-  pub fn is_variable_known(&self, id: &str) -> bool {
-    self.args.contains_key(id) || self.variable_macro(id).is_some()
+  pub fn arg_value(&self, name: &str) -> Option<&Expr> {
+    self.arg_values.get(name).copied()
+  }
+
+  pub fn eval_variable(&self, name: &str) -> Result<(Expr, Option<Type>), crate::Error> {
+    let mut ctx = Self {
+      arg_types: Default::default(),
+      arg_values: Default::default(),
+      export_as_macro: false,
+      global_context: self.global_context,
+    };
+
+    match self.variable_macro(name).map(|var_macro| var_macro.value.clone()) {
+      Some(mut expr) => {
+        let ty = expr.finish(&mut ctx)?;
+        Ok((expr, ty))
+      },
+      None => Err(crate::Error::UnknownVariable(name.to_owned())),
+    }
   }
 
   pub fn variable_macro_value(&self, name: &str) -> Option<&Expr> {
-    self
-      .arg_values
-      .get(name)
-      .map(|expr| *expr)
-      .or_else(|| CodegenContext::variable_macro(self, name).map(|var_macro| &var_macro.value))
+    self.variable_macro(name).map(|var_macro| &var_macro.value)
   }
 }
 

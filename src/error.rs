@@ -2,7 +2,7 @@
 #[derive(Debug)]
 pub enum Error {
   /// Variable is unknown.
-  UnknownVariable,
+  UnknownVariable(String),
   /// Parsing failed.
   ParserError,
   /// Cannot evaluate expression.

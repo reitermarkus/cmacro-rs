@@ -547,28 +547,38 @@ impl Expr {
         Ok(Some(ty.clone()))
       },
       Self::Variable { ref mut name } => {
-        let mut ty = name.finish(ctx)?;
+        let ty = name.finish(ctx)?;
 
-        if let Identifier::Literal(id) = name {
-          // Expand variable-like macro.
-          if let Some(expr) = ctx.variable_macro_value(id.as_str()) {
-            *self = expr.clone();
-            return self.finish(ctx)
-          }
+        if let Identifier::Literal(name) = name {
+          let name = name.as_str();
 
-          if let Some(MacroArgType::Known(arg_ty)) = ctx.arg_type_mut(id.as_str()) {
-            ty = Some(arg_ty.clone());
-          }
+          if let Some(arg_ty) = ctx.arg_type_mut(name) {
+            if let MacroArgType::Known(arg_ty) = arg_ty {
+              return Ok(Some(arg_ty.clone()))
+            }
+          } else if let Some(arg_value) = ctx.arg_value(name) {
+            *self = arg_value.clone();
 
-          if !ctx.is_variable_known(id.as_str()) {
-            // Built-in macros.
-            return match id.as_str() {
-              "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
-              "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
-              "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
-              "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
-              "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
-              _ => Err(crate::Error::UnknownVariable),
+            // We are inside a function call evaluation, so the type cannot be evaluated yet.
+            return Ok(None)
+          } else {
+            // Expand variable-like macro.
+            match ctx.eval_variable(name) {
+              Ok((expr, ty)) => {
+                *self = expr;
+                return Ok(ty)
+              },
+              Err(err) => {
+                // Built-in macros.
+                return match name {
+                  "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
+                  "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
+                  "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
+                  "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
+                  "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
+                  _ => Err(err),
+                }
+              },
             }
           }
         }
@@ -579,7 +589,7 @@ impl Expr {
         let ty = call.finish(ctx)?;
 
         if let Identifier::Literal(name) = &call.name {
-          if let Some(fn_macro) = ctx.function_macro(&name) {
+          if let Some(fn_macro) = ctx.function_macro(name) {
             let fn_macro = fn_macro.clone();
             match fn_macro.call(&call.args, ctx.global_context)? {
               MacroBody::Statement(_) => return Err(crate::Error::UnsupportedExpression),
@@ -600,9 +610,15 @@ impl Expr {
         field.finish(ctx)?;
 
         if let Identifier::Literal(id) = &field {
-          if let Some(Expr::Variable { name }) = ctx.variable_macro_value(id.as_str()) {
-            *field = name.clone();
-            return self.finish(ctx)
+          let id = id.as_str();
+          if let Some(expr) = ctx.arg_value(id).or_else(|| ctx.variable_macro_value(id)) {
+            match expr {
+              Expr::Variable { name } => {
+                *field = name.clone();
+                return self.finish(ctx)
+              },
+              _ => return Err(crate::Error::UnsupportedExpression),
+            }
           }
         }
 
@@ -789,10 +805,10 @@ impl Expr {
         tokens.append_all(quote! { eNotifyAction_eIncrement });
       },
       Self::Variable { ref name } => {
-        if let Identifier::Literal(id) = name {
+        if let Identifier::Literal(name) = name {
           let prefix = &ctx.ffi_prefix();
 
-          match id.as_str() {
+          match name.as_str() {
             "__SCHAR_MAX__" => return tokens.append_all(quote! { #prefix c_schar::MAX }),
             "__SHRT_MAX__" => return tokens.append_all(quote! { #prefix c_short::MAX }),
             "__INT_MAX__" => return tokens.append_all(quote! { #prefix c_int::MAX }),
