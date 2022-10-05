@@ -90,11 +90,10 @@ impl UnaryExpr {
       UnaryOp::Minus => {
         quote! { (-#expr) }
       },
-      UnaryOp::Deref => {
-        quote! { (*#expr) }
-      },
+      UnaryOp::Deref => format!("(*{})", expr).parse::<TokenStream>().unwrap(),
       UnaryOp::AddrOf => {
-        quote! { ::core::ptr::addr_of_mut!(#expr) }
+        let trait_prefix = ctx.num_prefix();
+        quote! { #trait_prefix addr_of_mut!(#expr) }
       },
     })
   }

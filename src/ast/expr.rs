@@ -54,20 +54,22 @@ impl Expr {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    let mut parse_string =
+    let parse_var = map(Identifier::parse, |id| Self::Variable { name: id });
+    let parse_string =
       alt((map(LitString::parse, |s| Self::Literal(Lit::String(s))), map(Stringify::parse, Self::Stringify)));
+    let mut parse_part = alt((parse_string, parse_var));
 
-    let (tokens, s) = parse_string(tokens)?;
+    let (tokens, s) = parse_part(tokens)?;
 
     fold_many0(
-      preceded(meta, parse_string),
+      preceded(meta, parse_part),
       move || s.clone(),
-      |mut acc, item| match acc {
+      |mut acc, expr| match acc {
         Self::Concat(ref mut args) => {
-          args.push(item);
+          args.push(expr);
           acc
         },
-        acc => Self::Concat(vec![acc, item]),
+        acc => Self::Concat(vec![acc, expr]),
       },
     )(tokens)
   }
@@ -90,12 +92,7 @@ impl Expr {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    alt((
-      Self::parse_concat,
-      map(Lit::parse, Self::Literal),
-      map(Identifier::parse, |id| Self::Variable { name: id }),
-      parenthesized(Self::parse),
-    ))(tokens)
+    alt((Self::parse_concat, map(Lit::parse, Self::Literal), parenthesized(Self::parse)))(tokens)
   }
 
   fn parse_term_prec1<I, C>(tokens: &[I]) -> IResult<&[I], Self>
@@ -626,12 +623,38 @@ impl Expr {
       },
       Self::Stringify(stringify) => stringify.finish(ctx),
       Self::Concat(names) => {
-        for name in names {
+        let mut new_names = vec![];
+        let mut current_name: Option<Vec<u8>> = None;
+
+        for name in &mut *names {
           name.finish(ctx)?;
+
+          if let Self::Literal(Lit::String(LitString { repr })) = name {
+            if let Some(ref mut current_name) = current_name {
+              current_name.extend_from_slice(repr);
+            } else {
+              current_name = Some(repr.clone());
+            }
+          } else {
+            if let Some(current_name) = current_name.take() {
+              new_names.push(Self::Literal(Lit::String(LitString { repr: current_name })));
+            }
+
+            new_names.push(name.clone());
+          }
         }
 
-        // TODO: Should be `*const c_char`.
-        Ok(None)
+        if let Some(current_name) = current_name.take() {
+          new_names.push(Self::Literal(Lit::String(LitString { repr: current_name })));
+        }
+
+        if new_names.len() == 1 {
+          *self = new_names.remove(0);
+          self.finish(ctx)
+        } else {
+          *self = Self::Concat(new_names);
+          Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
+        }
       },
       Self::Unary(op) => {
         let ty = op.finish(ctx)?;
@@ -799,7 +822,9 @@ impl Expr {
         },
       }),
       Self::Variable { name: Identifier::Literal(id) } if id == "NULL" => {
-        tokens.append_all(quote! { ::core::ptr::null_mut() });
+        let trait_prefix = ctx.num_prefix();
+
+        tokens.append_all(quote! { #trait_prefix ptr::null_mut() });
       },
       Self::Variable { name: Identifier::Literal(id) } if id == "eIncrement" => {
         tokens.append_all(quote! { eNotifyAction_eIncrement });
@@ -829,19 +854,33 @@ impl Expr {
         let field = field.to_token_stream(ctx);
 
         tokens.append_all(quote! {
-          (#expr).#field
+          #expr.#field
         })
       },
       Self::Stringify(stringify) => {
         stringify.to_tokens(ctx, tokens);
       },
       Self::Concat(ref names) => {
-        let names = names.iter().map(|e| e.to_token_stream(ctx)).collect::<Vec<_>>();
+        let ffi_prefix = ctx.ffi_prefix();
+        let trait_prefix = ctx.num_prefix();
+
+        let names = names
+          .iter()
+          .map(|e| match e {
+            Self::Stringify(s) => {
+              let id = s.id.to_token_stream(ctx);
+
+              quote! { #trait_prefix stringify!(#id) }
+            },
+            e => e.to_token_stream(ctx),
+          })
+          .collect::<Vec<_>>();
 
         tokens.append_all(quote! {
-          ::core::concat!(
-            #(#names),*
-          )
+          #trait_prefix concat!(
+            #(#names),* ,
+            '\0'
+          ) as *const #ffi_prefix c_char
         })
       },
       Self::Unary(op) => op.to_tokens(ctx, tokens),

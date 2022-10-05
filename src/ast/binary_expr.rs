@@ -139,6 +139,9 @@ impl BinaryExpr {
       None
     };
 
+    let mut lhs_ty = self.lhs.finish(ctx)?;
+    let mut rhs_ty = self.rhs.finish(ctx)?;
+
     // Cast mixed float and int expression.
     match (&self.lhs, &self.rhs) {
       (Expr::Literal(Lit::Int(LitInt { value: lhs, suffix: None })), Expr::Literal(Lit::Float(_))) => {
@@ -148,6 +151,7 @@ impl BinaryExpr {
           LitFloat::Double(*lhs as f64)
         };
         self.lhs = Expr::Literal(Lit::Float(f));
+        lhs_ty = self.lhs.finish(ctx)?;
       },
       (Expr::Literal(Lit::Float(_)), Expr::Literal(Lit::Int(LitInt { value: rhs, suffix: None }))) => {
         let f = if *rhs >= f32::MIN as i128 && *rhs <= f32::MAX as i128 {
@@ -156,21 +160,24 @@ impl BinaryExpr {
           LitFloat::Double(*rhs as f64)
         };
         self.rhs = Expr::Literal(Lit::Float(f));
+        rhs_ty = self.rhs.finish(ctx)?;
       },
       (lhs, Expr::Literal(Lit::Int(_))) => {
-        if let Some(lhs_ty) = max_ty_cast(lhs) {
-          self.lhs = Expr::Cast { ty: lhs_ty, expr: Box::new(lhs.clone()) };
+        if let Some(lhs_ty2) = max_ty_cast(lhs) {
+          self.lhs = Expr::Cast { ty: lhs_ty2.clone(), expr: Box::new(lhs.clone()) };
+          lhs_ty = Some(lhs_ty2);
         }
       },
       (Expr::Literal(Lit::Int(_)), rhs) => {
-        if let Some(rhs_ty) = max_ty_cast(rhs) {
-          self.rhs = Expr::Cast { ty: rhs_ty, expr: Box::new(rhs.clone()) };
+        if let Some(rhs_ty2) = max_ty_cast(rhs) {
+          self.rhs = Expr::Cast { ty: rhs_ty2.clone(), expr: Box::new(rhs.clone()) };
+          rhs_ty = Some(rhs_ty2);
         }
       },
       _ => (),
     }
 
-    Ok((self.lhs.finish(ctx)?, self.rhs.finish(ctx)?))
+    Ok((lhs_ty, rhs_ty))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {

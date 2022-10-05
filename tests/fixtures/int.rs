@@ -1,0 +1,14 @@
+pub const int_9223372036854775808: _ = -9223372036854775808;
+pub const int_5: _ = -5;
+pub const int_3: _ = -3;
+pub const int6: _ = 6;
+pub const int13: _ = 13;
+pub const int16: _ = 16;
+pub const int12: _ = 12;
+pub const int17: _ = 17;
+pub const int15: _ = 15;
+pub const int30: _ = 30;
+pub const int38: _ = 38;
+pub const int39: _ = 39;
+pub const int47: _ = 47;
+pub const int60: _ = 60;

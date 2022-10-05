@@ -156,6 +156,10 @@ impl Identifier {
         }
       }
 
+      if let Some(non_arg_id) = non_arg_id.take() {
+        new_ids.push(non_arg_id);
+      }
+
       if new_ids.len() == 1 {
         *self = Self::Literal(new_ids.remove(0));
       } else {
