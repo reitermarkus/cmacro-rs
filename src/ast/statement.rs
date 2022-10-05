@@ -159,13 +159,12 @@ impl Statement {
         let condition = condition.to_token_stream(ctx);
         let if_branch = if_branch.iter().map(|stmt| stmt.to_token_stream(ctx)).collect::<Vec<_>>();
         let else_branch = else_branch.iter().map(|stmt| stmt.to_token_stream(ctx)).collect::<Vec<_>>();
+        let else_branch = if else_branch.is_empty() { None } else { Some(quote! { else { #(#else_branch);* } }) };
 
         tokens.append_all(quote! {
           if #condition {
             #(#if_branch)*
-          } else {
-            #(#else_branch)*
-          }
+          } #else_branch
         })
       },
       Self::DoWhile { block, condition } => {
