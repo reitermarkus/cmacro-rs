@@ -10,3 +10,5 @@
 // Unused function argument with variables aliased to the name of that argument,
 // i.e. the two `x`s should be different variables.
 #define f3(x) y + y
+
+#define f4(x, y, z) (x + y) * z

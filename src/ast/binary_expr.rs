@@ -194,7 +194,10 @@ impl BinaryExpr {
       | BinaryOp::BitOrAssign => {
         quote! { { #lhs #op #rhs; #lhs } }
       },
-      op => quote! { ( #lhs #op #rhs ) },
+      BinaryOp::Shl if matches!(self.lhs, Expr::Cast { .. }) => {
+        quote! { ((#lhs) #op #rhs) }
+      },
+      op => quote! { (#lhs #op #rhs) },
     })
   }
 }

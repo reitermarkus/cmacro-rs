@@ -821,14 +821,6 @@ impl Expr {
           }
         },
       }),
-      Self::Variable { name: Identifier::Literal(id) } if id == "NULL" => {
-        let trait_prefix = ctx.num_prefix();
-
-        tokens.append_all(quote! { #trait_prefix ptr::null_mut() });
-      },
-      Self::Variable { name: Identifier::Literal(id) } if id == "eIncrement" => {
-        tokens.append_all(quote! { eNotifyAction_eIncrement });
-      },
       Self::Variable { ref name } => {
         if let Identifier::Literal(name) = name {
           let prefix = &ctx.ffi_prefix();
@@ -850,7 +842,13 @@ impl Expr {
       },
       Self::Literal(ref lit) => lit.to_tokens(ctx, tokens),
       Self::FieldAccess { ref expr, ref field } => {
-        let expr = expr.to_token_stream(ctx);
+        let expr = if matches!(**expr, Self::Variable { .. } | Self::FieldAccess { .. } | Self::FunctionCall { .. }) {
+          expr.to_token_stream(ctx)
+        } else {
+          let expr = expr.to_token_stream(ctx);
+          quote! { (#expr) }
+        };
+
         let field = field.to_token_stream(ctx);
 
         tokens.append_all(quote! {

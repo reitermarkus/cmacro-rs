@@ -9,3 +9,9 @@ macro_rules! f2 {
     ($y * ($y * 2))
   };
 }
+
+macro_rules! f4 {
+  ($x:expr, $y:expr, $z:expr) => {
+    (($x + $y) * $z)
+  };
+}

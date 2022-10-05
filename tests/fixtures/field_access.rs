@@ -18,6 +18,6 @@ macro_rules! access_renamed_field {
 
 macro_rules! access_address {
   ($x:expr) => {
-    (*addr_of_mut!($x)).new_name
+    (*ptr::addr_of_mut!($x)).new_name
   };
 }
