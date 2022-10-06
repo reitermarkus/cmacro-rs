@@ -719,11 +719,27 @@ impl Expr {
             *self = Self::Literal(Lit::Int(LitInt { value: if *i == 0 { 1 } else { 0 }, suffix: None }));
           },
           (UnaryOp::Not, Self::Literal(Lit::Float(f))) => {
-            *self = Self::Literal(Lit::Float(match f {
-              LitFloat::Float(f) => LitFloat::Float(if *f == 0.0 { 1.0 } else { 0.0 }),
-              LitFloat::Double(f) => LitFloat::Double(if *f == 0.0 { 1.0 } else { 0.0 }),
-              LitFloat::LongDouble(f) => LitFloat::LongDouble(if *f == 0.0 { 1.0 } else { 0.0 }),
+            *self = Self::Literal(Lit::Int(LitInt {
+              value: match f {
+                LitFloat::Float(f) => *f == 0.0,
+                LitFloat::Double(f) => *f == 0.0,
+                LitFloat::LongDouble(f) => *f == 0.0,
+              } as i128,
+              suffix: None,
             }));
+          },
+          (UnaryOp::Not, expr) => {
+            if ty != Some(Type::BuiltIn(BuiltInType::Bool)) {
+              let lhs = expr.clone();
+              let rhs = match ty {
+                Some(Type::BuiltIn(BuiltInType::Float)) => Self::Literal(Lit::Float(LitFloat::Float(0.0))),
+                Some(Type::BuiltIn(BuiltInType::Double)) => Self::Literal(Lit::Float(LitFloat::Double(0.0))),
+                Some(Type::BuiltIn(BuiltInType::LongDouble)) => Self::Literal(Lit::Float(LitFloat::LongDouble(0.0))),
+                _ => Self::Literal(Lit::Int(LitInt { value: 0, suffix: None })),
+              };
+
+              *self = Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::Eq, rhs }))
+            }
           },
           (UnaryOp::Comp, Self::Literal(Lit::Float(_) | Lit::String(_))) => {
             return Err(crate::Error::UnsupportedExpression)

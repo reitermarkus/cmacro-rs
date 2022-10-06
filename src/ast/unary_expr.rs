@@ -46,10 +46,7 @@ impl UnaryExpr {
     let ty = self.expr.finish(ctx)?;
 
     match self.op {
-      UnaryOp::Not => {
-        // TODO: Evaluate literal.
-        Ok(Some(Type::BuiltIn(BuiltInType::Bool)))
-      },
+      UnaryOp::Not => Ok(Some(Type::BuiltIn(BuiltInType::Bool))),
       UnaryOp::Deref => {
         if let Some(Type::Ptr { ty, .. }) = ty {
           Ok(Some(*ty))
@@ -83,7 +80,7 @@ impl UnaryExpr {
         quote! { { let prev = #expr; #expr -= 1; prev } }
       },
       UnaryOp::Not => {
-        quote! { (#expr == Default::default()) }
+        quote! { !(#expr) }
       },
       UnaryOp::Comp => {
         quote! { (!#expr) }
