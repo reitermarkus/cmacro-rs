@@ -53,8 +53,6 @@ impl FunctionCall {
           }
 
           for (arg, known_arg_type) in self.args.iter_mut().zip(known_args.iter()) {
-            arg.finish(ctx)?;
-
             // If the current argument to this function is a macro argument,
             // we can infer the type of the macro argument.
             if let Expr::Variable { name: Identifier::Literal(ref name) } = arg {
@@ -69,10 +67,6 @@ impl FunctionCall {
           }
         }
       }
-    }
-
-    for arg in self.args.iter_mut() {
-      arg.finish(ctx)?;
     }
 
     Ok(ty)

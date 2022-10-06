@@ -182,6 +182,10 @@ impl Identifier {
           return quote! {}
         }
 
+        if s == "__VA_ARGS__" {
+          return quote! { $($__VA_ARGS__),* }
+        }
+
         let id = Ident::new(s, Span::call_site());
 
         if ctx.export_as_macro && ctx.is_macro_arg(s) {

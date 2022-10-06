@@ -612,12 +612,18 @@ impl Expr {
         Ok(ty)
       },
       Self::FunctionCall(call) => {
+        if let Identifier::Literal(name) = &call.name {
+          if ctx.names.contains(name) {
+            return Err(crate::Error::RecursiveDefinition(name.to_owned()))
+          }
+        }
+
         let ty = call.finish(ctx)?;
 
         if let Identifier::Literal(name) = &call.name {
           if let Some(fn_macro) = ctx.function_macro(name) {
             let fn_macro = fn_macro.clone();
-            match fn_macro.call(&call.args, ctx.global_context)? {
+            match fn_macro.call(&ctx.names, &call.args, ctx)? {
               MacroBody::Statement(_) => return Err(crate::Error::UnsupportedExpression),
               MacroBody::Expr(expr) => {
                 *self = expr;

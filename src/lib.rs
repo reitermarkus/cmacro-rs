@@ -11,7 +11,7 @@
 #![warn(missing_docs)]
 
 use std::{
-  collections::HashMap,
+  collections::{HashMap, HashSet},
   fmt::Debug,
   mem,
   ops::{RangeFrom, RangeTo},
@@ -108,7 +108,11 @@ impl VarMacro {
   {
     let mut tokens = TokenStream::new();
 
+    let mut names = HashSet::new();
+    names.insert(self.name.clone());
+
     let mut ctx = LocalContext {
+      names,
       arg_types: HashMap::new(),
       arg_values: Default::default(),
       export_as_macro: false,
@@ -247,13 +251,30 @@ impl FnMacro {
     Ok(Self { name, args, body })
   }
 
-  pub(crate) fn call<C>(mut self, args: &[Expr], cx: &C) -> Result<MacroBody, crate::Error>
+  pub(crate) fn call<C>(
+    mut self,
+    names: &HashSet<String>,
+    args: &[Expr],
+    ctx: &LocalContext<C>,
+  ) -> Result<MacroBody, crate::Error>
   where
     C: CodegenContext,
   {
+    if ctx.names.contains(&self.name) {
+      return Err(crate::Error::RecursiveDefinition(self.name))
+    }
+
+    let mut names = names.clone();
+    names.insert(self.name.clone());
+
     let arg_values = self.args.into_iter().zip(args.iter()).collect();
-    let mut ctx =
-      LocalContext { arg_types: Default::default(), arg_values, export_as_macro: false, global_context: cx };
+    let mut ctx = LocalContext {
+      names,
+      arg_types: Default::default(),
+      arg_values,
+      export_as_macro: false,
+      global_context: ctx.global_context,
+    };
 
     self.body.finish(&mut ctx)?;
 
@@ -266,6 +287,9 @@ impl FnMacro {
     C: CodegenContext,
   {
     let mut tokens = TokenStream::new();
+
+    let mut names = HashSet::new();
+    names.insert(self.name.clone());
 
     let arg_types = self
       .args
@@ -283,7 +307,7 @@ impl FnMacro {
       .collect::<Result<_, _>>()?;
 
     let mut ctx =
-      LocalContext { arg_types, arg_values: Default::default(), export_as_macro: false, global_context: &cx };
+      LocalContext { names, arg_types, arg_values: Default::default(), export_as_macro: false, global_context: &cx };
     let ret_ty = self.body.finish(&mut ctx)?;
 
     let export_as_macro = ctx.is_variadic()
@@ -304,13 +328,17 @@ impl FnMacro {
         .args
         .iter()
         .map(|arg| {
-          let id = Ident::new(arg, Span::call_site());
-          let ty = ctx.arg_type(arg).unwrap();
-
-          if matches!(ty, MacroArgType::Ident) {
-            quote! { $#id:ident }
+          if arg == "..." {
+            quote! { $($__VA_ARGS__:expr),* }
           } else {
-            quote! { $#id:expr }
+            let id = Ident::new(arg, Span::call_site());
+            let ty = ctx.arg_type(arg).unwrap();
+
+            if matches!(ty, MacroArgType::Ident) {
+              quote! { $#id:ident }
+            } else {
+              quote! { $#id:expr }
+            }
           }
         })
         .collect::<Vec<_>>();

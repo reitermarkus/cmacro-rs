@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::*;
 
 /// Type of a macro argument.
@@ -16,6 +18,7 @@ pub(crate) enum MacroArgType {
 /// Local code generation context.
 #[derive(Debug, Clone)]
 pub(crate) struct LocalContext<'g, C> {
+  pub(crate) names: HashSet<String>,
   pub(crate) arg_types: HashMap<String, MacroArgType>,
   pub(crate) arg_values: HashMap<String, &'g Expr>,
   pub(crate) export_as_macro: bool,
@@ -49,7 +52,15 @@ where
   }
 
   pub fn eval_variable(&self, name: &str) -> Result<(Expr, Option<Type>), crate::Error> {
+    if self.names.contains(name) {
+      return Err(crate::Error::RecursiveDefinition(name.to_owned()))
+    }
+
+    let mut names = self.names.clone();
+    names.insert(name.to_owned());
+
     let mut ctx = Self {
+      names,
       arg_types: Default::default(),
       arg_values: Default::default(),
       export_as_macro: false,

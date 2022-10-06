@@ -7,4 +7,6 @@ pub enum Error {
   ParserError,
   /// Cannot evaluate expression.
   UnsupportedExpression,
+  /// Recursive macro definition.
+  RecursiveDefinition(String),
 }
