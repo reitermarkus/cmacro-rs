@@ -719,9 +719,6 @@ impl Expr {
               LitFloat::LongDouble(f) => LitFloat::LongDouble(if *f == 0.0 { 1.0 } else { 0.0 }),
             }));
           },
-          (UnaryOp::Comp, Self::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
-            *self = Self::Literal(Lit::Int(LitInt { value: !i, suffix: None }));
-          },
           (UnaryOp::Comp, Self::Literal(Lit::Float(_) | Lit::String(_))) => {
             return Err(crate::Error::UnsupportedExpression)
           },
