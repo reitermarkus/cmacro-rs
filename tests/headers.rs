@@ -34,7 +34,7 @@ fn file_visit_macros<F: FnMut(&str, Option<&[&str]>, &[&str])>(file: &str, mut v
         return EntityVisitResult::Continue
       }
 
-      let mut tokens: Vec<_> = range.tokenize().into_iter().filter_map(|token| Some(token.get_spelling())).collect();
+      let mut tokens: Vec<_> = range.tokenize().into_iter().map(|token| token.get_spelling()).collect();
 
       let name = tokens.remove(0);
 
@@ -48,8 +48,7 @@ fn file_visit_macros<F: FnMut(&str, Option<&[&str]>, &[&str])>(file: &str, mut v
         None
       };
 
-      let args =
-        if let Some(args) = &args { Some(args.into_iter().map(|t| t.as_str()).collect::<Vec<&str>>()) } else { None };
+      let args = args.as_ref().map(|args| args.iter().map(|t| t.as_str()).collect::<Vec<&str>>());
       let tokens = tokens.iter().map(|t| t.as_str()).collect::<Vec<&str>>();
 
       visitor(&name, args.as_deref(), &tokens)
