@@ -544,6 +544,30 @@ impl Expr {
   {
     match self {
       Self::Cast { expr, ty } => {
+        // Handle ambiguous cast vs. binary operation, e.g. `(ty)&var` vs `(var1) & var2`.
+        if let (Self::Unary(expr), Type::Identifier { name: Identifier::Literal(name), is_struct: false }) =
+          (&**expr, &ty)
+        {
+          // Cannot resolve type, so treat this as a binary operation.
+          if ctx.resolve_ty(name.as_str()).is_none() {
+            let op = match expr.op {
+              UnaryOp::Plus => Some(BinaryOp::Add),
+              UnaryOp::Minus => Some(BinaryOp::Sub),
+              UnaryOp::Deref => Some(BinaryOp::Mul),
+              UnaryOp::AddrOf => Some(BinaryOp::BitAnd),
+              _ => None,
+            };
+
+            if let Some(op) = op {
+              let lhs = Self::Variable { name: Identifier::Literal(name.clone()) };
+              let rhs = expr.expr.clone();
+
+              *self = Self::Binary(Box::new(BinaryExpr { lhs, op, rhs }));
+              return self.finish(ctx)
+            }
+          }
+        }
+
         expr.finish(ctx)?;
         ty.finish(ctx)?;
         Ok(Some(ty.clone()))
