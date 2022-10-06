@@ -43,8 +43,7 @@ pub enum Statement {
 }
 
 impl Statement {
-  /// Parse a statement.
-  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
+  fn parse_single<I, C>(tokens: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
       + InputTake
@@ -63,7 +62,8 @@ impl Statement {
     &'static str: FindToken<<I as InputIter>::Item>,
   {
     let condition = |input| parenthesized(Expr::parse)(input);
-    let block = |input| map(Self::parse, |stmt| if let Self::Block(stmts) = stmt { stmts } else { vec![stmt] })(input);
+    let block =
+      |input| map(Self::parse_single, |stmt| if let Self::Block(stmts) = stmt { stmts } else { vec![stmt] })(input);
     let semicolon_or_eof = |input| alt((value((), token(";")), value((), eof)))(input);
 
     alt((
@@ -84,13 +84,41 @@ impl Statement {
         |(block, condition)| Self::DoWhile { block, condition },
       ),
       map(
-        delimited(terminated(token("{"), meta), many0(preceded(meta, Self::parse)), preceded(meta, token("}"))),
+        delimited(terminated(token("{"), meta), many0(preceded(meta, Self::parse_single)), preceded(meta, token("}"))),
         Self::Block,
       ),
       map(terminated(FunctionDecl::parse, semicolon_or_eof), Self::FunctionDecl),
       map(terminated(Decl::parse, semicolon_or_eof), Self::Decl),
       map(terminated(Expr::parse, semicolon_or_eof), Self::Expr),
     ))(tokens)
+  }
+
+  /// Parse a statement.
+  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
+  where
+    I: Debug
+      + InputTake
+      + InputLength
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + Slice<RangeFrom<usize>>
+      + Slice<RangeTo<usize>>
+      + Compare<&'static str>
+      + FindSubstring<&'static str>
+      + ParseTo<f64>
+      + ParseTo<f32>
+      + Offset
+      + Clone,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputIter>::Item>,
+  {
+    map(many0(delimited(meta, Self::parse_single, meta)), |mut stmts| {
+      if stmts.len() == 1 {
+        stmts.remove(0)
+      } else {
+        Self::Block(stmts)
+      }
+    })(tokens)
   }
 
   pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
