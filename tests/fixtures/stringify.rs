@@ -6,6 +6,6 @@ macro_rules! __STRING {
 
 macro_rules! DOUBLE_STRING {
   ($x:expr) => {
-    concat!(stringify!($x), stringify!($x), '\0') as *const c_char
+    concat!(stringify!($x), stringify!($x), '\0').as_ptr() as *const c_char
   };
 }

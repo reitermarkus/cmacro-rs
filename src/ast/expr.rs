@@ -910,7 +910,7 @@ impl Expr {
           #trait_prefix concat!(
             #(#names),* ,
             '\0'
-          ) as *const #ffi_prefix c_char
+          ).as_ptr() as *const #ffi_prefix c_char
         })
       },
       Self::Unary(op) => op.to_tokens(ctx, tokens),
