@@ -610,7 +610,7 @@ impl Expr {
           let id = id.as_str();
           if let Some(expr) = ctx.arg_value(id).or_else(|| ctx.variable_macro_value(id)) {
             match expr {
-              Expr::Variable { name } => {
+              Self::Variable { name } => {
                 *field = name.clone();
                 return self.finish(ctx)
               },
@@ -911,6 +911,12 @@ impl Expr {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn parse_literal() {
+    let (_, expr) = Expr::parse(&["U'🍩'"]).unwrap();
+    assert_eq!(expr, Expr::Literal(Lit::Char(LitChar { repr: 0x0001f369 })));
+  }
 
   #[test]
   fn parse_stringify() {

@@ -6,3 +6,6 @@
 
 /// Concatenated identifier and string.
 #define s3 s ## 1 s1
+
+#define MY_DONUT1 U'\U0001f369'
+#define MY_DONUT1 U'🍩'

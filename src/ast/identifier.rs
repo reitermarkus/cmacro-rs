@@ -42,7 +42,7 @@ where
 
         let mut chars = s.chars();
         let start = chars.next()?;
-        if unicode_ident::is_xid_start(start) || start == '_' && chars.all(unicode_ident::is_xid_continue) {
+        if (unicode_ident::is_xid_start(start) || start == '_') && chars.all(unicode_ident::is_xid_continue) {
           Some(s)
         } else {
           None

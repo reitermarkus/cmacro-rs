@@ -176,7 +176,7 @@ where
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitChar {
-  repr: u32,
+  pub(crate) repr: u32,
 }
 
 impl LitChar {
