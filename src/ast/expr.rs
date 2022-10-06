@@ -623,7 +623,7 @@ impl Expr {
         if let Identifier::Literal(name) = &call.name {
           if let Some(fn_macro) = ctx.function_macro(name) {
             let fn_macro = fn_macro.clone();
-            match fn_macro.call(&ctx.names, &call.args, ctx)? {
+            match fn_macro.call(&ctx.root_name, &ctx.names, &call.args, ctx)? {
               MacroBody::Statement(_) => return Err(crate::Error::UnsupportedExpression),
               MacroBody::Expr(expr) => {
                 *self = expr;

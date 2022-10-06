@@ -112,6 +112,7 @@ impl VarMacro {
     names.insert(self.name.clone());
 
     let mut ctx = LocalContext {
+      root_name: self.name.clone(),
       names,
       arg_types: HashMap::new(),
       arg_values: Default::default(),
@@ -253,6 +254,7 @@ impl FnMacro {
 
   pub(crate) fn call<C>(
     mut self,
+    root_name: &str,
     names: &HashSet<String>,
     args: &[Expr],
     ctx: &LocalContext<C>,
@@ -269,6 +271,7 @@ impl FnMacro {
 
     let arg_values = self.args.into_iter().zip(args.iter()).collect();
     let mut ctx = LocalContext {
+      root_name: root_name.to_owned(),
       names,
       arg_types: Default::default(),
       arg_values,
@@ -306,8 +309,14 @@ impl FnMacro {
       })
       .collect::<Result<_, _>>()?;
 
-    let mut ctx =
-      LocalContext { names, arg_types, arg_values: Default::default(), export_as_macro: false, global_context: &cx };
+    let mut ctx = LocalContext {
+      root_name: self.name.clone(),
+      names,
+      arg_types,
+      arg_values: Default::default(),
+      export_as_macro: false,
+      global_context: &cx,
+    };
     let ret_ty = self.body.finish(&mut ctx)?;
 
     let export_as_macro = ctx.is_variadic()

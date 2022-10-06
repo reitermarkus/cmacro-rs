@@ -18,6 +18,7 @@ pub(crate) enum MacroArgType {
 /// Local code generation context.
 #[derive(Debug, Clone)]
 pub(crate) struct LocalContext<'g, C> {
+  pub(crate) root_name: String,
   pub(crate) names: HashSet<String>,
   pub(crate) arg_types: HashMap<String, MacroArgType>,
   pub(crate) arg_values: HashMap<String, &'g Expr>,
@@ -42,8 +43,11 @@ impl<'g, C> LocalContext<'g, C> {
     self.arg_types.get(name).is_some()
   }
 
-  pub fn is_variable_macro(&self) -> bool {
-    self.arg_types.is_empty() && self.arg_values.is_empty()
+  pub fn is_variable_macro(&self) -> bool
+  where
+    C: context::CodegenContext,
+  {
+    self.variable_macro(&self.root_name).is_some()
   }
 }
 
@@ -64,6 +68,7 @@ where
     names.insert(name.to_owned());
 
     let mut ctx = Self {
+      root_name: self.root_name.clone(),
       names,
       arg_types: Default::default(),
       arg_values: Default::default(),
