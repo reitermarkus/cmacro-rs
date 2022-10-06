@@ -41,6 +41,10 @@ impl<'g, C> LocalContext<'g, C> {
   pub fn is_macro_arg(&self, name: &str) -> bool {
     self.arg_types.get(name).is_some()
   }
+
+  pub fn is_variable_macro(&self) -> bool {
+    self.arg_types.is_empty() && self.arg_values.is_empty()
+  }
 }
 
 impl<C> LocalContext<'_, C>

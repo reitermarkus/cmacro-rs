@@ -47,6 +47,11 @@ impl FunctionCall {
 
     if let Identifier::Literal(ref function_name) = self.name {
       if let Some((known_args, known_ret_ty)) = ctx.function(function_name.as_str()) {
+        // Cannot call external functions in `const` context.
+        if ctx.is_variable_macro() {
+          return Err(crate::Error::UnsupportedExpression)
+        }
+
         if known_args.len() == self.args.len() {
           if let Ok(y) = syn::parse_str::<syn::Type>(&known_ret_ty) {
             ty = Some(Type::try_from(y)?);
