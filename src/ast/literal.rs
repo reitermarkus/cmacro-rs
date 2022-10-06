@@ -195,10 +195,56 @@ impl LitChar {
     <I as InputIter>::Item: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
+    let (input, utf8_prefix) = if let Ok((input, _)) = token("u8")(input) { (input, true) } else { (input, false) };
     let (input2, token) = take_one(input)?;
+
+    let fold_char = |input| {
+      fold_many1(
+        alt((preceded(char('\\'), escaped_char), map(none_of("\\\'\n"), |b| b.as_char() as u32))),
+        || 0,
+        |acc, c| {
+          if c <= u8::MAX as u32 {
+            acc << 8 | c
+          } else if c <= u16::MAX as u32 {
+            acc << 16 | c
+          } else {
+            c
+          }
+        },
+      )(input)
+    };
+
+    let parse_char = |(prefix, c)| {
+      let max = match prefix {
+        Some("u8") => 0x7f,
+        Some("u") => 0xffff,
+        Some("U") | Some("L") => u32::MAX,
+        _ => 0xff,
+      };
+
+      if c <= max {
+        let c = if let Some(c) = char::from_u32(c) {
+          c as u32
+        } else {
+          let b = c.to_be_bytes();
+          if let Some(c) = str::from_utf8(&b).ok().and_then(|s| s.chars().last()) {
+            c as u32
+          } else {
+            c
+          }
+        };
+
+        Some(c)
+      } else {
+        None
+      }
+    };
 
     let (_, c) = all_consuming(terminated(
       alt((
+        map_opt(cond(utf8_prefix, map(preceded(char('\''), fold_char), |c| parse_char((Some("u8"), c)))), |c| {
+          c.flatten()
+        }),
         preceded(
           char('\''),
           map_opt(
@@ -216,45 +262,9 @@ impl LitChar {
               opt(alt((value("u8", tag("u8")), value("u", tag("u")), value("U", tag("U")), value("L", tag("L"))))),
               char('\''),
             ),
-            fold_many1(
-              alt((preceded(char('\\'), escaped_char), map(none_of("\\\'\n"), |b| b.as_char() as u32))),
-              || 0,
-              |acc, c| {
-                if c <= u8::MAX as u32 {
-                  acc << 8 | c
-                } else if c <= u16::MAX as u32 {
-                  acc << 16 | c
-                } else {
-                  c
-                }
-              },
-            ),
+            fold_char,
           ),
-          |(prefix, c)| {
-            let max = match prefix {
-              Some("u8") => 0x7f,
-              Some("u") => 0xffff,
-              Some("U") | Some("L") => u32::MAX,
-              _ => 0xff,
-            };
-
-            if c <= max {
-              let c = if let Some(c) = char::from_u32(c) {
-                c as u32
-              } else {
-                let b = c.to_be_bytes();
-                if let Some(c) = str::from_utf8(&b).ok().and_then(|s| s.chars().last()) {
-                  c as u32
-                } else {
-                  c
-                }
-              };
-
-              Some(c)
-            } else {
-              None
-            }
-          },
+          parse_char,
         ),
       )),
       char('\''),

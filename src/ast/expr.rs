@@ -92,7 +92,12 @@ impl Expr {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    alt((Self::parse_concat, map(Lit::parse, Self::Literal), parenthesized(Self::parse)))(tokens)
+    alt((
+      map(LitChar::parse, |c| Self::Literal(Lit::Char(c))),
+      Self::parse_concat,
+      map(Lit::parse, Self::Literal),
+      parenthesized(Self::parse),
+    ))(tokens)
   }
 
   fn parse_term_prec1<I, C>(tokens: &[I]) -> IResult<&[I], Self>
@@ -914,6 +919,9 @@ mod tests {
 
   #[test]
   fn parse_literal() {
+    let (_, expr) = Expr::parse(&["u8", "'a'"]).unwrap();
+    assert_eq!(expr, Expr::Literal(Lit::Char(LitChar { repr: 'a' as u32 })));
+
     let (_, expr) = Expr::parse(&["U'🍩'"]).unwrap();
     assert_eq!(expr, Expr::Literal(Lit::Char(LitChar { repr: 0x0001f369 })));
   }
