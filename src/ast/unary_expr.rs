@@ -63,7 +63,11 @@ impl UnaryExpr {
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
-    let expr = self.expr.to_token_stream(ctx);
+    let mut expr = self.expr.to_token_stream(ctx);
+
+    if matches!(self.expr, Expr::Cast { .. }) {
+      expr = quote! { (#expr) };
+    }
 
     tokens.append_all(match self.op {
       UnaryOp::Inc => {
