@@ -252,8 +252,6 @@ impl Type {
 
           if let Some(ty) = ctx.resolve_ty(id.as_str()) {
             *self = Self::from_resolved_type(&ty);
-
-            return self.finish(ctx)
           }
         }
 
