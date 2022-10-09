@@ -44,16 +44,8 @@ impl Expr {
     match self {
       Self::Asm(_) | Self::Literal(_) | Self::Variable { .. } => (0, None),
       Self::FunctionCall(_) | Self::FieldAccess { .. } => (1, Some(true)),
-      Self::Cast { .. } | Self::Stringify(_) | Self::Concat(_) => {
-        // In C, casts are right-associative, e.g. `(uint32_t)(uint8_t)1`,
-        // in Rust, they are left-associative, e.g. 1 as u8 as u32.
-        (2, Some(true))
-      },
-      Self::Ternary(..) => {
-        // In C, precedence of `?:` is 13, but in Rust we can treat it as precedence 0
-        // since it is an `if` statement which doesn't need parentheses.
-        (0, None)
-      },
+      Self::Cast { .. } | Self::Stringify(_) | Self::Concat(_) => (3, Some(true)),
+      Self::Ternary(..) => (0, None),
       Self::Unary(expr) => expr.op.precedence(),
       Self::Binary(expr) => expr.op.precedence(),
     }

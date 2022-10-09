@@ -27,3 +27,20 @@ macro_rules! ty {
   ($ty:path) => { Type::BuiltIn($ty) };
 }
 pub(crate) use ty;
+
+macro_rules! assert_eq_tokens {
+  ($expr:expr, $expected:expr) => {
+    let mut ctx = LocalContext {
+      root_name: Default::default(),
+      names: Default::default(),
+      arg_types: Default::default(),
+      arg_values: Default::default(),
+      export_as_macro: false,
+      global_context: &(),
+    };
+
+    let tokens = $expr.to_token_stream(&mut ctx);
+    assert_eq!(tokens.to_string(), $expected.parse::<TokenStream>().unwrap().to_string());
+  };
+}
+pub(crate) use assert_eq_tokens;

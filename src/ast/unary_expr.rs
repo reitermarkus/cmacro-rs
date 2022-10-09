@@ -33,9 +33,8 @@ impl UnaryOp {
   pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
     match self {
       Self::PostInc | Self::PostDec => (1, Some(true)),
-      Self::Inc | Self::Dec | Self::Plus | Self::Minus | Self::Not | Self::Comp | Self::Deref | Self::AddrOf => {
-        (2, Some(false))
-      },
+      Self::Inc | Self::Dec | Self::Plus | Self::Minus | Self::Not | Self::Comp | Self::Deref => (2, Some(false)),
+      Self::AddrOf => (0, Some(false)),
     }
   }
 }
@@ -50,6 +49,7 @@ pub struct UnaryExpr {
 }
 
 impl UnaryExpr {
+  #[inline]
   pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
     self.op.precedence()
   }
@@ -75,6 +75,9 @@ impl UnaryExpr {
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+    tokens.append_all(self.to_token_stream(ctx))
+  }
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
     let (prec, _) = self.precedence();
     let (expr_prec, _) = self.expr.precedence();
 
@@ -86,7 +89,7 @@ impl UnaryExpr {
       raw_expr.clone()
     };
 
-    tokens.append_all(match self.op {
+    match self.op {
       UnaryOp::Inc => {
         quote! { { #raw_expr += 1; #raw_expr } }
       },
@@ -116,6 +119,35 @@ impl UnaryExpr {
         let trait_prefix = ctx.num_prefix();
         quote! { #trait_prefix ptr::addr_of_mut!(#raw_expr) }
       },
-    })
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{
+    super::{assert_eq_tokens, id, lit},
+    *,
+  };
+
+  #[test]
+  fn parentheses_deref_cast() {
+    let expr1 = UnaryExpr {
+      op: UnaryOp::Deref,
+      expr: Expr::Cast {
+        ty: Type::Ptr { ty: Box::new(Type::Identifier { name: id!(MyType), is_struct: false }), mutable: true },
+        expr: Box::new(lit!(1)),
+      },
+    };
+    assert_eq_tokens!(expr1, "*(1 as *mut MyType)");
+  }
+
+  #[test]
+  fn parentheses_deref_addr_of() {
+    let expr1 = UnaryExpr {
+      op: UnaryOp::Deref,
+      expr: Expr::Unary(Box::new(UnaryExpr { op: UnaryOp::AddrOf, expr: Expr::Variable { name: id!(my_var) } })),
+    };
+    assert_eq_tokens!(expr1, "*ptr::addr_of_mut!(my_var)");
   }
 }
