@@ -67,6 +67,39 @@ pub enum BinaryOp {
   BitXorAssign,
   /// lhs |= rhs
   BitOrAssign,
+  /// lhs, rhs
+  Comma,
+}
+
+impl BinaryOp {
+  pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
+    match self {
+      Self::Mul | Self::Div | Self::Rem => (3, Some(true)),
+      Self::Add | Self::Sub => (4, Some(true)),
+      Self::Shl | Self::Shr => (5, Some(true)),
+
+      Self::BitAnd => (6, Some(true)),
+      Self::BitXor => (7, Some(true)),
+      Self::BitOr => (8, Some(true)),
+
+      Self::Eq | Self::Neq | Self::Lt | Self::Gt | Self::Lte | Self::Gte => (9, None),
+
+      Self::And => (11, Some(true)),
+      Self::Or => (12, Some(true)),
+      Self::Assign
+      | Self::AddAssign
+      | Self::SubAssign
+      | Self::MulAssign
+      | Self::DivAssign
+      | Self::RemAssign
+      | Self::ShlAssign
+      | Self::ShrAssign
+      | Self::BitAndAssign
+      | Self::BitXorAssign
+      | Self::BitOrAssign => (14, Some(false)),
+      Self::Comma => (15, Some(true)),
+    }
+  }
 }
 
 impl ToTokens for BinaryOp {
@@ -101,6 +134,7 @@ impl ToTokens for BinaryOp {
       Self::BitAndAssign => quote! { &= },
       Self::BitXorAssign => quote! { ^= },
       Self::BitOrAssign => quote! { |= },
+      Self::Comma => quote! { , },
     })
   }
 }
@@ -117,6 +151,10 @@ pub struct BinaryExpr {
 }
 
 impl BinaryExpr {
+  pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
+    self.op.precedence()
+  }
+
   pub(crate) fn finish<'g, C>(
     &mut self,
     ctx: &mut LocalContext<'g, C>,
@@ -181,11 +219,31 @@ impl BinaryExpr {
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
-    let lhs = self.lhs.to_token_stream(ctx);
+    tokens.append_all(self.to_token_stream(ctx))
+  }
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
+    let mut lhs = self.lhs.to_token_stream(ctx);
     let op = self.op;
-    let rhs = self.rhs.to_token_stream(ctx);
+    let mut rhs = self.rhs.to_token_stream(ctx);
 
-    tokens.append_all(match self.op {
+    let (lhs_prec, _) = self.lhs.precedence();
+    let (prec, assoc) = op.precedence();
+    let (rhs_prec, _) = self.rhs.precedence();
+
+    let (lhs_parens, rhs_parens) = match (prec, assoc) {
+      (_, None) => (lhs_prec >= prec, rhs_prec >= prec),
+      (_, Some(true)) => (lhs_prec > prec, rhs_prec > prec),
+      (_, Some(false)) => (lhs_prec < prec, rhs_prec < prec),
+    };
+
+    if lhs_parens {
+      lhs = quote! { (#lhs) };
+    }
+    if rhs_parens {
+      rhs = quote! { (#rhs) };
+    }
+
+    match self.op {
       BinaryOp::Assign
       | BinaryOp::AddAssign
       | BinaryOp::SubAssign
@@ -194,10 +252,55 @@ impl BinaryExpr {
       | BinaryOp::BitOrAssign => {
         quote! { { #lhs #op #rhs; #lhs } }
       },
-      BinaryOp::Shl if matches!(self.lhs, Expr::Cast { .. }) => {
-        quote! { ((#lhs) #op #rhs) }
-      },
-      op => quote! { (#lhs #op #rhs) },
-    })
+      op => quote! { #lhs #op #rhs },
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{super::lit, *};
+
+  macro_rules! assert_eq_expr {
+    ($expr:expr, $expected:expr) => {
+      let mut ctx = LocalContext {
+        root_name: Default::default(),
+        names: Default::default(),
+        arg_types: Default::default(),
+        arg_values: Default::default(),
+        export_as_macro: false,
+        global_context: &(),
+      };
+
+      let tokens = $expr.to_token_stream(&mut ctx);
+      assert_eq!(tokens.to_string(), $expected.parse::<TokenStream>().unwrap().to_string());
+    };
+  }
+
+  #[test]
+  fn parentheses_add_mul() {
+    let expr1 = BinaryExpr { lhs: lit!(1), op: BinaryOp::Add, rhs: lit!(2) };
+    assert_eq_expr!(expr1, "1 + 2");
+
+    let expr2 = BinaryExpr { lhs: Expr::Binary(Box::new(expr1.clone())), op: BinaryOp::Add, rhs: lit!(3) };
+    assert_eq_expr!(expr2, "1 + 2 + 3");
+
+    let expr3 = BinaryExpr { lhs: Expr::Binary(Box::new(expr1.clone())), op: BinaryOp::Mul, rhs: lit!(3) };
+    assert_eq_expr!(expr3, "(1 + 2) * 3");
+  }
+
+  #[test]
+  fn parentheses_neq() {
+    let expr1 = BinaryExpr { lhs: lit!(1), op: BinaryOp::Neq, rhs: lit!(2) };
+    assert_eq_expr!(expr1, "1 != 2");
+  }
+
+  #[test]
+  fn parentheses_eq() {
+    let expr1 = BinaryExpr { lhs: lit!(1), op: BinaryOp::BitAnd, rhs: lit!(2) };
+    assert_eq_expr!(expr1, "1 & 2");
+
+    let expr2 = BinaryExpr { lhs: Expr::Binary(Box::new(expr1)), op: BinaryOp::Eq, rhs: lit!(3) };
+    assert_eq_expr!(expr2, "1 & 2 == 3");
   }
 }

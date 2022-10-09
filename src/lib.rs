@@ -114,7 +114,7 @@ impl VarMacro {
     let mut ctx = LocalContext {
       root_name: self.name.clone(),
       names,
-      arg_types: HashMap::new(),
+      arg_types: Default::default(),
       arg_values: Default::default(),
       export_as_macro: false,
       global_context: &cx,
@@ -145,7 +145,7 @@ impl VarMacro {
 /// let output = fn_macro.generate(())?;
 /// assert_eq!(
 ///   output.to_string(),
-///   "# [doc (hidden)] # [macro_export] macro_rules ! __cmacro__FUNC__ { ($ a : expr , $ b : expr , $ c : expr) => { ($ a + ($ b * $ c)) } ; } # [doc (inline)] pub use __cmacro__FUNC__ as FUNC ;",
+///   "# [doc (hidden)] # [macro_export] macro_rules ! __cmacro__FUNC__ { ($ a : expr , $ b : expr , $ c : expr) => { $ a + $ b * $ c } ; } # [doc (inline)] pub use __cmacro__FUNC__ as FUNC ;",
 /// );
 /// # Ok(())
 /// # }
@@ -175,7 +175,7 @@ impl VarMacro {
 /// let output = fn_macro.generate(Context)?;
 /// assert_eq!(
 ///   output.to_string(),
-///   "# [allow (non_snake_case , unused_mut)] # [inline (always)] pub unsafe extern \"C\" fn FUNC (mut a : u32 , mut b : u32 , mut c : u32) -> u32 { (a + (b * c)) }",
+///   "# [allow (non_snake_case , unused_mut)] # [inline (always)] pub unsafe extern \"C\" fn FUNC (mut a : u32 , mut b : u32 , mut c : u32) -> u32 { a + b * c }",
 /// );
 /// # Ok(())
 /// # }

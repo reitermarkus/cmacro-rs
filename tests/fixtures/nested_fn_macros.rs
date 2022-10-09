@@ -2,7 +2,7 @@
 #[macro_export]
 macro_rules! __cmacro__f1__ {
   ($x:expr) => {
-    ($x * 2)
+    $x * 2
   };
 }
 #[doc(inline)]
@@ -12,7 +12,7 @@ pub use __cmacro__f1__ as f1;
 #[macro_export]
 macro_rules! __cmacro__f2__ {
   ($y:expr) => {
-    ($y * ($y * 2))
+    $y * $y * 2
   };
 }
 #[doc(inline)]
@@ -22,7 +22,7 @@ pub use __cmacro__f2__ as f2;
 #[macro_export]
 macro_rules! __cmacro__f4__ {
   ($x:expr, $y:expr, $z:expr) => {
-    (($x + $y) * $z)
+    ($x + $y) * $z
   };
 }
 #[doc(inline)]

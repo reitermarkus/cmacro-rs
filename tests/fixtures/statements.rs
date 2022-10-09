@@ -22,7 +22,7 @@ pub const pdFALSE: _ = 0;
 #[macro_export]
 macro_rules! __cmacro__portEND_SWITCHING_ISR__ {
   ($xSwitchRequired:expr) => {
-    if ($xSwitchRequired != 0) {
+    if $xSwitchRequired != 0 {
       vPortYield();
     }
   };
@@ -48,7 +48,7 @@ pub use __cmacro__JSVAL_TYPE_TO_TAG__ as JSVAL_TYPE_TO_TAG;
 #[macro_export]
 macro_rules! __cmacro__JSVAL_TYPE_TO_SHIFTED_TAG__ {
   ($type:expr) => {
-    (((131056 as uint32_t | $type) as JSValueTag as uint64_t) << 47)
+    (131056 as uint32_t | $type) as JSValueTag as uint64_t << 47
   };
 }
 #[doc(inline)]

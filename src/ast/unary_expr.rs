@@ -29,6 +29,17 @@ pub enum UnaryOp {
   AddrOf,
 }
 
+impl UnaryOp {
+  pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
+    match self {
+      Self::PostInc | Self::PostDec => (1, Some(true)),
+      Self::Inc | Self::Dec | Self::Plus | Self::Minus | Self::Not | Self::Comp | Self::Deref | Self::AddrOf => {
+        (2, Some(false))
+      },
+    }
+  }
+}
+
 /// A unary expression.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryExpr {
@@ -39,6 +50,10 @@ pub struct UnaryExpr {
 }
 
 impl UnaryExpr {
+  pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
+    self.op.precedence()
+  }
+
   pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
@@ -60,41 +75,46 @@ impl UnaryExpr {
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
-    let mut expr = self.expr.to_token_stream(ctx);
+    let (prec, _) = self.precedence();
+    let (expr_prec, _) = self.expr.precedence();
 
-    if matches!(self.expr, Expr::Cast { .. }) {
-      expr = quote! { (#expr) };
-    }
+    let raw_expr = self.expr.to_token_stream(ctx);
+
+    let expr = if expr_prec > prec {
+      quote! { (#raw_expr) }
+    } else {
+      raw_expr.clone()
+    };
 
     tokens.append_all(match self.op {
       UnaryOp::Inc => {
-        quote! { { #expr += 1; #expr } }
+        quote! { { #raw_expr += 1; #raw_expr } }
       },
       UnaryOp::Dec => {
-        quote! { { #expr -= 1; #expr } }
+        quote! { { #raw_expr -= 1; #raw_expr } }
       },
       UnaryOp::PostInc => {
-        quote! { { let prev = #expr; #expr += 1; prev } }
+        quote! { { let prev = #raw_expr; #raw_expr += 1; prev } }
       },
       UnaryOp::PostDec => {
-        quote! { { let prev = #expr; #expr -= 1; prev } }
+        quote! { { let prev = #raw_expr; #raw_expr -= 1; prev } }
       },
       UnaryOp::Not => {
-        quote! { !(#expr) }
+        quote! { !#expr }
       },
       UnaryOp::Comp => {
-        quote! { (!#expr) }
+        quote! { !#expr }
       },
       UnaryOp::Plus => {
-        quote! { (+#expr) }
+        quote! { +#expr }
       },
       UnaryOp::Minus => {
-        quote! { (-#expr) }
+        quote! { -#expr }
       },
       UnaryOp::Deref => format!("*{}", expr).parse::<TokenStream>().unwrap(),
       UnaryOp::AddrOf => {
         let trait_prefix = ctx.num_prefix();
-        quote! { #trait_prefix ptr::addr_of_mut!(#expr) }
+        quote! { #trait_prefix ptr::addr_of_mut!(#raw_expr) }
       },
     })
   }
