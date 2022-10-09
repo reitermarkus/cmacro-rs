@@ -145,7 +145,7 @@ impl VarMacro {
 /// let output = fn_macro.generate(())?;
 /// assert_eq!(
 ///   output.to_string(),
-///   "macro_rules ! FUNC { ($ a : expr , $ b : expr , $ c : expr) => { ($ a + ($ b * $ c)) } ; }",
+///   "# [doc (hidden)] # [macro_export] macro_rules ! __cmacro__FUNC__ { ($ a : expr , $ b : expr , $ c : expr) => { ($ a + ($ b * $ c)) } ; } # [doc (inline)] pub use __cmacro__FUNC__ as FUNC ;",
 /// );
 /// # Ok(())
 /// # }
@@ -175,7 +175,7 @@ impl VarMacro {
 /// let output = fn_macro.generate(Context)?;
 /// assert_eq!(
 ///   output.to_string(),
-///   "# [allow (non_snake_case)] # [inline (always)] pub unsafe extern \"C\" fn FUNC (mut a : u32 , mut b : u32 , mut c : u32) -> u32 { (a + (b * c)) }",
+///   "# [allow (non_snake_case , unused_mut)] # [inline (always)] pub unsafe extern \"C\" fn FUNC (mut a : u32 , mut b : u32 , mut c : u32) -> u32 { (a + (b * c)) }",
 /// );
 /// # Ok(())
 /// # }
@@ -352,12 +352,18 @@ impl FnMacro {
         })
         .collect::<Vec<_>>();
 
+      let macro_id = Ident::new(&format!("__cmacro__{}__", self.name), Span::call_site());
+
       tokens.append_all(quote! {
-        macro_rules! #name {
+        #[doc(hidden)]
+        #[macro_export]
+        macro_rules! #macro_id {
           (#(#args),*) => {
             #body
           };
         }
+        #[doc(inline)]
+        pub use #macro_id as #name;
       })
     } else {
       let func_args = self
@@ -386,7 +392,7 @@ impl FnMacro {
       let semicolon = if return_type.is_none() { Some(quote! { ; }) } else { None };
 
       tokens.append_all(quote! {
-        #[allow(non_snake_case)]
+        #[allow(non_snake_case, unused_mut)]
         #[inline(always)]
         pub unsafe extern "C" fn #name(#(mut #func_args),*) #return_type {
           #body
