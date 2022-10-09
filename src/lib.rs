@@ -145,7 +145,7 @@ impl VarMacro {
 /// let output = fn_macro.generate(())?;
 /// assert_eq!(
 ///   output.to_string(),
-///   "# [doc (hidden)] # [macro_export] macro_rules ! __cmacro__FUNC__ { ($ a : expr , $ b : expr , $ c : expr) => { $ a + $ b * $ c } ; } # [doc (inline)] pub use self :: __cmacro__FUNC__ as FUNC ;",
+///   "# [doc (hidden)] # [macro_export] macro_rules ! __cmacro__FUNC__ { ($ a : expr , $ b : expr , $ c : expr) => { $ a + $ b * $ c } ; } # [doc (inline)] pub use __cmacro__FUNC__ as FUNC ;",
 /// );
 /// # Ok(())
 /// # }
@@ -356,14 +356,13 @@ impl FnMacro {
 
       tokens.append_all(quote! {
         #[doc(hidden)]
-        #[macro_export]
         macro_rules! #macro_id {
           (#(#args),*) => {
             #body
           };
         }
         #[doc(inline)]
-        pub use self::#macro_id as #name;
+        pub(crate) use #macro_id as #name;
       })
     } else {
       let func_args = self
