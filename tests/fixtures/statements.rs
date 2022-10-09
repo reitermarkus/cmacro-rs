@@ -14,7 +14,7 @@ macro_rules! __cmacro__vTaskDelayUntil__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__vTaskDelayUntil__ as vTaskDelayUntil;
+pub use self::__cmacro__vTaskDelayUntil__ as vTaskDelayUntil;
 
 pub const pdFALSE: _ = 0;
 
@@ -28,7 +28,7 @@ macro_rules! __cmacro__portEND_SWITCHING_ISR__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__portEND_SWITCHING_ISR__ as portEND_SWITCHING_ISR;
+pub use self::__cmacro__portEND_SWITCHING_ISR__ as portEND_SWITCHING_ISR;
 
 pub const JSVAL_TAG_MAX_DOUBLE: uint32_t = 131056 as uint32_t;
 
@@ -42,7 +42,7 @@ macro_rules! __cmacro__JSVAL_TYPE_TO_TAG__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__JSVAL_TYPE_TO_TAG__ as JSVAL_TYPE_TO_TAG;
+pub use self::__cmacro__JSVAL_TYPE_TO_TAG__ as JSVAL_TYPE_TO_TAG;
 
 #[doc(hidden)]
 #[macro_export]
@@ -52,4 +52,4 @@ macro_rules! __cmacro__JSVAL_TYPE_TO_SHIFTED_TAG__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__JSVAL_TYPE_TO_SHIFTED_TAG__ as JSVAL_TYPE_TO_SHIFTED_TAG;
+pub use self::__cmacro__JSVAL_TYPE_TO_SHIFTED_TAG__ as JSVAL_TYPE_TO_SHIFTED_TAG;

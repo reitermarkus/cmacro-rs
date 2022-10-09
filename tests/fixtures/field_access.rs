@@ -6,7 +6,7 @@ macro_rules! __cmacro__access_field__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__access_field__ as access_field;
+pub use self::__cmacro__access_field__ as access_field;
 
 #[doc(hidden)]
 #[macro_export]
@@ -16,7 +16,7 @@ macro_rules! __cmacro__access_pointer_field__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__access_pointer_field__ as access_pointer_field;
+pub use self::__cmacro__access_pointer_field__ as access_pointer_field;
 
 #[doc(hidden)]
 #[macro_export]
@@ -26,7 +26,7 @@ macro_rules! __cmacro__access_renamed_field__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__access_renamed_field__ as access_renamed_field;
+pub use self::__cmacro__access_renamed_field__ as access_renamed_field;
 
 #[doc(hidden)]
 #[macro_export]
@@ -36,4 +36,4 @@ macro_rules! __cmacro__access_address__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__access_address__ as access_address;
+pub use self::__cmacro__access_address__ as access_address;

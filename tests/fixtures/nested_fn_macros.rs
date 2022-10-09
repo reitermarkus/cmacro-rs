@@ -6,7 +6,7 @@ macro_rules! __cmacro__f1__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__f1__ as f1;
+pub use self::__cmacro__f1__ as f1;
 
 #[doc(hidden)]
 #[macro_export]
@@ -16,7 +16,7 @@ macro_rules! __cmacro__f2__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__f2__ as f2;
+pub use self::__cmacro__f2__ as f2;
 
 #[doc(hidden)]
 #[macro_export]
@@ -26,4 +26,4 @@ macro_rules! __cmacro__f4__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__f4__ as f4;
+pub use self::__cmacro__f4__ as f4;

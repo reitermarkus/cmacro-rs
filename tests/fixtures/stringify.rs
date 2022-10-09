@@ -6,7 +6,7 @@ macro_rules! __cmacro____STRING__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro____STRING__ as __STRING;
+pub use self::__cmacro____STRING__ as __STRING;
 
 #[doc(hidden)]
 #[macro_export]
@@ -16,4 +16,4 @@ macro_rules! __cmacro__DOUBLE_STRING__ {
   };
 }
 #[doc(inline)]
-pub use __cmacro__DOUBLE_STRING__ as DOUBLE_STRING;
+pub use self::__cmacro__DOUBLE_STRING__ as DOUBLE_STRING;
