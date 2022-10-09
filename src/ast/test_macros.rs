@@ -7,7 +7,7 @@ pub(crate) use id;
 
 macro_rules! var {
   ($name:ident) => {
-    $crate::ast::Expr::Variable { name: id!($name) }
+    $crate::ast::Expr::Variable { name: $crate::ast::id!($name) }
   };
 }
 pub(crate) use var;
@@ -20,8 +20,8 @@ macro_rules! lit {
 pub(crate) use lit;
 
 macro_rules! ty {
-  (*mut $($ty:tt)*) => { Type::Ptr { ty: Box::new(ty!($($ty)*)), mutable: true } };
-  (*const $($ty:tt)*) => { Type::Ptr { ty: Box::new(ty!($($ty)*)), mutable: false } };
+  (*mut $($ty:tt)*) => { Type::Ptr { ty: Box::new($crate::ast::ty!($($ty)*)), mutable: true } };
+  (*const $($ty:tt)*) => { Type::Ptr { ty: Box::new($crate::ast::ty!($($ty)*)), mutable: false } };
   (struct $ty:ident) => { Type::Identifier { name: Identifier::Literal(stringify!($ty).to_owned()), is_struct: true } };
   ($ty:ident) => { Type::Identifier { name: Identifier::Literal(stringify!($ty).to_owned()), is_struct: false } };
   ($ty:path) => { Type::BuiltIn($ty) };

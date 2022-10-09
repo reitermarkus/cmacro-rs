@@ -237,13 +237,6 @@ impl BinaryExpr {
       (_, Some(false)) => (lhs_prec < prec, rhs_prec < prec),
     };
 
-    if lhs_parens {
-      lhs = quote! { (#lhs) };
-    }
-    if rhs_parens {
-      rhs = quote! { (#rhs) };
-    }
-
     match self.op {
       BinaryOp::Assign
       | BinaryOp::AddAssign
@@ -253,7 +246,16 @@ impl BinaryExpr {
       | BinaryOp::BitOrAssign => {
         quote! { { #lhs #op #rhs; #lhs } }
       },
-      op => quote! { #lhs #op #rhs },
+      op => {
+        if lhs_parens {
+          lhs = quote! { (#lhs) };
+        }
+        if rhs_parens {
+          rhs = quote! { (#rhs) };
+        }
+
+        quote! { #lhs #op #rhs }
+      },
     }
   }
 }
@@ -261,7 +263,7 @@ impl BinaryExpr {
 #[cfg(test)]
 mod tests {
   use super::{
-    super::{assert_eq_tokens, lit},
+    super::{assert_eq_tokens, lit, var},
     *,
   };
 
@@ -290,5 +292,14 @@ mod tests {
 
     let expr2 = BinaryExpr { lhs: Expr::Binary(Box::new(expr1)), op: BinaryOp::Eq, rhs: lit!(3) };
     assert_eq_tokens!(expr2, "1 & 2 == 3");
+  }
+
+  #[test]
+  fn parentheses_assign() {
+    let expr1 = BinaryExpr { lhs: var!(a), op: BinaryOp::Assign, rhs: var!(b) };
+    assert_eq_tokens!(expr1, "{ a = b; a }");
+
+    let expr2 = BinaryExpr { lhs: var!(c), op: BinaryOp::Assign, rhs: Expr::Binary(Box::new(expr1)) };
+    assert_eq_tokens!(expr2, "{ c = { a = b; a }; c }");
   }
 }

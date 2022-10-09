@@ -126,7 +126,7 @@ impl UnaryExpr {
 #[cfg(test)]
 mod tests {
   use super::{
-    super::{assert_eq_tokens, id, lit},
+    super::{assert_eq_tokens, id, lit, var},
     *,
   };
 
@@ -146,7 +146,7 @@ mod tests {
   fn parentheses_deref_addr_of() {
     let expr1 = UnaryExpr {
       op: UnaryOp::Deref,
-      expr: Expr::Unary(Box::new(UnaryExpr { op: UnaryOp::AddrOf, expr: Expr::Variable { name: id!(my_var) } })),
+      expr: Expr::Unary(Box::new(UnaryExpr { op: UnaryOp::AddrOf, expr: var!(my_var) })),
     };
     assert_eq_tokens!(expr1, "*ptr::addr_of_mut!(my_var)");
   }
