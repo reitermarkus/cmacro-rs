@@ -290,14 +290,23 @@ impl LitChar {
     let c = self.repr;
 
     tokens.append_all(if c <= u8::MAX as u32 {
-      let prefix = &ctx.ffi_prefix();
-      let c = proc_macro2::Literal::u8_unsuffixed(c as u8);
-      quote! { #c as #prefix c_char }
+      let ffi_prefix = &ctx.ffi_prefix();
+      let c = match char::from_u32(c) {
+        Some(c) => proc_macro2::Literal::character(c),
+        None => proc_macro2::Literal::u8_suffixed(c as u8),
+      };
+      quote! { #c as #ffi_prefix c_char }
     } else if c <= u16::MAX as u32 {
-      let c = proc_macro2::Literal::u16_unsuffixed(c as u16);
+      let c = match char::from_u32(c) {
+        Some(c) => proc_macro2::Literal::character(c),
+        None => proc_macro2::Literal::u16_suffixed(c as u16),
+      };
       quote! { #c as char16_t }
     } else {
-      let c = proc_macro2::Literal::u32_unsuffixed(c);
+      let c = match char::from_u32(c) {
+        Some(c) => proc_macro2::Literal::character(c),
+        None => proc_macro2::Literal::u32_suffixed(c),
+      };
       quote! { #c as char32_t }
     })
   }

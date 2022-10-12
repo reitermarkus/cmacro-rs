@@ -1,3 +1,6 @@
+/// Normal character literal.
+#define MY_FF '\xff'
+
 // UTF-8 character literal.
 #define MY_A1 u8'\x61'
 #define MY_A2 u8'a'
