@@ -5,7 +5,6 @@ macro_rules! __cmacro__f1 {
     $x * 2
   };
 }
-use __cmacro__f1;
 pub use __cmacro__f1 as f1;
 
 #[doc(hidden)]
@@ -15,7 +14,6 @@ macro_rules! __cmacro__f2 {
     $y * $y * 2
   };
 }
-use __cmacro__f2;
 pub use __cmacro__f2 as f2;
 
 #[doc(hidden)]
@@ -25,5 +23,4 @@ macro_rules! __cmacro__f4 {
     ($x + $y) * $z
   };
 }
-use __cmacro__f4;
 pub use __cmacro__f4 as f4;

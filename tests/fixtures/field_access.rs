@@ -5,7 +5,6 @@ macro_rules! __cmacro__access_field {
     $x.field
   };
 }
-use __cmacro__access_field;
 pub use __cmacro__access_field as access_field;
 
 #[doc(hidden)]
@@ -15,7 +14,6 @@ macro_rules! __cmacro__access_pointer_field {
     (*$x).field
   };
 }
-use __cmacro__access_pointer_field;
 pub use __cmacro__access_pointer_field as access_pointer_field;
 
 #[doc(hidden)]
@@ -25,7 +23,6 @@ macro_rules! __cmacro__access_renamed_field {
     $x.new_name
   };
 }
-use __cmacro__access_renamed_field;
 pub use __cmacro__access_renamed_field as access_renamed_field;
 
 #[doc(hidden)]
@@ -35,5 +32,4 @@ macro_rules! __cmacro__access_address {
     (*ptr::addr_of_mut!($x)).new_name
   };
 }
-use __cmacro__access_address;
 pub use __cmacro__access_address as access_address;
