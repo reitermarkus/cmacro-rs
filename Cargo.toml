@@ -24,6 +24,7 @@ clang = { version = "2", features = ["runtime", "clang_10_0"] }
 glob = "0.3"
 proc-macro2 = "1"
 quote = "1"
+pretty_assertions = "1"
 
 [[test]]
 name = "headers"

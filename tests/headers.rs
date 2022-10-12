@@ -2,6 +2,7 @@ use std::{collections::HashMap, fs};
 
 use clang::{source::SourceRange, Clang, EntityKind, EntityVisitResult, Index};
 use glob::glob;
+use pretty_assertions::assert_eq;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 

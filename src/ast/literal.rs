@@ -441,11 +441,15 @@ impl LitString {
     let mut bytes = self.repr.clone();
     bytes.push(0);
 
-    let bytes = bytes.into_iter().map(proc_macro2::Literal::u8_unsuffixed);
+    let byte_count = proc_macro2::Literal::usize_unsuffixed(bytes.len());
+    let byte_string = proc_macro2::Literal::byte_string(&bytes);
 
     let prefix = ctx.ffi_prefix();
     tokens.append_all(quote! {
-      [#(#bytes),*].as_ptr() as *const #prefix c_char
+      {
+        const BYTES: [u8; #byte_count] = *#byte_string;
+        BYTES.as_ptr() as *const #prefix c_char
+      }
     })
   }
 
