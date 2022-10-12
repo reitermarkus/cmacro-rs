@@ -195,8 +195,10 @@ impl Identifier {
         }
       },
       Self::Concat(ids) => {
+        let trait_prefix = ctx.trait_prefix();
+
         let ids = ids.iter().map(|id| Self::Literal(id.to_owned()).to_token_stream(ctx));
-        quote! { ::core::concat_idents!(#(#ids),*) }
+        quote! { #trait_prefix concat_idents!(#(#ids),*) }
       },
     }
   }

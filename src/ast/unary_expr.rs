@@ -116,7 +116,7 @@ impl UnaryExpr {
       },
       UnaryOp::Deref => format!("*{}", expr).parse::<TokenStream>().unwrap(),
       UnaryOp::AddrOf => {
-        let trait_prefix = ctx.num_prefix();
+        let trait_prefix = ctx.trait_prefix();
         quote! { #trait_prefix ptr::addr_of_mut!(#raw_expr) }
       },
     }

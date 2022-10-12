@@ -588,16 +588,16 @@ impl LitFloat {
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
-    let num_prefix = &ctx.num_prefix();
+    let trait_prefix = &ctx.trait_prefix();
 
     tokens.append_all(match self {
       Self::Float(f) => match f.classify() {
-        FpCategory::Nan => quote! { #num_prefix f32::NAN },
+        FpCategory::Nan => quote! { #trait_prefix f32::NAN },
         FpCategory::Infinite => {
           if f.is_sign_positive() {
-            quote! { #num_prefix f32::INFINITY }
+            quote! { #trait_prefix f32::INFINITY }
           } else {
-            quote! { #num_prefix f32::NEG_INFINITY }
+            quote! { #trait_prefix f32::NEG_INFINITY }
           }
         },
         FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {
@@ -605,12 +605,12 @@ impl LitFloat {
         },
       },
       Self::Double(f) | Self::LongDouble(f) => match f.classify() {
-        FpCategory::Nan => quote! { #num_prefix f64::NAN },
+        FpCategory::Nan => quote! { #trait_prefix f64::NAN },
         FpCategory::Infinite => {
           if f.is_sign_positive() {
-            quote! { #num_prefix f64::INFINITY }
+            quote! { #trait_prefix f64::INFINITY }
           } else {
-            quote! { #num_prefix f64::NEG_INFINITY }
+            quote! { #trait_prefix f64::NEG_INFINITY }
           }
         },
         FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {

@@ -118,8 +118,8 @@ where
     self.global_context.ffi_prefix()
   }
 
-  fn num_prefix(&self) -> Option<TokenStream> {
-    self.global_context.num_prefix()
+  fn trait_prefix(&self) -> Option<TokenStream> {
+    self.global_context.trait_prefix()
   }
 }
 
@@ -161,7 +161,7 @@ pub trait CodegenContext {
   }
 
   /// Get the prefix for number types, e.g. `f32`.
-  fn num_prefix(&self) -> Option<TokenStream> {
+  fn trait_prefix(&self) -> Option<TokenStream> {
     None
   }
 }
@@ -194,8 +194,8 @@ where
     T::ffi_prefix(self)
   }
 
-  fn num_prefix(&self) -> Option<TokenStream> {
-    T::num_prefix(self)
+  fn trait_prefix(&self) -> Option<TokenStream> {
+    T::trait_prefix(self)
   }
 }
 

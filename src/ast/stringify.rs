@@ -68,11 +68,13 @@ impl Stringify {
     let id = self.id.to_token_stream(ctx);
 
     let ffi_prefix = ctx.ffi_prefix();
-    let trait_prefix = ctx.num_prefix();
+    let trait_prefix = ctx.trait_prefix();
 
     quote! {
-      #trait_prefix concat!(#trait_prefix stringify!(#id), '\0').as_ptr()
-        as *const #ffi_prefix c_char
+      {
+        const BYTES: &[u8] = #trait_prefix concat!(#trait_prefix stringify!(#id), '\0').as_bytes();
+        BYTES.as_ptr() as *const #ffi_prefix c_char
+      }
     }
   }
 }
