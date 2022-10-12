@@ -145,7 +145,7 @@ impl VarMacro {
 /// let output = fn_macro.generate(())?;
 /// assert_eq!(
 ///   output.to_string(),
-///   "# [doc (hidden)] # [macro_export] macro_rules ! __cmacro__FUNC__ { ($ a : expr , $ b : expr , $ c : expr) => { $ a + $ b * $ c } ; } # [doc (inline)] pub use __cmacro__FUNC__ as FUNC ;",
+///   "# [doc (hidden)] # [macro_export] macro_rules ! __cmacro__FUNC { ($ a : expr , $ b : expr , $ c : expr) => { $ a + $ b * $ c } ; } use __cmacro__FUNC ; pub use __cmacro__FUNC as FUNC ;",
 /// );
 /// # Ok(())
 /// # }
@@ -352,17 +352,18 @@ impl FnMacro {
         })
         .collect::<Vec<_>>();
 
-      let macro_id = Ident::new(&format!("__cmacro__{}__", self.name), Span::call_site());
+      let macro_id = Ident::new(&format!("__cmacro__{}", self.name), Span::call_site());
 
       tokens.append_all(quote! {
         #[doc(hidden)]
+        #[macro_export]
         macro_rules! #macro_id {
           (#(#args),*) => {
             #body
           };
         }
-        #[doc(inline)]
-        pub(crate) use #macro_id as #name;
+        use #macro_id;
+        pub use #macro_id as #name;
       })
     } else {
       let func_args = self

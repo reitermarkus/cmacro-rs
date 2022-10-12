@@ -1,39 +1,39 @@
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __cmacro__access_field__ {
+macro_rules! __cmacro__access_field {
   ($x:expr) => {
     $x.field
   };
 }
-#[doc(inline)]
-pub use __cmacro__access_field__ as access_field;
+use __cmacro__access_field;
+pub use __cmacro__access_field as access_field;
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __cmacro__access_pointer_field__ {
+macro_rules! __cmacro__access_pointer_field {
   ($x:expr) => {
     (*$x).field
   };
 }
-#[doc(inline)]
-pub use __cmacro__access_pointer_field__ as access_pointer_field;
+use __cmacro__access_pointer_field;
+pub use __cmacro__access_pointer_field as access_pointer_field;
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __cmacro__access_renamed_field__ {
+macro_rules! __cmacro__access_renamed_field {
   ($x:expr) => {
     $x.new_name
   };
 }
-#[doc(inline)]
-pub use __cmacro__access_renamed_field__ as access_renamed_field;
+use __cmacro__access_renamed_field;
+pub use __cmacro__access_renamed_field as access_renamed_field;
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __cmacro__access_address__ {
+macro_rules! __cmacro__access_address {
   ($x:expr) => {
     (*ptr::addr_of_mut!($x)).new_name
   };
 }
-#[doc(inline)]
-pub use __cmacro__access_address__ as access_address;
+use __cmacro__access_address;
+pub use __cmacro__access_address as access_address;

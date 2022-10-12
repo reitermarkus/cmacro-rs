@@ -1,19 +1,19 @@
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __cmacro____STRING__ {
+macro_rules! __cmacro____STRING {
   ($x:expr) => {
     concat!(stringify!($x), '\0').as_ptr() as *const c_char
   };
 }
-#[doc(inline)]
-pub use __cmacro____STRING__ as __STRING;
+use __cmacro____STRING;
+pub use __cmacro____STRING as __STRING;
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __cmacro__DOUBLE_STRING__ {
+macro_rules! __cmacro__DOUBLE_STRING {
   ($x:expr) => {
     concat!(stringify!($x), stringify!($x), '\0').as_ptr() as *const c_char
   };
 }
-#[doc(inline)]
-pub use __cmacro__DOUBLE_STRING__ as DOUBLE_STRING;
+use __cmacro__DOUBLE_STRING;
+pub use __cmacro__DOUBLE_STRING as DOUBLE_STRING;
