@@ -11,7 +11,7 @@ pub use __cmacro__f1 as f1;
 #[macro_export]
 macro_rules! __cmacro__f2 {
   ($y:expr) => {
-    $y * $y * 2
+    $y * ($y * 2)
   };
 }
 pub use __cmacro__f2 as f2;

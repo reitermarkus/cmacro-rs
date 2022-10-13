@@ -233,8 +233,8 @@ impl BinaryExpr {
 
     let (lhs_parens, rhs_parens) = match (prec, assoc) {
       (_, None) => (lhs_prec >= prec, rhs_prec >= prec),
-      (_, Some(true)) => (lhs_prec > prec, rhs_prec > prec),
-      (_, Some(false)) => (lhs_prec < prec, rhs_prec < prec),
+      (_, Some(true)) => (lhs_prec > prec, rhs_prec >= prec),
+      (_, Some(false)) => (lhs_prec <= prec, rhs_prec < prec),
     };
 
     match self.op {
@@ -292,6 +292,21 @@ mod tests {
 
     let expr2 = BinaryExpr { lhs: Expr::Binary(Box::new(expr1)), op: BinaryOp::Eq, rhs: lit!(3) };
     assert_eq_tokens!(expr2, "1 & 2 == 3");
+  }
+
+  #[test]
+  fn parentheses_rem_div() {
+    let expr1 = BinaryExpr { lhs: lit!(6), op: BinaryOp::Rem, rhs: lit!(9) };
+    assert_eq_tokens!(expr1, "6 % 9");
+
+    let expr2 = BinaryExpr { lhs: Expr::Binary(Box::new(expr1)), op: BinaryOp::Div, rhs: lit!(3) };
+    assert_eq_tokens!(expr2, "6 % 9 / 3");
+
+    let expr3 = BinaryExpr { lhs: lit!(9), op: BinaryOp::Div, rhs: lit!(3) };
+    assert_eq_tokens!(expr3, "9 / 3");
+
+    let expr4 = BinaryExpr { lhs: lit!(6), op: BinaryOp::Rem, rhs: Expr::Binary(Box::new(expr3)) };
+    assert_eq_tokens!(expr4, "6 % (9 / 3)");
   }
 
   #[test]
