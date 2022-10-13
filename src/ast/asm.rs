@@ -39,14 +39,14 @@ impl ToTokens for Dir {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Reg {
+enum RegConstraint {
   Reg,
   RegAbcd,
   RegByte,
   Freg,
 }
 
-impl ToTokens for Reg {
+impl ToTokens for RegConstraint {
   fn to_tokens(&self, tokens: &mut TokenStream) {
     tokens.append_all(match self {
       Self::Reg => quote! { reg },
@@ -61,8 +61,8 @@ impl ToTokens for Reg {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Asm {
   template: Vec<String>,
-  outputs: Vec<(Dir, Reg, Expr)>,
-  inputs: Vec<(Reg, Expr)>,
+  outputs: Vec<(Dir, RegConstraint, Expr)>,
+  inputs: Vec<(RegConstraint, Expr)>,
   clobbers: Vec<String>,
 }
 
@@ -96,7 +96,7 @@ impl Asm {
         },
       ),
       |s| {
-        s.split("\n")
+        s.split('\n')
           .filter_map(|s| {
             let s = s.trim();
             if s.is_empty() {
@@ -110,33 +110,31 @@ impl Asm {
     ))(bytes)
   }
 
-  fn parse_reg_constraint(bytes: &[u8]) -> IResult<&[u8], Reg> {
+  fn parse_reg_constraint(bytes: &[u8]) -> IResult<&[u8], RegConstraint> {
     map_opt(alpha1, |s: &[u8]| {
       if s.contains(&b'r') {
-        Some(Reg::Reg)
+        Some(RegConstraint::Reg)
       } else if s.contains(&b'Q') {
-        Some(Reg::RegAbcd)
+        Some(RegConstraint::RegAbcd)
       } else if s.contains(&b'q') {
-        Some(Reg::RegByte)
+        Some(RegConstraint::RegByte)
       } else if s.contains(&b'f') {
-        Some(Reg::Freg)
-      } else if s.contains(&b'i') {
-        Some(Reg::Reg)
-      } else if s.contains(&b'g') {
-        Some(Reg::Reg)
+        Some(RegConstraint::Freg)
+      } else if s.contains(&b'i') || s.contains(&b'g') {
+        Some(RegConstraint::Reg)
       } else {
         None
       }
     })(bytes)
   }
 
-  fn parse_output_operands(bytes: &[u8]) -> IResult<&[u8], (Dir, Reg)> {
+  fn parse_output_operands(bytes: &[u8]) -> IResult<&[u8], (Dir, RegConstraint)> {
     all_consuming(pair(alt((value(Dir::Out, char('=')), value(Dir::InOut, char('+')))), Self::parse_reg_constraint))(
       bytes,
     )
   }
 
-  fn parse_input_operands(bytes: &[u8]) -> IResult<&[u8], Reg> {
+  fn parse_input_operands(bytes: &[u8]) -> IResult<&[u8], RegConstraint> {
     all_consuming(Self::parse_reg_constraint)(bytes)
   }
 
