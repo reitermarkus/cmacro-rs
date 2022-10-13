@@ -131,7 +131,30 @@ impl Expr {
   {
     let (tokens, factor) = Self::parse_factor(tokens)?;
 
+    // `__asm ( ... )` or `__asm volatile ( ... )`
+    fn is_asm(expr: &Expr) -> bool {
+      match expr {
+        Expr::Variable { name: Identifier::Literal(ref id) } => id == "__asm",
+        Expr::Concat(exprs) => match exprs.as_slice() {
+          [first, second] => {
+            is_asm(first)
+              && matches!(
+                second,
+                Expr::Variable { name: Identifier::Literal(ref id) }
+                if matches!(id.as_str(), "volatile" | "inline" | "goto")
+              )
+          },
+          _ => false,
+        },
+        _ => false,
+      }
+    }
+
     match factor {
+      expr if is_asm(&expr) => {
+        let (tokens, asm) = Asm::parse(tokens)?;
+        return Ok((tokens, Self::Asm(asm)))
+      },
       Self::Variable { .. } | Self::FunctionCall(..) | Self::FieldAccess { .. } => (),
       Self::Unary(ref op) if matches!(&**op, UnaryExpr { op: UnaryOp::AddrOf, .. }) => (),
       _ => return Ok((tokens, factor)),
@@ -141,12 +164,6 @@ impl Expr {
       Fn(Vec<Expr>),
       Field { field: Identifier, deref: bool },
       UnaryOp(UnaryOp),
-    }
-
-    if matches!(factor, Self::Variable { name: Identifier::Literal(ref id) } if id == "__asm") {
-      if let Ok((tokens, asm)) = preceded(opt(token("volatile")), Asm::parse)(tokens) {
-        return Ok((tokens, Self::Asm(asm)))
-      }
     }
 
     map_res(
