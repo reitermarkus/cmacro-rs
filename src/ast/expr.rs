@@ -5,9 +5,9 @@ use std::{
 
 use nom::{
   branch::alt,
-  combinator::{map, opt, value},
+  combinator::{map, map_res, opt, value},
   multi::{fold_many0, separated_list0},
-  sequence::{pair, preceded, tuple},
+  sequence::{delimited, pair, preceded, terminated, tuple},
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
   ParseTo, Slice,
 };
@@ -140,6 +140,7 @@ impl Expr {
     enum Access {
       Fn(Vec<Expr>),
       Field { field: Identifier, deref: bool },
+      UnaryOp(UnaryOp),
     }
 
     if matches!(factor, Self::Variable { name: Identifier::Literal(ref id) } if id == "__asm") {
@@ -148,31 +149,49 @@ impl Expr {
       }
     }
 
-    let fold = fold_many0(
-      alt((
-        map(parenthesized(separated_list0(tuple((meta, token(","), meta)), Self::parse)), Access::Fn),
-        map(pair(alt((token("."), token("->"))), Identifier::parse), |(access, field)| Access::Field {
-          field,
-          deref: access == "->",
-        }),
-      )),
-      move || factor.clone(),
-      |acc, access| match (acc, access) {
-        (Self::Variable { name }, Access::Fn(args)) => Self::FunctionCall(FunctionCall { name, args }),
-        (acc, Access::Field { field, deref }) => {
-          let acc = if deref { Self::Unary(Box::new(UnaryExpr { op: UnaryOp::Deref, expr: acc })) } else { acc };
+    map_res(
+      fold_many0(
+        preceded(
+          meta,
+          alt((
+            map(parenthesized(separated_list0(tuple((meta, token(","), meta)), Self::parse)), Access::Fn),
+            map(preceded(terminated(token("."), meta), Identifier::parse), |field| Access::Field {
+              field,
+              deref: false,
+            }),
+            map(preceded(terminated(token("->"), meta), Identifier::parse), |field| Access::Field {
+              field,
+              deref: true,
+            }),
+            map(alt((value(UnaryOp::PostInc, token("++")), value(UnaryOp::PostDec, token("--")))), |op| {
+              Access::UnaryOp(op)
+            }),
+          )),
+        ),
+        move || Ok((factor.clone(), false)),
+        |acc, access| {
+          let (expr, was_unary_op) = acc?;
+          let is_unary_op = matches!(access, Access::UnaryOp(_));
 
-          Self::FieldAccess { expr: Box::new(acc), field }
+          Ok((
+            match (expr, access) {
+              // Postfix `++`/`--` cannot be chained.
+              (expr, Access::UnaryOp(op)) if !was_unary_op => Self::Unary(Box::new(UnaryExpr { expr, op })),
+              // TODO: Support calling expressions as functions.
+              (Self::Variable { name }, Access::Fn(args)) => Self::FunctionCall(FunctionCall { name, args }),
+              // Field access cannot be chained after postfix `++`/`--`.
+              (acc, Access::Field { field, deref }) if !(was_unary_op && !deref) => {
+                let acc = if deref { Self::Unary(Box::new(UnaryExpr { op: UnaryOp::Deref, expr: acc })) } else { acc };
+                Self::FieldAccess { expr: Box::new(acc), field }
+              },
+              _ => return Err(()),
+            },
+            is_unary_op,
+          ))
         },
-        _ => unimplemented!(),
-      },
-    );
-
-    map(pair(fold, opt(alt((token("++"), token("--"))))), |(expr, op)| match op {
-      Some("++") => Self::Unary(Box::new(UnaryExpr { op: UnaryOp::PostInc, expr })),
-      Some("--") => Self::Unary(Box::new(UnaryExpr { op: UnaryOp::PostDec, expr })),
-      _ => expr,
-    })(tokens)
+      ),
+      |res| res.map(|(expr, _)| expr),
+    )(tokens)
   }
 
   fn parse_term_prec2<I, C>(tokens: &[I]) -> IResult<&[I], Self>
@@ -200,15 +219,18 @@ impl Expr {
       }),
       map(
         pair(
-          alt((
-            value(UnaryOp::AddrOf, token("&")),
-            value(UnaryOp::Inc, token("++")),
-            value(UnaryOp::Dec, token("--")),
-            value(UnaryOp::Plus, token("+")),
-            value(UnaryOp::Minus, token("-")),
-            value(UnaryOp::Not, token("!")),
-            value(UnaryOp::Comp, token("~")),
-          )),
+          terminated(
+            alt((
+              value(UnaryOp::AddrOf, token("&")),
+              value(UnaryOp::Inc, token("++")),
+              value(UnaryOp::Dec, token("--")),
+              value(UnaryOp::Plus, token("+")),
+              value(UnaryOp::Minus, token("-")),
+              value(UnaryOp::Not, token("!")),
+              value(UnaryOp::Comp, token("~")),
+            )),
+            meta,
+          ),
           Self::parse_term_prec2,
         ),
         |(op, expr)| Self::Unary(Box::new(UnaryExpr { op, expr })),
@@ -239,11 +261,11 @@ impl Expr {
 
     fold_many0(
       pair(
-        alt((
-          map(token("*"), |_| BinaryOp::Mul),
-          map(token("/"), |_| BinaryOp::Div),
-          map(token("%"), |_| BinaryOp::Rem),
-        )),
+        delimited(
+          meta,
+          alt((value(BinaryOp::Mul, token("*")), value(BinaryOp::Div, token("/")), value(BinaryOp::Rem, token("%")))),
+          meta,
+        ),
         Self::parse_term_prec2,
       ),
       move || term.clone(),
@@ -272,7 +294,10 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec3(tokens)?;
 
     fold_many0(
-      pair(alt((map(token("+"), |_| BinaryOp::Add), map(token("-"), |_| BinaryOp::Sub))), Self::parse_term_prec3),
+      pair(
+        delimited(meta, alt((value(BinaryOp::Add, token("+")), value(BinaryOp::Sub, token("-")))), meta),
+        Self::parse_term_prec3,
+      ),
       move || term.clone(),
       |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
     )(tokens)
@@ -299,7 +324,10 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec4(tokens)?;
 
     fold_many0(
-      pair(alt((map(token("<<"), |_| BinaryOp::Shl), map(token(">>"), |_| BinaryOp::Shr))), Self::parse_term_prec4),
+      pair(
+        delimited(meta, alt((value(BinaryOp::Shl, token("<<")), value(BinaryOp::Shr, token(">>")))), meta),
+        Self::parse_term_prec4,
+      ),
       move || term.clone(),
       |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
     )(tokens)
@@ -327,12 +355,16 @@ impl Expr {
 
     fold_many0(
       pair(
-        alt((
-          map(token("<"), |_| BinaryOp::Lt),
-          map(token("<="), |_| BinaryOp::Lte),
-          map(token(">"), |_| BinaryOp::Gt),
-          map(token(">="), |_| BinaryOp::Gte),
-        )),
+        delimited(
+          meta,
+          alt((
+            value(BinaryOp::Lt, token("<")),
+            value(BinaryOp::Lte, token("<=")),
+            value(BinaryOp::Gt, token(">")),
+            value(BinaryOp::Gte, token(">=")),
+          )),
+          meta,
+        ),
         Self::parse_term_prec5,
       ),
       move || term.clone(),
@@ -361,15 +393,12 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec6(tokens)?;
 
     fold_many0(
-      pair(alt((token("=="), token("!="))), Self::parse_term_prec6),
+      pair(
+        delimited(meta, alt((value(BinaryOp::Eq, token("==")), value(BinaryOp::Neq, token("!=")))), meta),
+        Self::parse_term_prec6,
+      ),
       move || term.clone(),
-      |lhs, (op, rhs)| {
-        if op == "==" {
-          Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::Eq, rhs }))
-        } else {
-          Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::Neq, rhs }))
-        }
-      },
+      |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
     )(tokens)
   }
 
@@ -394,7 +423,7 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec7(tokens)?;
 
     fold_many0(
-      preceded(token("&"), Self::parse_term_prec7),
+      preceded(delimited(meta, token("&"), meta), Self::parse_term_prec7),
       move || term.clone(),
       |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitAnd, rhs })),
     )(tokens)
@@ -421,7 +450,7 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec8(tokens)?;
 
     fold_many0(
-      preceded(token("^"), Self::parse_term_prec8),
+      preceded(delimited(meta, token("^"), meta), Self::parse_term_prec8),
       move || term.clone(),
       |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitXor, rhs })),
     )(tokens)
@@ -448,7 +477,7 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec9(tokens)?;
 
     fold_many0(
-      preceded(token("|"), Self::parse_term_prec9),
+      preceded(delimited(meta, token("|"), meta), Self::parse_term_prec9),
       move || term.clone(),
       |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitOr, rhs })),
     )(tokens)
@@ -475,9 +504,9 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec10(tokens)?;
 
     // Parse ternary.
-    if let Ok((tokens, _)) = token("?")(tokens) {
+    if let Ok((tokens, _)) = delimited(meta, token("?"), meta)(tokens) {
       let (tokens, if_branch) = Self::parse_term_prec7(tokens)?;
-      let (tokens, _) = token(":")(tokens)?;
+      let (tokens, _) = delimited(meta, token(":"), meta)(tokens)?;
       let (tokens, else_branch) = Self::parse_term_prec7(tokens)?;
       return Ok((tokens, Self::Ternary(Box::new(term), Box::new(if_branch), Box::new(else_branch))))
     }
@@ -507,19 +536,23 @@ impl Expr {
 
     fold_many0(
       pair(
-        alt((
-          map(token("="), |_| BinaryOp::Assign),
-          map(token("+="), |_| BinaryOp::AddAssign),
-          map(token("-="), |_| BinaryOp::SubAssign),
-          map(token("*="), |_| BinaryOp::MulAssign),
-          map(token("/="), |_| BinaryOp::DivAssign),
-          map(token("%="), |_| BinaryOp::RemAssign),
-          map(token("<<="), |_| BinaryOp::ShlAssign),
-          map(token(">>="), |_| BinaryOp::ShrAssign),
-          map(token("&="), |_| BinaryOp::BitAndAssign),
-          map(token("^="), |_| BinaryOp::BitXorAssign),
-          map(token("|="), |_| BinaryOp::BitOrAssign),
-        )),
+        delimited(
+          meta,
+          alt((
+            value(BinaryOp::Assign, token("=")),
+            value(BinaryOp::AddAssign, token("+=")),
+            value(BinaryOp::SubAssign, token("-=")),
+            value(BinaryOp::MulAssign, token("*=")),
+            value(BinaryOp::DivAssign, token("/=")),
+            value(BinaryOp::RemAssign, token("%=")),
+            value(BinaryOp::ShlAssign, token("<<=")),
+            value(BinaryOp::ShrAssign, token(">>=")),
+            value(BinaryOp::BitAndAssign, token("&=")),
+            value(BinaryOp::BitXorAssign, token("^=")),
+            value(BinaryOp::BitOrAssign, token("|=")),
+          )),
+          meta,
+        ),
         Self::parse_term_prec14,
       ),
       move || term.clone(),
@@ -981,10 +1014,10 @@ mod tests {
   #[test]
   fn parse_literal() {
     let (_, expr) = Expr::parse(&["u8", "'a'"]).unwrap();
-    assert_eq!(expr, Expr::Literal(Lit::Char(LitChar { repr: 'a' as u32 })));
+    assert_eq!(expr, lit!('a'));
 
     let (_, expr) = Expr::parse(&["U'🍩'"]).unwrap();
-    assert_eq!(expr, Expr::Literal(Lit::Char(LitChar { repr: 0x0001f369 })));
+    assert_eq!(expr, lit!('🍩'));
   }
 
   #[test]

@@ -45,6 +45,12 @@ pub enum Lit {
   Int(LitInt),
 }
 
+impl From<char> for Lit {
+  fn from(c: char) -> Lit {
+    Lit::Char(LitChar { repr: c as u32 })
+  }
+}
+
 impl From<i32> for Lit {
   fn from(n: i32) -> Lit {
     Lit::Int(LitInt { value: n.into(), suffix: None })
