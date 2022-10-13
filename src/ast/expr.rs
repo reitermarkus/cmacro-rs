@@ -134,7 +134,7 @@ impl Expr {
     // `__asm ( ... )` or `__asm volatile ( ... )`
     fn is_asm(expr: &Expr) -> bool {
       match expr {
-        Expr::Variable { name: Identifier::Literal(ref id) } => id == "__asm",
+        Expr::Variable { name: Identifier::Literal(ref id) } => matches!(id.as_str(), "__asm" | "__asm__" | "asm"),
         Expr::Concat(exprs) => match exprs.as_slice() {
           [first, second] => {
             is_asm(first)
