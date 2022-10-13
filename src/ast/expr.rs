@@ -238,6 +238,7 @@ impl Expr {
         pair(
           terminated(
             alt((
+              value(UnaryOp::Deref, token("*")),
               value(UnaryOp::AddrOf, token("&")),
               value(UnaryOp::Inc, token("++")),
               value(UnaryOp::Dec, token("--")),
