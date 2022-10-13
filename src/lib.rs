@@ -132,6 +132,10 @@ impl VarMacro {
 ///
 /// # Examples
 ///
+/// The following example uses `()` as `CodegenContext` for simplicity,
+/// therefore the argument types cannot be inferred and the macro is
+/// generated as a Rust macro.
+///
 /// ```
 /// # fn main() -> Result<(), cmacro::Error> {
 /// use cmacro::{FnMacro, CodegenContext};
@@ -160,6 +164,14 @@ impl VarMacro {
 /// # Ok(())
 /// # }
 /// ```
+///
+/// When implementing a custom [`CodegenContext`] providing information on
+/// the argument types of the macro using the [`CodegenContext::macro_arg_ty`] method,
+/// the return type may be inferred if the macro is pure. The same is true if all types,
+/// variables and functions can be resolved using the [`CodegenContext::resolve_ty`],
+/// [`CodegenContext::variable_macro`], [`CodegenContext::function`] or
+/// [`CodegenContext::function_macro`] methods, respectively. If all types can be inferred,
+/// a function is generated instead of a macro, as seen in the following example:
 ///
 /// ```
 /// # fn main() -> Result<(), cmacro::Error> {
