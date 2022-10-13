@@ -31,8 +31,6 @@ use super::{
 use crate::{CodegenContext, LocalContext, Type};
 
 /// A literal.
-///
-/// Also see [`LitChar`], [`LitString`], [`LitFloat`] and [`LitInt`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lit {
   /// A character literal.

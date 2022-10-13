@@ -88,13 +88,13 @@ where
 /// An identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Identifier {
-  /// A literal identifier, e.g.
+  /// A literal identifier.
   ///
   /// ```c
   /// #define ID asdf
   /// ```
   Literal(String),
-  /// A concatenated identifier, e.g.
+  /// A concatenated identifier.
   ///
   /// ```c
   /// #define ID abc ## def

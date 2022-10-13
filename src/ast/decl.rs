@@ -14,6 +14,10 @@ use super::*;
 use crate::{CodegenContext, LocalContext};
 
 /// A variable declaration.
+///
+/// ```c
+/// #define DECL int var = 77
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub struct Decl {

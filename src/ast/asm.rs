@@ -57,7 +57,16 @@ impl ToTokens for RegConstraint {
   }
 }
 
-/// An inline assemble call.
+/// An inline assembly call.
+///
+/// ```c
+/// #define ASM(src, dst) __asm__ (\
+///     "mov %1, %0\n" \
+///     "add $1, %0" \
+///     : "=r" (dst) \
+///     : "r" (src) \
+///   );
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct Asm {
   template: Vec<String>,

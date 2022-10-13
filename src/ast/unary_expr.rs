@@ -40,6 +40,13 @@ impl UnaryOp {
 }
 
 /// A unary expression.
+///
+/// ```c
+/// #define UNARY_EXPR &var
+/// #define UNARY_EXPR *ptr
+/// #define UNARY_EXPR i++
+/// #define UNARY_EXPR !cond
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryExpr {
   /// Expression operator.

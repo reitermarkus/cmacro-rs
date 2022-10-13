@@ -9,66 +9,64 @@ use crate::{CodegenContext, Expr, LocalContext};
 /// A binary expression operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOp {
-  /// lhs * rhs
+  /// `lhs * rhs`
   Mul,
-  /// lhs / rhs
+  /// `lhs / rhs`
   Div,
-  /// lhs % rhs
+  /// `lhs % rhs`
   Rem,
-  /// lhs + rhs
+  /// `lhs + rhs`
   Add,
-  /// lhs - rhs
+  /// `lhs - rhs`
   Sub,
-  /// lhs << rhs
+  /// `lhs << rhs`
   Shl,
-  /// lhs >> rhs
+  /// `lhs >> rhs`
   Shr,
-  /// lhs < rhs
+  /// `lhs < rhs`
   Lt,
-  /// lhs <= rhs
+  /// `lhs <= rhs`
   Lte,
-  /// lhs > rhs
+  /// `lhs > rhs`
   Gt,
-  /// lhs >= rhs
+  /// `lhs >= rhs`
   Gte,
-  /// lhs == rhs
+  /// `lhs == rhs`
   Eq,
-  /// lhs != rhs
+  /// `lhs != rhs`
   Neq,
-  /// lhs & rhs
+  /// `lhs & rhs`
   BitAnd,
-  /// lhs ^ rhs
+  /// `lhs ^ rhs`
   BitXor,
-  /// lhs | rhs
+  /// `lhs | rhs`
   BitOr,
-  /// lhs && rhs
+  /// `lhs && rhs`
   And,
-  /// lhs || rhs
+  /// `lhs || rhs`
   Or,
-  /// lhs = rhs
+  /// `lhs = rhs`
   Assign,
-  /// lhs += rhs
+  /// `lhs += rhs`
   AddAssign,
-  /// lhs -= rhs
+  /// `lhs -= rhs`
   SubAssign,
-  /// lhs *= rhs
+  /// `lhs *= rhs`
   MulAssign,
-  /// lhs /= rhs
+  /// `lhs /= rhs`
   DivAssign,
-  /// lhs %= rhs
+  /// `lhs %= rhs`
   RemAssign,
-  /// lhs <<= rhs
+  /// `lhs <<= rhs`
   ShlAssign,
-  /// lhs >>= rhs
+  /// `lhs >>= rhs`
   ShrAssign,
-  /// lhs &= rhs
+  /// `lhs &= rhs`
   BitAndAssign,
-  /// lhs ^= rhs
+  /// `lhs ^= rhs`
   BitXorAssign,
-  /// lhs |= rhs
+  /// `lhs |= rhs`
   BitOrAssign,
-  /// lhs, rhs
-  Comma,
 }
 
 impl BinaryOp {
@@ -97,7 +95,6 @@ impl BinaryOp {
       | Self::BitAndAssign
       | Self::BitXorAssign
       | Self::BitOrAssign => (14, Some(false)),
-      Self::Comma => (15, Some(true)),
     }
   }
 }
@@ -134,12 +131,17 @@ impl ToTokens for BinaryOp {
       Self::BitAndAssign => quote! { &= },
       Self::BitXorAssign => quote! { ^= },
       Self::BitOrAssign => quote! { |= },
-      Self::Comma => quote! { , },
     })
   }
 }
 
 /// A binary expression.
+///
+/// ```c
+/// #define BINARY_EXPR a + b
+/// #define BINARY_EXPR 1 + 2
+/// #define BINARY_EXPR 7 % c
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinaryExpr {
   /// Left-hand side expression.

@@ -30,19 +30,19 @@ pub enum BuiltInType {
   SChar,
   /// `unsigned char`
   UChar,
-  /// `short`
+  /// (`signed`) `short`
   Short,
   /// `unsigned short`
   UShort,
-  /// `int`
+  /// (`signed`) `int`
   Int,
   /// `unsigned int`
   UInt,
-  /// `long`
+  /// (`signed`) `long`
   Long,
   /// `unsigned long`
   ULong,
-  /// `long long`
+  /// (`signed`) `long long`
   LongLong,
   /// `unsigned long long`
   ULongLong,

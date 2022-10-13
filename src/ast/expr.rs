@@ -18,11 +18,6 @@ use super::{tokens::parenthesized, *};
 use crate::{CodegenContext, LocalContext, MacroArgType, MacroBody, UnaryOp};
 
 /// An expression.
-///
-/// ```c
-/// #define EXPR a + b
-/// #define EXPR 1 + 2
-/// ```
 #[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub enum Expr {

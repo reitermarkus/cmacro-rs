@@ -1,6 +1,6 @@
 //! A library for parsing C macros.
 //!
-//! This crate allows parsing C macros, evaluating them and generating Rust code from them.
+//! This crate allows parsing C macros and converting them to Rust code.
 //!
 //! Both variable-like macros (e.g. `#define VAR 4 + 7 * 82`) as well as function-like macros
 //! (e.g. `#define FUNC(a, b, c) a + b * c`) are supported.

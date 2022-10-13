@@ -20,7 +20,7 @@ use crate::{CodegenContext, LocalContext};
 /// A function declaration.
 ///
 /// ```c
-/// #define function_decl void f(int a, int b, int c)
+/// #define FUNC_DECL void f(int a, int b, int c)
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionDecl {
