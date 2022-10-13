@@ -135,6 +135,7 @@ impl VarMacro {
 /// ```
 /// # fn main() -> Result<(), cmacro::Error> {
 /// use cmacro::{FnMacro, CodegenContext};
+/// use quote::quote;
 ///
 /// // #define FUNC(a, b, c) a + b * c
 /// let name = "FUNC";
@@ -145,7 +146,16 @@ impl VarMacro {
 /// let output = fn_macro.generate(())?;
 /// assert_eq!(
 ///   output.to_string(),
-///   "# [doc (hidden)] # [macro_export] macro_rules ! __cmacro__FUNC { ($ a : expr , $ b : expr , $ c : expr) => { $ a + $ b * $ c } ; } pub use __cmacro__FUNC as FUNC ;",
+///   quote! {
+///     #[doc(hidden)]
+///     #[macro_export]
+///     macro_rules! __cmacro__FUNC {
+///       ($a:expr, $b:expr, $c:expr) => {
+///         $a + $b * $c
+///       };
+///     }
+///     pub use __cmacro__FUNC as FUNC;
+///   }.to_string(),
 /// );
 /// # Ok(())
 /// # }
@@ -154,6 +164,7 @@ impl VarMacro {
 /// ```
 /// # fn main() -> Result<(), cmacro::Error> {
 /// use cmacro::{FnMacro, CodegenContext};
+/// use quote::quote;
 ///
 /// struct Context;
 ///
@@ -175,7 +186,13 @@ impl VarMacro {
 /// let output = fn_macro.generate(Context)?;
 /// assert_eq!(
 ///   output.to_string(),
-///   "# [allow (non_snake_case , unused_mut)] # [inline (always)] pub unsafe extern \"C\" fn FUNC (mut a : u32 , mut b : u32 , mut c : u32) -> u32 { a + b * c }",
+///   quote! {
+///     #[allow(non_snake_case, unused_mut)]
+///     #[inline(always)]
+///     pub unsafe extern "C" fn FUNC(mut a: u32, mut b: u32, mut c: u32) -> u32 {
+///       a + b * c
+///     }
+///   }.to_string(),
 /// );
 /// # Ok(())
 /// # }
