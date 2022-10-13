@@ -43,6 +43,18 @@ pub enum Lit {
   Int(LitInt),
 }
 
+impl From<f32> for Lit {
+  fn from(f: f32) -> Lit {
+    Lit::Float(LitFloat::Float(f))
+  }
+}
+
+impl From<f64> for Lit {
+  fn from(f: f64) -> Lit {
+    Lit::Float(LitFloat::Double(f))
+  }
+}
+
 impl From<char> for Lit {
   fn from(c: char) -> Lit {
     Lit::Char(LitChar { repr: c as u32 })
