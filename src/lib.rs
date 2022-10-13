@@ -2,10 +2,10 @@
 //!
 //! This crate allows parsing C macros and converting them to Rust code.
 //!
-//! Both variable-like macros (e.g. `#define VAR 4 + 7 * 82`) as well as function-like macros
-//! (e.g. `#define FUNC(a, b, c) a + b * c`) are supported.
+//! Both function-like macros (e.g. `#define FUNC(a, b, c) a + b * c`) as well
+//! as variable-like macros (e.g. `#define VAR 4 + 7 * 82`) are supported.
 //!
-//! See the [`VarMacro`] and [`FnMacro`] functions on how to parse macros.
+//! See [`FnMacro`] and [`VarMacro`] on how to parse macros.
 
 #![warn(missing_debug_implementations)]
 #![warn(missing_docs)]
