@@ -1,4 +1,5 @@
 use std::{
+  collections::BTreeSet,
   fmt::Debug,
   ops::{RangeFrom, RangeTo},
   str,
@@ -6,10 +7,9 @@ use std::{
 
 use nom::{
   branch::alt,
-  character::complete::{char, digit1, none_of},
+  character::complete::{alpha1, char, digit1, none_of},
   combinator::{all_consuming, map, map_opt, map_res, opt, value},
-  complete::tag,
-  multi::{fold_many0, fold_many1, many0, separated_list0},
+  multi::{fold_many0, fold_many1, separated_list0},
   sequence::{delimited, pair, preceded, tuple},
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
   ParseTo, Slice,
@@ -19,7 +19,7 @@ use quote::{quote, ToTokens, TokenStreamExt};
 
 use super::{
   tokens::{meta, parenthesized, token},
-  Expr, Identifier, Lit, LitString, Type,
+  Expr, LitString, Type,
 };
 use crate::{CodegenContext, LocalContext};
 
@@ -61,9 +61,9 @@ impl ToTokens for Reg {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Asm {
   template: Vec<String>,
-  outputs: Vec<(Dir, Reg, Identifier)>,
-  inputs: Vec<(Reg, Identifier)>,
-  clobbers: Vec<Expr>,
+  outputs: Vec<(Dir, Reg, Expr)>,
+  inputs: Vec<(Reg, Expr)>,
+  clobbers: Vec<String>,
 }
 
 impl Asm {
@@ -82,6 +82,8 @@ impl Asm {
             ),
             |n| format!("{{{}}}", n),
           ),
+          // Escape Rust format string.
+          map(alt((char('{'), char('}'))), |c| format!("{0}{0}", c)),
           fold_many1(none_of::<_, _, nom::error::Error<&[u8]>>("%"), String::new, |mut acc, c| {
             acc.push(c);
             acc
@@ -109,12 +111,23 @@ impl Asm {
   }
 
   fn parse_reg_constraint(bytes: &[u8]) -> IResult<&[u8], Reg> {
-    alt((
-      value(Reg::Reg, char('r')),
-      value(Reg::RegAbcd, char('Q')),
-      value(Reg::RegByte, char('q')),
-      value(Reg::Freg, char('f')),
-    ))(bytes)
+    map_opt(alpha1, |s: &[u8]| {
+      if s.contains(&b'r') {
+        Some(Reg::Reg)
+      } else if s.contains(&b'Q') {
+        Some(Reg::RegAbcd)
+      } else if s.contains(&b'q') {
+        Some(Reg::RegByte)
+      } else if s.contains(&b'f') {
+        Some(Reg::Freg)
+      } else if s.contains(&b'i') {
+        Some(Reg::Reg)
+      } else if s.contains(&b'g') {
+        Some(Reg::Reg)
+      } else {
+        None
+      }
+    })(bytes)
   }
 
   fn parse_output_operands(bytes: &[u8]) -> IResult<&[u8], (Dir, Reg)> {
@@ -164,7 +177,7 @@ impl Asm {
                 let (_, operands) = Self::parse_output_operands(s.as_bytes()).ok()?;
                 Some(operands)
               }),
-              parenthesized(Identifier::parse),
+              parenthesized(Expr::parse),
             ),
             |((dir, reg), id)| (dir, reg, id),
           ),
@@ -177,28 +190,23 @@ impl Asm {
           pair(
             map_opt(LitString::parse, |s| {
               let (_, operands) = Self::parse_input_operands(s.as_bytes()).ok()?;
-              Some(operands)
+              Some(dbg!(operands))
             }),
-            parenthesized(Identifier::parse),
+            parenthesized(Expr::parse),
           ),
         ),
       )),
-      opt(preceded(delimited(meta, token(":"), meta), separated_list0(tuple((meta, token(","), meta)), Expr::parse))),
+      opt(preceded(
+        delimited(meta, token(":"), meta),
+        separated_list0(tuple((meta, token(","), meta)), map_res(LitString::parse, |s| String::from_utf8(s.repr))),
+      )),
     )))(tokens)?;
 
     let outputs = outputs.unwrap_or_default();
     let inputs = inputs.unwrap_or_default();
+    let clobbers = clobbers.unwrap_or_default();
 
-    let clobbers = clobbers
-      .unwrap_or_default()
-      .into_iter()
-      .filter_map(|c| match c {
-        Expr::Literal(Lit::String(s)) if s == "memory" => None,
-        clobber => Some(clobber),
-      })
-      .collect::<Vec<_>>();
-
-    Ok((tokens, Self { template, outputs, inputs, clobbers }))
+    Ok(dbg!((tokens, Self { template, outputs, inputs, clobbers })))
   }
 
   #[allow(unused_variables)]
@@ -227,15 +235,33 @@ impl Asm {
         quote! { in(#reg) #var }
       })
       .collect::<Vec<_>>();
-    let clobbers = self.clobbers.iter().map(|c| c.to_token_stream(ctx)).collect::<Vec<_>>();
+
+    let mut clobbers: BTreeSet<_> = self.clobbers.iter().cloned().collect();
+
+    let mut options = Vec::new();
+
+    // Memory is not clobbered, so add `nomem` option.
+    if !clobbers.remove("memory") {
+      options.push(quote! { nomem });
+    }
+
+    // Flags are not clobbered, so add `preserves_flags` option.
+    if !clobbers.remove("cc") {
+      options.push(quote! { preserves_flags });
+    }
+
+    let options = if options.is_empty() { None } else { Some(quote! { options(#(#options),*), }) };
+
+    let trait_prefix = ctx.trait_prefix();
 
     tokens.append_all(quote! {
-      ::core::arch::asm!(
+      #trait_prefix asm!(
         #(#template,)*
         #(#outputs,)*
         #(#inputs,)*
         #(out(#clobbers) _,)*
         clobber_abi("C"),
+        #options
       )
     })
   }

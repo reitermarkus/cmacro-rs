@@ -5,7 +5,7 @@ use std::{
 
 use nom::{
   branch::alt,
-  combinator::{map, map_res, opt, value},
+  combinator::{map, map_res, value},
   multi::{fold_many0, separated_list0},
   sequence::{delimited, pair, preceded, terminated, tuple},
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
