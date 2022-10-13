@@ -180,7 +180,7 @@ impl Expr {
               // TODO: Support calling expressions as functions.
               (Self::Variable { name }, Access::Fn(args)) => Self::FunctionCall(FunctionCall { name, args }),
               // Field access cannot be chained after postfix `++`/`--`.
-              (acc, Access::Field { field, deref }) if !(was_unary_op && !deref) => {
+              (acc, Access::Field { field, deref }) if !was_unary_op || deref => {
                 let acc = if deref { Self::Unary(Box::new(UnaryExpr { op: UnaryOp::Deref, expr: acc })) } else { acc };
                 Self::FieldAccess { expr: Box::new(acc), field }
               },

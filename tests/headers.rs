@@ -89,10 +89,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         if let Ok(fn_macro) = FnMacro::parse(name, args, value) {
           context.fn_macros.insert(name.to_owned(), fn_macro);
         }
-      } else {
-        if let Ok(var_macro) = VarMacro::parse(name, value) {
-          context.var_macros.insert(name.to_owned(), var_macro);
-        }
+      } else if let Ok(var_macro) = VarMacro::parse(name, value) {
+        context.var_macros.insert(name.to_owned(), var_macro);
       }
 
       context.macros.push(name.to_owned());
