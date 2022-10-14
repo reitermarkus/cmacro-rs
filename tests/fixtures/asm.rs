@@ -2,7 +2,7 @@
 #[macro_export]
 macro_rules! __cmacro__secureportREAD_PSP {
   ($pucOutCurrentStackPointer:expr) => {
-    asm!(
+    arch::asm!(
       "mrs {0}, psp",
       out(reg) $pucOutCurrentStackPointer,
       clobber_abi("C"),
@@ -16,7 +16,7 @@ pub use __cmacro__secureportREAD_PSP as secureportREAD_PSP;
 #[macro_export]
 macro_rules! __cmacro__secureportSET_PSP {
   ($pucCurrentStackPointer:expr) => {
-    asm!(
+    arch::asm!(
       "msr psp, {0}",
       in(reg) $pucCurrentStackPointer,
       clobber_abi("C"),
@@ -30,7 +30,7 @@ pub use __cmacro__secureportSET_PSP as secureportSET_PSP;
 #[macro_export]
 macro_rules! __cmacro__i386_example1 {
   ($old:expr, $base:expr, $offset:expr) => {
-    asm!(
+    arch::asm!(
       "btsl {2},{1}",
       "sbb {0},{0}",
       out(reg) $old,
@@ -47,7 +47,7 @@ pub use __cmacro__i386_example1 as i386_example1;
 #[macro_export]
 macro_rules! __cmacro__i386_example2 {
   ($src:expr, $dst:expr) => {
-    asm!(
+    arch::asm!(
       "mov {1}, {0}",
       "add $1, {0}",
       out(reg) $dst,
@@ -63,7 +63,7 @@ pub use __cmacro__i386_example2 as i386_example2;
 #[macro_export]
 macro_rules! __cmacro__vax_example {
   ($from:expr, $to:expr, $count:expr) => {
-    asm!(
+    arch::asm!(
       "movc3 {0}, {1}, {2}",
       in(reg) $from,
       in(reg) $to,

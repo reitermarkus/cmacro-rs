@@ -270,7 +270,7 @@ impl Asm {
     let trait_prefix = ctx.trait_prefix();
 
     tokens.append_all(quote! {
-      #trait_prefix asm!(
+      #trait_prefix arch::asm!(
         #(#template,)*
         #(#outputs,)*
         #(#inputs,)*
