@@ -22,7 +22,7 @@ pub(crate) struct ParseContext<'m> {
 }
 
 impl<'m> ParseContext<'m> {
-  const NO_ARGS: &[&'static str] = &[];
+  const NO_ARGS: &'static [&'static str] = &[];
 
   pub const fn fn_macro(name: &'m str, args: &'m [&'m str]) -> Self {
     Self { name, args }
