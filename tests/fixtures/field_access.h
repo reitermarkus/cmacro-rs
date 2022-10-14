@@ -1,3 +1,5 @@
+#define access(x, field) x.field
+
 #define access_field(x) x.field
 
 #define access_pointer_field(x) x->field

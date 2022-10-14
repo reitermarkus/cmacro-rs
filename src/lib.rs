@@ -22,7 +22,7 @@ use nom::{
   branch::alt,
   combinator::{all_consuming, map, opt},
   multi::fold_many0,
-  sequence::{preceded, tuple},
+  sequence::{preceded, terminated, tuple},
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
   ParseTo, Slice,
 };
@@ -233,27 +233,30 @@ impl FnMacro {
       + Clone,
     <I as InputIter>::Item: AsChar,
   {
-    all_consuming(alt((
-      map(token("..."), |var_arg| vec![var_arg.to_owned()]),
-      map(
-        tuple((
-          fold_many0(preceded(meta, identifier), Vec::new, |mut acc, arg| {
-            acc.push(arg);
-            acc
-          }),
-          preceded(meta, opt(map(token("..."), |var_arg| var_arg.to_owned()))),
-        )),
-        |(arguments, var_arg)| {
-          let mut arguments = arguments.to_vec();
+    all_consuming(terminated(
+      alt((
+        map(preceded(meta, token("...")), |var_arg| vec![var_arg.to_owned()]),
+        map(
+          tuple((
+            fold_many0(preceded(meta, identifier), Vec::new, |mut acc, arg| {
+              acc.push(arg);
+              acc
+            }),
+            preceded(meta, opt(map(token("..."), |var_arg| var_arg.to_owned()))),
+          )),
+          |(arguments, var_arg)| {
+            let mut arguments = arguments.to_vec();
 
-          if let Some(var_arg) = var_arg {
-            arguments.push(var_arg);
-          }
+            if let Some(var_arg) = var_arg {
+              arguments.push(var_arg);
+            }
 
-          arguments
-        },
-      ),
-    )))(input)
+            arguments
+          },
+        ),
+      )),
+      meta,
+    ))(input)
   }
 
   /// Parse a function-like macro from a name, arguments and body tokens.

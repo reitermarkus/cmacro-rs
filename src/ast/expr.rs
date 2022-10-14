@@ -703,8 +703,19 @@ impl Expr {
         field.finish(ctx)?;
 
         if let Identifier::Literal(id) = &field {
-          let id = id.as_str();
-          if let Some(expr) = ctx.arg_value(id).or_else(|| ctx.variable_macro_value(id)) {
+          if id.macro_arg {
+            *ctx.arg_type_mut(id.as_str()).unwrap() = MacroArgType::Ident;
+
+            if let Some(expr) = ctx.arg_value(id.as_str()) {
+              match expr {
+                Self::Variable { name } => {
+                  *field = name.clone();
+                  return self.finish(ctx)
+                },
+                _ => return Err(crate::Error::UnsupportedExpression),
+              }
+            }
+          } else if let Some(expr) = ctx.variable_macro_value(id.as_str()) {
             match expr {
               Self::Variable { name } => {
                 *field = name.clone();
@@ -968,9 +979,7 @@ impl Expr {
 
         let field = field.to_token_stream(ctx);
 
-        tokens.append_all(quote! {
-          #expr.#field
-        })
+        tokens.append_all(format!("{}.{}", expr, field).parse::<TokenStream>().unwrap())
       },
       Self::Stringify(stringify) => {
         stringify.to_tokens(ctx, tokens);
