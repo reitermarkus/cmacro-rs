@@ -129,7 +129,7 @@ impl Expr {
     // `__asm ( ... )` or `__asm volatile ( ... )`
     fn is_asm(expr: &Expr) -> bool {
       match expr {
-        Expr::Variable { name: Identifier::Literal(ref id) } => matches!(id.as_str(), "__asm" | "__asm__" | "asm"),
+        Expr::Variable { name: Identifier::Literal(ref id) } => matches!(id.as_str(), "__asm__" | "__asm" | "asm"),
         Expr::Concat(exprs) => match exprs.as_slice() {
           [first, second] => {
             is_asm(first)
@@ -146,9 +146,10 @@ impl Expr {
     }
 
     match factor {
-      expr if is_asm(&expr) => {
-        let (tokens, asm) = Asm::parse(tokens)?;
-        return Ok((tokens, Self::Asm(asm)))
+      ref expr if is_asm(expr) => {
+        if let Ok((tokens, asm)) = Asm::parse(tokens) {
+          return Ok((tokens, Self::Asm(asm)))
+        }
       },
       Self::Variable { .. } | Self::FunctionCall(..) | Self::FieldAccess { .. } => (),
       Self::Unary(ref op) if matches!(&**op, UnaryExpr { op: UnaryOp::AddrOf, .. }) => (),

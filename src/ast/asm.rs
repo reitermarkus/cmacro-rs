@@ -221,6 +221,14 @@ impl Asm {
   where
     C: CodegenContext,
   {
+    for (_, _, output) in self.outputs.iter_mut() {
+      output.finish(ctx)?;
+    }
+
+    for (_, input) in self.inputs.iter_mut() {
+      input.finish(ctx)?;
+    }
+
     Ok(None)
   }
 
