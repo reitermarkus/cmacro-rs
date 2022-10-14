@@ -179,7 +179,9 @@ impl Identifier {
     if let Self::Concat(ref mut ids) = self {
       for id in ids {
         if id.macro_arg {
-          *ctx.arg_type_mut(id.as_str()).unwrap() = MacroArgType::Ident;
+          if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
+            *arg_type = MacroArgType::Ident;
+          }
         }
       }
     }

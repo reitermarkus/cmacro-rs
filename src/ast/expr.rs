@@ -704,7 +704,9 @@ impl Expr {
 
         if let Identifier::Literal(id) = &field {
           if id.macro_arg {
-            *ctx.arg_type_mut(id.as_str()).unwrap() = MacroArgType::Ident;
+            if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
+              *arg_type = MacroArgType::Ident;
+            }
 
             if let Some(expr) = ctx.arg_value(id.as_str()) {
               match expr {

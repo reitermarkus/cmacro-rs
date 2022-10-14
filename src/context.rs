@@ -169,12 +169,12 @@ pub trait CodegenContext {
     None
   }
 
-  /// Get the prefix for `ffi` types, e.g. `c_int`.
+  /// Get the prefix for FFI types, e.g. `c_int`.
   fn ffi_prefix(&self) -> Option<TokenStream> {
     None
   }
 
-  /// Get the prefix for number types, e.g. `f32`.
+  /// Get the prefix for traits, e.g. `f32`.
   fn trait_prefix(&self) -> Option<TokenStream> {
     None
   }
