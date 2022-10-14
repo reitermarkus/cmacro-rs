@@ -11,7 +11,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::*;
-use crate::{CodegenContext, LocalContext};
+use crate::{CodegenContext, LocalContext, ParseContext};
 
 /// A variable declaration.
 ///
@@ -29,7 +29,7 @@ pub struct Decl {
 
 impl Decl {
   /// Parse a variable declaration.
-  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
+  pub(crate) fn parse<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputTake
@@ -48,7 +48,9 @@ impl Decl {
     &'static str: FindToken<<I as InputIter>::Item>,
   {
     let (tokens, ((static_storage, ty), name, _, rhs)) =
-      tuple((permutation((opt(token("static")), Type::parse)), Identifier::parse, token("="), Expr::parse))(tokens)?;
+      tuple((permutation((opt(token("static")), Type::parse)), Identifier::parse, token("="), |tokens| {
+        Expr::parse(tokens, ctx)
+      }))(tokens)?;
 
     Ok((tokens, Self { ty, name, rhs, is_static: static_storage.is_some() }))
   }
@@ -87,9 +89,11 @@ impl Decl {
 mod tests {
   use super::*;
 
+  const CTX: ParseContext = ParseContext::var_macro("DECL");
+
   #[test]
   fn parse() {
-    let (_, id) = Decl::parse(&["int", "*", "abc", "=", "123"]).unwrap();
+    let (_, id) = Decl::parse(&["int", "*", "abc", "=", "123"], &CTX).unwrap();
     assert_eq!(
       id,
       Decl {

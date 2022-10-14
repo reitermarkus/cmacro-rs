@@ -88,7 +88,8 @@ impl VarMacro {
   {
     let name = if let Ok((_, name)) = identifier(&[name]) { name } else { return Err(crate::Error::ParserError) };
 
-    let body = match MacroBody::parse(value) {
+    let ctx = ParseContext::var_macro(&name);
+    let body = match MacroBody::parse(value, &ctx) {
       Ok((_, body)) => body,
       Err(_) => return Err(crate::Error::ParserError),
     };
@@ -276,7 +277,9 @@ impl FnMacro {
   {
     let (_, name) = identifier(&[name]).map_err(|_| crate::Error::ParserError)?;
     let (_, args) = Self::parse_args(args).map_err(|_| crate::Error::ParserError)?;
-    let (_, body) = MacroBody::parse(body).map_err(|_| crate::Error::ParserError)?;
+
+    let ctx = ParseContext::fn_macro(&name, &args);
+    let (_, body) = MacroBody::parse(body, &ctx).map_err(|_| crate::Error::ParserError)?;
 
     Ok(Self { name, args, body })
   }

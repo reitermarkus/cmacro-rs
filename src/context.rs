@@ -15,6 +15,23 @@ pub(crate) enum MacroArgType {
   Unknown,
 }
 
+pub(crate) struct ParseContext<'m> {
+  name: &'m str,
+  args: &'m [String],
+}
+
+impl<'m> ParseContext<'m> {
+  const NO_ARGS: &[String] = &[];
+
+  pub const fn fn_macro(name: &'m str, args: &'m [String]) -> Self {
+    Self { name, args }
+  }
+
+  pub const fn var_macro(name: &'m str) -> Self {
+    Self { name, args: Self::NO_ARGS }
+  }
+}
+
 /// Local code generation context.
 #[derive(Debug, Clone)]
 pub(crate) struct LocalContext<'g, C> {

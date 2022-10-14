@@ -12,7 +12,7 @@ use nom::{
 
 use crate::{
   ast::{meta, Type},
-  CodegenContext, Expr, LocalContext, Statement,
+  CodegenContext, Expr, LocalContext, ParseContext, Statement,
 };
 
 /// The body of a macro.
@@ -41,7 +41,7 @@ pub enum MacroBody {
 }
 
 impl MacroBody {
-  pub(crate) fn parse<I, C>(input: &[I]) -> IResult<&[I], Self>
+  pub(crate) fn parse<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputTake
@@ -59,16 +59,18 @@ impl MacroBody {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    let (input, _) = meta(input)?;
+    let (tokens, _) = meta(tokens)?;
 
-    if input.is_empty() {
-      return Ok((input, Self::Statement(Statement::Block(vec![]))))
+    if tokens.is_empty() {
+      return Ok((tokens, Self::Statement(Statement::Block(vec![]))))
     }
 
-    let (input, body) =
-      alt((all_consuming(map(Expr::parse, Self::Expr)), all_consuming(map(Statement::parse, Self::Statement))))(input)?;
+    let (tokens, body) = alt((
+      all_consuming(map(|tokens| Expr::parse(tokens, ctx), Self::Expr)),
+      all_consuming(map(|tokens| Statement::parse(tokens, ctx), Self::Statement)),
+    ))(tokens)?;
 
-    Ok((input, body))
+    Ok((tokens, body))
   }
 
   pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>

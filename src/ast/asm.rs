@@ -21,7 +21,7 @@ use super::{
   tokens::{meta, parenthesized, token},
   Expr, LitString, Type,
 };
-use crate::{CodegenContext, LocalContext};
+use crate::{CodegenContext, LocalContext, ParseContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Dir {
@@ -147,7 +147,7 @@ impl Asm {
     all_consuming(Self::parse_reg_constraint)(bytes)
   }
 
-  pub(crate) fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
+  pub(crate) fn parse<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputTake
@@ -184,7 +184,7 @@ impl Asm {
                 let (_, operands) = Self::parse_output_operands(s.as_bytes()).ok()?;
                 Some(operands)
               }),
-              parenthesized(Expr::parse),
+              parenthesized(|tokens| Expr::parse(tokens, ctx)),
             ),
             |((dir, reg), id)| (dir, reg, id),
           ),
@@ -199,7 +199,7 @@ impl Asm {
               let (_, operands) = Self::parse_input_operands(s.as_bytes()).ok()?;
               Some(dbg!(operands))
             }),
-            parenthesized(Expr::parse),
+            parenthesized(|tokens| Expr::parse(tokens, ctx)),
           ),
         ),
       )),

@@ -15,7 +15,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext};
+use crate::{CodegenContext, LocalContext, ParseContext};
 
 /// A statement.
 ///
@@ -43,7 +43,7 @@ pub enum Statement {
 }
 
 impl Statement {
-  fn parse_single<I, C>(tokens: &[I]) -> IResult<&[I], Self>
+  fn parse_single<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputTake
@@ -61,9 +61,13 @@ impl Statement {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    let condition = |input| parenthesized(Expr::parse)(input);
-    let block =
-      |input| map(Self::parse_single, |stmt| if let Self::Block(stmts) = stmt { stmts } else { vec![stmt] })(input);
+    let condition = |input| parenthesized(|tokens| Expr::parse(tokens, ctx))(input);
+    let block = |input| {
+      map(
+        |tokens| Self::parse_single(tokens, ctx),
+        |stmt| if let Self::Block(stmts) = stmt { stmts } else { vec![stmt] },
+      )(input)
+    };
     let semicolon_or_eof = |input| alt((value((), token(";")), value((), eof)))(input);
 
     alt((
@@ -84,17 +88,21 @@ impl Statement {
         |(block, condition)| Self::DoWhile { block, condition },
       ),
       map(
-        delimited(terminated(token("{"), meta), many0(preceded(meta, Self::parse_single)), preceded(meta, token("}"))),
+        delimited(
+          terminated(token("{"), meta),
+          many0(preceded(meta, |tokens| Self::parse_single(tokens, ctx))),
+          preceded(meta, token("}")),
+        ),
         Self::Block,
       ),
-      map(terminated(FunctionDecl::parse, semicolon_or_eof), Self::FunctionDecl),
-      map(terminated(Decl::parse, semicolon_or_eof), Self::Decl),
-      map(terminated(Expr::parse, semicolon_or_eof), Self::Expr),
+      map(terminated(|tokens| FunctionDecl::parse(tokens, ctx), semicolon_or_eof), Self::FunctionDecl),
+      map(terminated(|tokens| Decl::parse(tokens, ctx), semicolon_or_eof), Self::Decl),
+      map(terminated(|tokens| Expr::parse(tokens, ctx), semicolon_or_eof), Self::Expr),
     ))(tokens)
   }
 
   /// Parse a statement.
-  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
+  pub(crate) fn parse<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputTake
@@ -112,7 +120,7 @@ impl Statement {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    map(many0(delimited(meta, Self::parse_single, meta)), |mut stmts| {
+    map(many0(delimited(meta, |tokens| Self::parse_single(tokens, ctx), meta)), |mut stmts| {
       if stmts.len() == 1 {
         stmts.remove(0)
       } else {
@@ -223,9 +231,11 @@ impl Statement {
 mod tests {
   use super::*;
 
+  const CTX: ParseContext = ParseContext::var_macro("STMT");
+
   #[test]
   fn parse_expr() {
-    let (_, stmt) = Statement::parse(&["a", "+=", "2", ";"]).unwrap();
+    let (_, stmt) = Statement::parse(&["a", "+=", "2", ";"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::Expr(Expr::Binary(Box::new(BinaryExpr { lhs: var!(a), op: BinaryOp::AddAssign, rhs: lit!(2) })))
@@ -234,13 +244,13 @@ mod tests {
 
   #[test]
   fn parse_empty_block() {
-    let (_, stmt) = Statement::parse(&["{", "}"]).unwrap();
+    let (_, stmt) = Statement::parse(&["{", "}"], &CTX).unwrap();
     assert_eq!(stmt, Statement::Block(vec![]));
   }
 
   #[test]
   fn parse_block() {
-    let (_, stmt) = Statement::parse(&["{", "int", "a", "=", "0", ";", "}"]).unwrap();
+    let (_, stmt) = Statement::parse(&["{", "int", "a", "=", "0", ";", "}"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::Block(vec![Statement::Decl(Decl {
@@ -254,7 +264,7 @@ mod tests {
 
   #[test]
   fn parse_if_stmt() {
-    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "b", ";"]).unwrap();
+    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "b", ";"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
@@ -263,7 +273,7 @@ mod tests {
 
   #[test]
   fn parse_if_else_stmt() {
-    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "b", ";", "else", "c", ";"]).unwrap();
+    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "b", ";", "else", "c", ";"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::If {
@@ -276,7 +286,7 @@ mod tests {
 
   #[test]
   fn parse_if_block() {
-    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "{", "b", ";", "}"]).unwrap();
+    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "{", "b", ";", "}"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
@@ -285,7 +295,8 @@ mod tests {
 
   #[test]
   fn parse_if_else_block() {
-    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "{", "b", ";", "}", "else", "{", "c", ";", "}"]).unwrap();
+    let (_, stmt) =
+      Statement::parse(&["if", "(", "a", ")", "{", "b", ";", "}", "else", "{", "c", ";", "}"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::If {
@@ -298,13 +309,13 @@ mod tests {
 
   #[test]
   fn parse_do_while_stmt() {
-    let (_, stmt) = Statement::parse(&["do", "a", ";", "while", "(", "b", ")"]).unwrap();
+    let (_, stmt) = Statement::parse(&["do", "a", ";", "while", "(", "b", ")"], &CTX).unwrap();
     assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
   }
 
   #[test]
   fn parse_do_while_block() {
-    let (_, stmt) = Statement::parse(&["do", "{", "a", ";", "}", "while", "(", "b", ")"]).unwrap();
+    let (_, stmt) = Statement::parse(&["do", "{", "a", ";", "}", "while", "(", "b", ")"], &CTX).unwrap();
     assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
   }
 }

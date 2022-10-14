@@ -15,7 +15,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext};
+use crate::{CodegenContext, LocalContext, ParseContext};
 
 /// A function declaration.
 ///
@@ -31,7 +31,7 @@ pub struct FunctionDecl {
 
 impl FunctionDecl {
   /// Parse a function declaration.
-  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
+  pub(crate) fn parse<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputTake
