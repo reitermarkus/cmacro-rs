@@ -108,8 +108,12 @@ impl<'g, C> CodegenContext for LocalContext<'g, C>
 where
   C: CodegenContext,
 {
-  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
-    self.global_context.function(name)
+  fn ffi_prefix(&self) -> Option<TokenStream> {
+    self.global_context.ffi_prefix()
+  }
+
+  fn trait_prefix(&self) -> Option<TokenStream> {
+    self.global_context.trait_prefix()
   }
 
   fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
@@ -120,6 +124,10 @@ where
     self.global_context.resolve_ty(ty)
   }
 
+  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
+    self.global_context.function(name)
+  }
+
   fn function_macro(&self, name: &str) -> Option<&FnMacro> {
     self.global_context.function_macro(name)
   }
@@ -127,21 +135,19 @@ where
   fn variable_macro(&self, name: &str) -> Option<&VarMacro> {
     self.global_context.variable_macro(name)
   }
-
-  fn ffi_prefix(&self) -> Option<TokenStream> {
-    self.global_context.ffi_prefix()
-  }
-
-  fn trait_prefix(&self) -> Option<TokenStream> {
-    self.global_context.trait_prefix()
-  }
 }
 
 /// Context for code generation.
 pub trait CodegenContext {
-  /// Get the argument types and return type for the function with the given `name`.
-  #[allow(unused_variables)]
-  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
+  /// Get the prefix for FFI types, e.g. `c_int`.
+  fn ffi_prefix(&self) -> Option<TokenStream> {
+    None
+  }
+
+  /// Get the prefix for traits, macros and constants, e.g. `arch::asm!`, `f32::INFINITY`.
+  ///
+  /// Most of the time, this is either ´::core::` or `::std::`.
+  fn trait_prefix(&self) -> Option<TokenStream> {
     None
   }
 
@@ -157,6 +163,12 @@ pub trait CodegenContext {
     None
   }
 
+  /// Get the argument types and return type for the function with the given `name`.
+  #[allow(unused_variables)]
+  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
+    None
+  }
+
   /// Get the parsed function-like macro with the given `name`.
   #[allow(unused_variables)]
   fn function_macro(&self, name: &str) -> Option<&FnMacro> {
@@ -168,24 +180,18 @@ pub trait CodegenContext {
   fn variable_macro(&self, name: &str) -> Option<&VarMacro> {
     None
   }
-
-  /// Get the prefix for FFI types, e.g. `c_int`.
-  fn ffi_prefix(&self) -> Option<TokenStream> {
-    None
-  }
-
-  /// Get the prefix for traits, e.g. `f32`.
-  fn trait_prefix(&self) -> Option<TokenStream> {
-    None
-  }
 }
 
 impl<T> CodegenContext for &T
 where
   T: CodegenContext,
 {
-  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
-    T::function(self, name)
+  fn ffi_prefix(&self) -> Option<TokenStream> {
+    T::ffi_prefix(self)
+  }
+
+  fn trait_prefix(&self) -> Option<TokenStream> {
+    T::trait_prefix(self)
   }
 
   fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
@@ -196,20 +202,16 @@ where
     T::resolve_ty(self, ty)
   }
 
+  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
+    T::function(self, name)
+  }
+
   fn function_macro(&self, name: &str) -> Option<&FnMacro> {
     T::function_macro(self, name)
   }
 
   fn variable_macro(&self, name: &str) -> Option<&VarMacro> {
     T::variable_macro(self, name)
-  }
-
-  fn ffi_prefix(&self) -> Option<TokenStream> {
-    T::ffi_prefix(self)
-  }
-
-  fn trait_prefix(&self) -> Option<TokenStream> {
-    T::trait_prefix(self)
   }
 }
 
