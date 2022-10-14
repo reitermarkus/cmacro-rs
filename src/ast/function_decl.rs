@@ -15,7 +15,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext, ParseContext};
+use crate::{CodegenContext, LocalContext, ParseContext, MacroArgType};
 
 /// A function declaration.
 ///
@@ -67,6 +67,15 @@ impl FunctionDecl {
   {
     self.ret_ty.finish(ctx)?;
     self.name.finish(ctx)?;
+
+    if let Identifier::Literal(id) = &self.name {
+      if id.macro_arg {
+        if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
+          *arg_type = MacroArgType::Ident;
+        }
+      }
+    }
+
     for (ty, arg) in self.args.iter_mut() {
       ty.finish(ctx)?;
       arg.finish(ctx)?;
