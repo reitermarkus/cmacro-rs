@@ -33,8 +33,6 @@ pub mod ast;
 pub use ast::*;
 mod error;
 pub use error::*;
-mod macro_sig;
-pub use macro_sig::*;
 mod macro_body;
 pub use macro_body::*;
 mod context;
