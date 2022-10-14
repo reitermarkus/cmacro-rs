@@ -278,7 +278,8 @@ impl FnMacro {
     let (_, name) = identifier(&[name]).map_err(|_| crate::Error::ParserError)?;
     let (_, args) = Self::parse_args(args).map_err(|_| crate::Error::ParserError)?;
 
-    let ctx = ParseContext::fn_macro(&name, &args);
+    let ctx_args = args.iter().map(|a| a.as_str()).collect::<Vec<_>>();
+    let ctx = ParseContext::fn_macro(&name, &ctx_args);
     let (_, body) = MacroBody::parse(body, &ctx).map_err(|_| crate::Error::ParserError)?;
 
     Ok(Self { name, args, body })

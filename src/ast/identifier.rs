@@ -3,7 +3,7 @@ use std::{fmt::Debug, ops::RangeFrom};
 use nom::{
   branch::alt,
   character::complete::{anychar, char},
-  combinator::{all_consuming, map_opt, map_parser},
+  combinator::{all_consuming, map, map_opt, map_parser},
   multi::{fold_many0, fold_many1},
   sequence::{delimited, preceded},
   AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
@@ -16,7 +16,7 @@ use super::{
   tokens::{meta, take_one, token},
   Type,
 };
-use crate::{CodegenContext, LocalContext, MacroArgType};
+use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext};
 
 pub(crate) fn identifier<I>(tokens: &[I]) -> IResult<&[I], String>
 where
@@ -85,6 +85,26 @@ where
   })(tokens)
 }
 
+/// A raw identifier.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawIdent {
+  pub(crate) id: String,
+  pub(crate) macro_arg: bool,
+}
+
+impl RawIdent {
+  /// Get the string representation of this identifier.
+  pub fn as_str(&self) -> &str {
+    &self.id
+  }
+}
+
+impl From<&str> for RawIdent {
+  fn from(s: &str) -> Self {
+    Self { id: s.to_owned(), macro_arg: false }
+  }
+}
+
 /// An identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Identifier {
@@ -93,38 +113,58 @@ pub enum Identifier {
   /// ```c
   /// #define ID asdf
   /// ```
-  Literal(String),
+  Literal(RawIdent),
   /// A concatenated identifier.
   ///
   /// ```c
   /// #define ID abc ## def
   /// #define ID abc ## 123
   /// ```
-  Concat(Vec<String>),
+  Concat(Vec<RawIdent>),
 }
 
 impl Identifier {
   /// Parse an identifier.
-  pub fn parse<I, T>(tokens: &[I]) -> IResult<&[I], Self>
+  pub(crate) fn parse<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
-      + InputIter<Item = T>
+      + InputIter<Item = C>
       + InputTake
       + InputLength
       + Compare<&'static str>
       + Slice<std::ops::RangeFrom<usize>>
       + FindSubstring<&'static str>
       + Clone,
-    T: AsChar,
+    C: AsChar,
   {
-    let (tokens, id) = identifier(tokens)?;
+    fn map_raw_ident(id: String, ctx: &ParseContext<'_>) -> RawIdent {
+      let arg = if id == "__VA_ARGS__" { "..." } else { id.as_str() };
+      let macro_arg = ctx.args.contains(&arg);
+      RawIdent { id, macro_arg }
+    }
+
+    let (tokens, id) = map(identifier, |id| Self::Literal(map_raw_ident(id, ctx)))(tokens)?;
 
     fold_many0(
-      preceded(delimited(meta::<I>, token::<I>("##"), meta::<I>), concat_identifier),
-      move || Self::Literal(id.clone()),
+      preceded(delimited(meta::<I>, token::<I>("##"), meta::<I>), map(concat_identifier, |id| map_raw_ident(id, ctx))),
+      move || id.clone(),
       |acc, item| match acc {
-        Self::Literal(id) => Self::Concat(vec![id, item]),
+        Self::Literal(mut id) => {
+          if !id.macro_arg && !item.macro_arg {
+            id.id.push_str(item.as_str());
+            Self::Literal(id)
+          } else {
+            Self::Concat(vec![id, item])
+          }
+        },
         Self::Concat(mut ids) => {
+          if let Some(last) = ids.last_mut() {
+            if !last.macro_arg && !item.macro_arg {
+              last.id.push_str(item.as_str());
+              return Self::Concat(ids)
+            }
+          }
+
           ids.push(item);
           Self::Concat(ids)
         },
@@ -137,33 +177,10 @@ impl Identifier {
     C: CodegenContext,
   {
     if let Self::Concat(ref mut ids) = self {
-      let mut new_ids = vec![];
-      let mut non_arg_id: Option<String> = None;
-
       for id in ids {
-        if let Some(arg_ty) = ctx.arg_type_mut(id.as_str()) {
-          *arg_ty = MacroArgType::Ident;
-
-          if let Some(non_arg_id) = non_arg_id.take() {
-            new_ids.push(non_arg_id);
-          }
-
-          new_ids.push(id.to_owned());
-        } else if let Some(ref mut non_arg_id) = non_arg_id {
-          non_arg_id.push_str(id);
-        } else {
-          non_arg_id = Some(id.to_owned());
+        if id.macro_arg {
+          *ctx.arg_type_mut(id.as_str()).unwrap() = MacroArgType::Ident;
         }
-      }
-
-      if let Some(non_arg_id) = non_arg_id.take() {
-        new_ids.push(non_arg_id);
-      }
-
-      if new_ids.len() == 1 {
-        *self = Self::Literal(new_ids.remove(0));
-      } else {
-        *self = Self::Concat(new_ids);
       }
     }
 
@@ -177,21 +194,21 @@ impl Identifier {
 
   pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
     match self {
-      Self::Literal(ref s) => {
-        if s.is_empty() {
+      Self::Literal(ref id) => {
+        if id.as_str().is_empty() {
           return quote! {}
         }
 
-        if s == "__VA_ARGS__" {
+        if id.as_str() == "__VA_ARGS__" {
           return quote! { $($__VA_ARGS__),* }
         }
 
-        let id = Ident::new(s, Span::call_site());
+        let name = Ident::new(id.as_str(), Span::call_site());
 
-        if ctx.export_as_macro && ctx.is_macro_arg(s) {
-          quote! { $#id }
+        if ctx.export_as_macro && id.macro_arg {
+          quote! { $#name }
         } else {
-          quote! { #id }
+          quote! { #name }
         }
       },
       Self::Concat(ids) => {
@@ -208,45 +225,52 @@ impl Identifier {
 mod tests {
   use super::*;
 
+  const CTX: ParseContext = ParseContext::var_macro("IDENTIFIER");
+
   #[test]
   fn parse_literal() {
-    let (_, id) = Identifier::parse(&["asdf"]).unwrap();
+    let (_, id) = Identifier::parse(&["asdf"], &CTX).unwrap();
     assert_eq!(id, Identifier::Literal("asdf".into()));
 
-    let (_, id) = Identifier::parse(&["Δx"]).unwrap();
+    let (_, id) = Identifier::parse(&["Δx"], &CTX).unwrap();
     assert_eq!(id, Identifier::Literal("Δx".into()));
 
-    let (_, id) = Identifier::parse(&["Δx".as_bytes()]).unwrap();
+    let (_, id) = Identifier::parse(&["Δx".as_bytes()], &CTX).unwrap();
     assert_eq!(id, Identifier::Literal("Δx".into()));
 
-    let (_, id) = Identifier::parse(&["_123"]).unwrap();
+    let (_, id) = Identifier::parse(&["_123"], &CTX).unwrap();
     assert_eq!(id, Identifier::Literal("_123".into()));
 
-    let (_, id) = Identifier::parse(&["__INT_MAX__"]).unwrap();
+    let (_, id) = Identifier::parse(&["__INT_MAX__"], &CTX).unwrap();
     assert_eq!(id, Identifier::Literal("__INT_MAX__".into()));
   }
 
   #[test]
   fn parse_concat() {
-    let (_, id) = Identifier::parse(&["abc", "##", "def"]).unwrap();
-    assert_eq!(id, Identifier::Concat(vec!["abc".into(), "def".into()]));
+    let ctx = ParseContext::fn_macro("IDENTIFIER", &["abc"]);
 
-    let (_, id) = Identifier::parse(&["abc", "##", "_def"]).unwrap();
-    assert_eq!(id, Identifier::Concat(vec!["abc".into(), "_def".into()]));
+    let (_, id) = Identifier::parse(&["abc", "##", "def"], &ctx).unwrap();
+    assert_eq!(id, Identifier::Concat(vec![RawIdent { id: "abc".into(), macro_arg: true }, "def".into()]));
 
-    let (_, id) = Identifier::parse(&["abc", "##", "123"]).unwrap();
-    assert_eq!(id, Identifier::Concat(vec!["abc".into(), "123".into()]));
+    let (_, id) = Identifier::parse(&["abc", "##", "def", "##", "ghi"], &ctx).unwrap();
+    assert_eq!(id, Identifier::Concat(vec![RawIdent { id: "abc".into(), macro_arg: true }, "defghi".into()]));
 
-    let (_, id) = Identifier::parse(&["__INT", "##", "_MAX__"]).unwrap();
-    assert_eq!(id, Identifier::Concat(vec!["__INT".into(), "_MAX__".into()]));
+    let (_, id) = Identifier::parse(&["abc", "##", "_def"], &ctx).unwrap();
+    assert_eq!(id, Identifier::Concat(vec![RawIdent { id: "abc".into(), macro_arg: true }, "_def".into()]));
+
+    let (_, id) = Identifier::parse(&["abc", "##", "123"], &ctx).unwrap();
+    assert_eq!(id, Identifier::Concat(vec![RawIdent { id: "abc".into(), macro_arg: true }, "123".into()]));
+
+    let (_, id) = Identifier::parse(&["__INT", "##", "_MAX__"], &CTX).unwrap();
+    assert_eq!(id, Identifier::Literal("__INT_MAX__".into()));
   }
 
   #[test]
   fn parse_wrong() {
-    let res = Identifier::parse(&["123def"]);
+    let res = Identifier::parse(&["123def"], &CTX);
     assert!(res.is_err());
 
-    let res = Identifier::parse(&["123", "##", "def"]);
+    let res = Identifier::parse(&["123", "##", "def"], &CTX);
     assert!(res.is_err());
   }
 }

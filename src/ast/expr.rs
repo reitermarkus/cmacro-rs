@@ -60,9 +60,11 @@ impl Expr {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    let parse_var = map(Identifier::parse, |id| Self::Variable { name: id });
-    let parse_string =
-      alt((map(LitString::parse, |s| Self::Literal(Lit::String(s))), map(Stringify::parse, Self::Stringify)));
+    let parse_var = map(|tokens| Identifier::parse(tokens, ctx), |id| Self::Variable { name: id });
+    let parse_string = alt((
+      map(LitString::parse, |s| Self::Literal(Lit::String(s))),
+      map(|tokens| Stringify::parse(tokens, ctx), Self::Stringify),
+    ));
     let mut parse_part = alt((parse_string, parse_var));
 
     let (tokens, s) = parse_part(tokens)?;
@@ -171,13 +173,11 @@ impl Expr {
               parenthesized(separated_list0(tuple((meta, token(","), meta)), |tokens| Self::parse(tokens, ctx))),
               Access::Fn,
             ),
-            map(preceded(terminated(token("."), meta), Identifier::parse), |field| Access::Field {
-              field,
-              deref: false,
+            map(preceded(terminated(token("."), meta), |tokens| Identifier::parse(tokens, ctx)), |field| {
+              Access::Field { field, deref: false }
             }),
-            map(preceded(terminated(token("->"), meta), Identifier::parse), |field| Access::Field {
-              field,
-              deref: true,
+            map(preceded(terminated(token("->"), meta), |tokens| Identifier::parse(tokens, ctx)), |field| {
+              Access::Field { field, deref: true }
             }),
             map(alt((value(UnaryOp::PostInc, token("++")), value(UnaryOp::PostDec, token("--")))), |op| {
               Access::UnaryOp(op)
@@ -229,10 +229,10 @@ impl Expr {
     &'static str: FindToken<<I as InputIter>::Item>,
   {
     alt((
-      map(pair(parenthesized(Type::parse), |tokens| Self::parse_term_prec2(tokens, ctx)), |(ty, term)| Self::Cast {
-        expr: Box::new(term),
-        ty,
-      }),
+      map(
+        pair(parenthesized(|tokens| Type::parse(tokens, ctx)), |tokens| Self::parse_term_prec2(tokens, ctx)),
+        |(ty, term)| Self::Cast { expr: Box::new(term), ty },
+      ),
       map(
         pair(
           terminated(
@@ -674,15 +674,15 @@ impl Expr {
       },
       Self::FunctionCall(call) => {
         if let Identifier::Literal(name) = &call.name {
-          if ctx.names.contains(name) {
-            return Err(crate::Error::RecursiveDefinition(name.to_owned()))
+          if ctx.names.contains(name.as_str()) {
+            return Err(crate::Error::RecursiveDefinition(name.as_str().to_owned()))
           }
         }
 
         let ty = call.finish(ctx)?;
 
         if let Identifier::Literal(name) = &call.name {
-          if let Some(fn_macro) = ctx.function_macro(name) {
+          if let Some(fn_macro) = ctx.function_macro(name.as_str()) {
             let fn_macro = fn_macro.clone();
             match fn_macro.call(&ctx.root_name, &ctx.names, &call.args, ctx)? {
               MacroBody::Statement(_) => return Err(crate::Error::UnsupportedExpression),
@@ -1041,8 +1041,9 @@ mod tests {
 
   #[test]
   fn parse_stringify() {
-    let (_, expr) = Expr::parse(&["#", "a"], &CTX).unwrap();
-    assert_eq!(expr, Expr::Stringify(Stringify { id: id!(a) }));
+    let ctx = ParseContext::fn_macro("EXPR", &["a"]);
+    let (_, expr) = Expr::parse(&["#", "a"], &ctx).unwrap();
+    assert_eq!(expr, Expr::Stringify(Stringify { id: id!(@a) }));
   }
 
   #[test]
@@ -1050,12 +1051,13 @@ mod tests {
     let (_, expr) = Expr::parse(&[r#""abc""#, r#""def""#], &CTX).unwrap();
     assert_eq!(expr, Expr::Literal(Lit::String(LitString { repr: "abcdef".into() })));
 
-    let (_, expr) = Expr::parse(&[r#""def""#, "#", "a"], &CTX).unwrap();
+    let ctx = ParseContext::fn_macro("EXPR", &["a"]);
+    let (_, expr) = Expr::parse(&[r#""def""#, "#", "a"], &ctx).unwrap();
     assert_eq!(
       expr,
       Expr::Concat(vec![
         Expr::Literal(Lit::String(LitString { repr: "def".into() })),
-        Expr::Stringify(Stringify { id: id!(a) }),
+        Expr::Stringify(Stringify { id: id!(@a) }),
       ])
     );
   }

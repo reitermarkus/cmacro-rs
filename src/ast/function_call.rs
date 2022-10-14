@@ -27,7 +27,7 @@ impl FunctionCall {
     self.name.finish(ctx)?;
 
     if let Identifier::Literal(name) = &self.name {
-      if let Some(expr) = ctx.arg_value(name).or_else(|| ctx.variable_macro_value(name)) {
+      if let Some(expr) = ctx.arg_value(name.as_str()).or_else(|| ctx.variable_macro_value(name.as_str())) {
         match expr {
           Expr::Variable { name } => {
             let mut name = name.clone();
@@ -61,7 +61,7 @@ impl FunctionCall {
             // If the current argument to this function is a macro argument,
             // we can infer the type of the macro argument.
             if let Expr::Variable { name: Identifier::Literal(ref name) } = arg {
-              if let Some(arg_type) = ctx.arg_type_mut(name) {
+              if let Some(arg_type) = ctx.arg_type_mut(name.as_str()) {
                 if *arg_type == MacroArgType::Unknown {
                   if let Ok(ty) = syn::parse_str::<syn::Type>(known_arg_type) {
                     *arg_type = MacroArgType::Known(Type::try_from(ty)?);

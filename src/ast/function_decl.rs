@@ -50,9 +50,12 @@ impl FunctionDecl {
     &'static str: FindToken<<I as InputIter>::Item>,
   {
     let (tokens, ((_, ret_ty), name, args)) = tuple((
-      permutation((opt(token("static")), Type::parse)),
-      Identifier::parse,
-      parenthesized(separated_list0(pair(meta, token(",")), pair(Type::parse, Identifier::parse))),
+      permutation((opt(token("static")), |tokens| Type::parse(tokens, ctx))),
+      |tokens| Identifier::parse(tokens, ctx),
+      parenthesized(separated_list0(
+        pair(meta, token(",")),
+        pair(|tokens| Type::parse(tokens, ctx), |tokens| Identifier::parse(tokens, ctx)),
+      )),
     ))(tokens)?;
 
     Ok((tokens, Self { ret_ty, name, args }))

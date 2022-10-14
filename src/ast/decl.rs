@@ -47,10 +47,12 @@ impl Decl {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    let (tokens, ((static_storage, ty), name, _, rhs)) =
-      tuple((permutation((opt(token("static")), Type::parse)), Identifier::parse, token("="), |tokens| {
-        Expr::parse(tokens, ctx)
-      }))(tokens)?;
+    let (tokens, ((static_storage, ty), name, _, rhs)) = tuple((
+      permutation((opt(token("static")), |tokens| Type::parse(tokens, ctx))),
+      |tokens| Identifier::parse(tokens, ctx),
+      token("="),
+      |tokens| Expr::parse(tokens, ctx),
+    ))(tokens)?;
 
     Ok((tokens, Self { ty, name, rhs, is_static: static_storage.is_some() }))
   }

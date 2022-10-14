@@ -1,7 +1,7 @@
 use std::{fmt::Debug, ops::RangeFrom};
 
 use nom::{
-  combinator::map,
+  combinator::map_opt,
   sequence::{preceded, terminated},
   AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
 };
@@ -11,9 +11,9 @@ use quote::{quote, TokenStreamExt};
 use super::{
   identifier::identifier,
   tokens::{meta, token},
-  BuiltInType, Identifier, Type,
+  BuiltInType, Identifier, RawIdent, Type,
 };
-use crate::{CodegenContext, LocalContext, MacroArgType};
+use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext};
 
 /// Stringification of a macro argument.
 ///
@@ -27,7 +27,7 @@ pub struct Stringify {
 
 impl Stringify {
   /// Parse a stringification expression.
-  pub fn parse<I>(tokens: &[I]) -> IResult<&[I], Self>
+  pub(crate) fn parse<'i, 'p, I>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputTake
@@ -39,7 +39,13 @@ impl Stringify {
       + Clone,
     <I as InputIter>::Item: AsChar,
   {
-    map(preceded(terminated(token("#"), meta), identifier), |id| Self { id: Identifier::Literal(id) })(tokens)
+    map_opt(preceded(terminated(token("#"), meta), identifier), |id| {
+      if ctx.args.contains(&id.as_str()) {
+        Some(Self { id: Identifier::Literal(RawIdent { id, macro_arg: true }) })
+      } else {
+        None
+      }
+    })(tokens)
   }
 
   pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
@@ -83,9 +89,13 @@ impl Stringify {
 mod tests {
   use super::*;
 
+  use crate::ast::id;
+
+  const CTX: ParseContext = ParseContext::fn_macro("STRINGIFY", &["var"]);
+
   #[test]
   fn parse_stringify() {
-    let (_, ty) = Stringify::parse(&["#", "var"]).unwrap();
-    assert_eq!(ty, Stringify { id: Identifier::Literal("var".into()) });
+    let (_, ty) = Stringify::parse(&["#", "var"], &CTX).unwrap();
+    assert_eq!(ty, Stringify { id: id!(@var) });
   }
 }

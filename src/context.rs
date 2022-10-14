@@ -16,14 +16,15 @@ pub(crate) enum MacroArgType {
 }
 
 pub(crate) struct ParseContext<'m> {
-  name: &'m str,
-  args: &'m [String],
+  #[allow(unused)]
+  pub name: &'m str,
+  pub args: &'m [&'m str],
 }
 
 impl<'m> ParseContext<'m> {
-  const NO_ARGS: &[String] = &[];
+  const NO_ARGS: &[&'static str] = &[];
 
-  pub const fn fn_macro(name: &'m str, args: &'m [String]) -> Self {
+  pub const fn fn_macro(name: &'m str, args: &'m [&'m str]) -> Self {
     Self { name, args }
   }
 
@@ -54,10 +55,6 @@ impl<'g, C> LocalContext<'g, C> {
 
   pub fn arg_type_mut(&mut self, name: &str) -> Option<&mut MacroArgType> {
     self.arg_types.get_mut(name)
-  }
-
-  pub fn is_macro_arg(&self, name: &str) -> bool {
-    self.arg_types.get(name).is_some()
   }
 
   pub fn is_variable_macro(&self) -> bool
