@@ -139,14 +139,14 @@ where
 
 /// Context for code generation.
 pub trait CodegenContext {
-  /// Get the prefix for FFI types, e.g. `c_int`.
+  /// Get the prefix for FFI types, e.g. `c_char` or `c_ulong`.
   fn ffi_prefix(&self) -> Option<TokenStream> {
     None
   }
 
-  /// Get the prefix for traits, macros and constants, e.g. `arch::asm!`, `f32::INFINITY`.
+  /// Get the prefix for traits, macros and constants, e.g. `arch::asm!` or `f32::INFINITY`.
   ///
-  /// Most of the time, this is either ´::core::` or `::std::`.
+  /// Most of the time, this is either `::core::` or `::std::`.
   fn trait_prefix(&self) -> Option<TokenStream> {
     None
   }
@@ -158,12 +158,30 @@ pub trait CodegenContext {
   }
 
   /// Resolve the given type.
+  ///
+  /// For example, given
+  ///
+  /// ```c
+  /// typedef unsigned long MyType;
+  /// ```
+  ///
+  /// is defined, this should return `Some("unsigned long".into())`
+  /// when `ty` is `"MyType"`.
   #[allow(unused_variables)]
   fn resolve_ty(&self, ty: &str) -> Option<String> {
     None
   }
 
   /// Get the argument types and return type for the function with the given `name`.
+  ///
+  /// For example, given a C function
+  ///
+  /// ```c
+  /// int add(int, int);
+  /// ```
+  ///
+  /// exists, this should return `Some((vec!["int".into(), "int".into()], "int".into()))`
+  /// when `name` is `"add"`.
   #[allow(unused_variables)]
   fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
     None
