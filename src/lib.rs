@@ -354,10 +354,10 @@ impl FnMacro {
     };
     let ret_ty = self.body.finish(&mut ctx)?;
 
-    let export_as_macro = ctx.is_variadic()
+    ctx.export_as_macro = ctx.export_as_macro
+      || ctx.is_variadic()
       || !ctx.arg_types.iter().all(|(_, ty)| matches!(*ty, MacroArgType::Known(_)))
       || ret_ty.is_none();
-    ctx.export_as_macro = export_as_macro;
 
     let name = Ident::new(&self.name, Span::call_site());
 
@@ -367,7 +367,7 @@ impl FnMacro {
       MacroBody::Expr(expr) => expr.to_tokens(&mut ctx, &mut body),
     }
 
-    if export_as_macro {
+    if ctx.export_as_macro {
       let args = self
         .args
         .iter()

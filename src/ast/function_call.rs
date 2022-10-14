@@ -39,6 +39,12 @@ impl FunctionCall {
       }
     }
 
+    if let Identifier::Literal(name) = &self.name {
+      if ctx.function(name.as_str()).is_none() {
+        ctx.export_as_macro = true;
+      }
+    }
+
     for arg in self.args.iter_mut() {
       arg.finish(ctx)?;
     }
