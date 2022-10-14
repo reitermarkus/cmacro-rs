@@ -197,7 +197,7 @@ impl Asm {
           pair(
             map_opt(LitString::parse, |s| {
               let (_, operands) = Self::parse_input_operands(s.as_bytes()).ok()?;
-              Some(dbg!(operands))
+              Some(operands)
             }),
             parenthesized(|tokens| Expr::parse(tokens, ctx)),
           ),
@@ -213,7 +213,7 @@ impl Asm {
     let inputs = inputs.unwrap_or_default();
     let clobbers = clobbers.unwrap_or_default();
 
-    Ok(dbg!((tokens, Self { template, outputs, inputs, clobbers })))
+    Ok((tokens, Self { template, outputs, inputs, clobbers }))
   }
 
   #[allow(unused_variables)]
