@@ -244,7 +244,7 @@ impl Type {
       "unsigned long long" => Type::BuiltIn(BuiltInType::ULongLong),
       "void" => Type::BuiltIn(BuiltInType::Void),
       ty => Type::Identifier {
-        name: Identifier::Literal(RawIdent { id: ty.to_owned(), macro_arg: false }),
+        name: Identifier::Literal(LitIdent { id: ty.to_owned(), macro_arg: false }),
         is_struct: false,
       },
     }
@@ -324,7 +324,7 @@ impl TryFrom<syn::Type> for Type {
       },
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
       syn::Type::Verbatim(ty) => Ok(Self::Identifier {
-        name: Identifier::Literal(RawIdent { id: ty.to_string(), macro_arg: false }),
+        name: Identifier::Literal(LitIdent { id: ty.to_string(), macro_arg: false }),
         is_struct: false,
       }),
       syn::Type::Path(path_ty) => Ok(Self::Path {
@@ -333,7 +333,7 @@ impl TryFrom<syn::Type> for Type {
           .path
           .segments
           .iter()
-          .map(|s| Identifier::Literal(RawIdent { id: s.ident.to_string(), macro_arg: false }))
+          .map(|s| Identifier::Literal(LitIdent { id: s.ident.to_string(), macro_arg: false }))
           .collect(),
       }),
       _ => Err(crate::Error::ParserError),

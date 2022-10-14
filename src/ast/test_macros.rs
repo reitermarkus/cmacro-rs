@@ -1,9 +1,9 @@
 macro_rules! id {
   (@ $name:ident) => {
-    $crate::ast::Identifier::Literal($crate::ast::RawIdent { id: stringify!($name).into(), macro_arg: true })
+    $crate::ast::Identifier::Literal($crate::ast::LitIdent { id: stringify!($name).into(), macro_arg: true })
   };
   ($name:ident) => {
-    $crate::ast::Identifier::Literal($crate::ast::RawIdent { id: stringify!($name).into(), macro_arg: false })
+    $crate::ast::Identifier::Literal($crate::ast::LitIdent { id: stringify!($name).into(), macro_arg: false })
   };
 }
 pub(crate) use id;

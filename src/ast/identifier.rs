@@ -85,21 +85,21 @@ where
   })(tokens)
 }
 
-/// A raw identifier.
+/// A literal identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RawIdent {
+pub struct LitIdent {
   pub(crate) id: String,
   pub(crate) macro_arg: bool,
 }
 
-impl RawIdent {
+impl LitIdent {
   /// Get the string representation of this identifier.
   pub fn as_str(&self) -> &str {
     &self.id
   }
 }
 
-impl From<&str> for RawIdent {
+impl From<&str> for LitIdent {
   fn from(s: &str) -> Self {
     Self { id: s.to_owned(), macro_arg: false }
   }
@@ -113,14 +113,14 @@ pub enum Identifier {
   /// ```c
   /// #define ID asdf
   /// ```
-  Literal(RawIdent),
+  Literal(LitIdent),
   /// A concatenated identifier.
   ///
   /// ```c
   /// #define ID abc ## def
   /// #define ID abc ## 123
   /// ```
-  Concat(Vec<RawIdent>),
+  Concat(Vec<LitIdent>),
 }
 
 impl Identifier {
@@ -137,10 +137,10 @@ impl Identifier {
       + Clone,
     C: AsChar,
   {
-    fn map_raw_ident(id: String, ctx: &ParseContext<'_>) -> RawIdent {
+    fn map_raw_ident(id: String, ctx: &ParseContext<'_>) -> LitIdent {
       let arg = if id == "__VA_ARGS__" { "..." } else { id.as_str() };
       let macro_arg = ctx.args.contains(&arg);
-      RawIdent { id, macro_arg }
+      LitIdent { id, macro_arg }
     }
 
     let (tokens, id) = map(identifier, |id| Self::Literal(map_raw_ident(id, ctx)))(tokens)?;
@@ -250,16 +250,16 @@ mod tests {
     let ctx = ParseContext::fn_macro("IDENTIFIER", &["abc"]);
 
     let (_, id) = Identifier::parse(&["abc", "##", "def"], &ctx).unwrap();
-    assert_eq!(id, Identifier::Concat(vec![RawIdent { id: "abc".into(), macro_arg: true }, "def".into()]));
+    assert_eq!(id, Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "def".into()]));
 
     let (_, id) = Identifier::parse(&["abc", "##", "def", "##", "ghi"], &ctx).unwrap();
-    assert_eq!(id, Identifier::Concat(vec![RawIdent { id: "abc".into(), macro_arg: true }, "defghi".into()]));
+    assert_eq!(id, Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "defghi".into()]));
 
     let (_, id) = Identifier::parse(&["abc", "##", "_def"], &ctx).unwrap();
-    assert_eq!(id, Identifier::Concat(vec![RawIdent { id: "abc".into(), macro_arg: true }, "_def".into()]));
+    assert_eq!(id, Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "_def".into()]));
 
     let (_, id) = Identifier::parse(&["abc", "##", "123"], &ctx).unwrap();
-    assert_eq!(id, Identifier::Concat(vec![RawIdent { id: "abc".into(), macro_arg: true }, "123".into()]));
+    assert_eq!(id, Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "123".into()]));
 
     let (_, id) = Identifier::parse(&["__INT", "##", "_MAX__"], &CTX).unwrap();
     assert_eq!(id, Identifier::Literal("__INT_MAX__".into()));

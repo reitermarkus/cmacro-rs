@@ -11,7 +11,7 @@ use quote::{quote, TokenStreamExt};
 use super::{
   identifier::identifier,
   tokens::{meta, token},
-  BuiltInType, Identifier, RawIdent, Type,
+  BuiltInType, Identifier, LitIdent, Type,
 };
 use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext};
 
@@ -41,7 +41,7 @@ impl Stringify {
   {
     map_opt(preceded(terminated(token("#"), meta), identifier), |id| {
       if ctx.args.contains(&id.as_str()) {
-        Some(Self { id: Identifier::Literal(RawIdent { id, macro_arg: true }) })
+        Some(Self { id: Identifier::Literal(LitIdent { id, macro_arg: true }) })
       } else {
         None
       }
