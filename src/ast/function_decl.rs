@@ -15,7 +15,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext, ParseContext, MacroArgType};
+use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext};
 
 /// A function declaration.
 ///

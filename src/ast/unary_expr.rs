@@ -70,6 +70,11 @@ impl UnaryExpr {
     match self.op {
       UnaryOp::Not => Ok(Some(Type::BuiltIn(BuiltInType::Bool))),
       UnaryOp::Deref => {
+        // Cannot dereference pointers in variable macros, i.e. constants.
+        if ctx.is_variable_macro() {
+          return Err(crate::Error::UnsupportedExpression)
+        }
+
         if let Some(Type::Ptr { ty, .. }) = ty {
           Ok(Some(*ty))
         } else {
