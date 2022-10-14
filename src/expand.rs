@@ -122,6 +122,30 @@ fn interpolate_var_macros<'t>(
 ///
 /// Interpolates nested macro usages in unparsed macro token streams.
 ///
+/// This is needed to be able to parse cases such as the following:
+///
+/// ```c
+/// #define THREE_PLUS 3 +
+/// #define FOUR 4
+/// #define THREE_PLUS_FOUR THREE_PLUS FOUR
+/// ```
+///
+/// [`VarMacro::parse`](crate::VarMacro::parse) cannot parse `THREE_PLUS` since it is not a
+/// valid expression. This would lead to `THREE_PLUS_FOUR` also not being able to be parsed.
+///
+/// # Caveats
+///
+/// Currently, this is not yet usable since expanding the following is wrong:
+///
+/// ```c
+/// #define B A
+/// #define F(A) A + B
+/// ```
+///
+/// `A + B` would be expanded to `A + A`. The first `A` is corresponds to the macro argument `A`, while
+/// the second `A` corresponds to an unbound variable, i.e. the two `A`s should be treated as
+/// different variables.
+///
 /// # Examples
 ///
 /// ```
@@ -132,6 +156,8 @@ fn interpolate_var_macros<'t>(
 ///   ("B", vec!["2"]),
 ///   ("PLUS", vec!["A", "+", "B"]),
 ///   ("A_TIMES_B", vec!["TIMES", "(", "A", ",", "B", ")"]),
+///   ("A_PLUS", vec!["A", "+"]),
+///   ("A_PLUS_CONCAT_B", vec!["A_PLUS", "B"]),
 /// ]);
 /// let mut fn_macros = HashMap::from([
 ///   ("TIMES", (vec!["A", "B"], vec!["A", "*", "B"])),
@@ -145,6 +171,8 @@ fn interpolate_var_macros<'t>(
 ///   ("B", vec!["2"]),
 ///   ("PLUS", vec!["1", "+", "2"]),
 ///   ("A_TIMES_B", vec!["1", "*", "2"]),
+///   ("A_PLUS", vec!["1", "+"]),
+///   ("A_PLUS_CONCAT_B", vec!["1", "+", "2"]),
 /// ]);
 /// let expanded_fn_macros = HashMap::from([
 ///   ("TIMES", (vec!["A", "B"], vec!["A", "*", "B"])),
