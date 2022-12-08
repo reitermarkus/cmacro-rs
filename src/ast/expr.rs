@@ -792,7 +792,7 @@ impl Expr {
             }));
           },
           (UnaryOp::Not, Self::Literal(Lit::Int(LitInt { value: i, suffix: None }))) => {
-            *self = Self::Literal(Lit::Int(LitInt { value: if *i == 0 { 1 } else { 0 }, suffix: None }));
+            *self = Self::Literal(Lit::Int(LitInt { value: (*i == 0).into(), suffix: None }));
           },
           (UnaryOp::Not, Self::Literal(Lit::Float(f))) => {
             *self = Self::Literal(Lit::Int(LitInt {
