@@ -225,6 +225,10 @@ impl Type {
     matches!(self, Self::BuiltIn(BuiltInType::Void))
   }
 
+  pub fn is_ptr(&self) -> bool {
+    matches!(self, Self::Ptr { .. })
+  }
+
   pub(crate) fn from_resolved_type(resolved_type: &str) -> Self {
     match resolved_type {
       "float" => Type::BuiltIn(BuiltInType::Float),

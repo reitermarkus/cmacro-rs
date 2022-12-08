@@ -956,7 +956,19 @@ impl Expr {
               } else if *value < 0 {
                 Literal::i8_suffixed(*value as i8)
               } else {
-                Literal::i128_unsuffixed(*value)
+                if ty.is_ptr() {
+                  Literal::i128_suffixed(*value)
+                } else if *value <= u8::MAX as i128 {
+                  Literal::u8_suffixed(*value as u8)
+                } else if *value <= u16::MAX as i128 {
+                  Literal::u16_suffixed(*value as u16)
+                } else if *value <= u32::MAX as i128 {
+                  Literal::u32_suffixed(*value as u32)
+                } else if *value <= u64::MAX as i128 {
+                  Literal::u64_suffixed(*value as u64)
+                } else {
+                  Literal::i128_unsuffixed(*value)
+                }
               };
 
               quote! { #expr }
