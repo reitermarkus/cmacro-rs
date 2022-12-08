@@ -151,7 +151,7 @@ mod tests {
         expr: Box::new(lit!(1)),
       },
     };
-    assert_eq_tokens!(expr1, "*(1 as *mut MyType)");
+    assert_eq_tokens!(expr1, "*(1u8 as *mut MyType)");
   }
 
   #[test]

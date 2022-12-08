@@ -944,6 +944,8 @@ impl Expr {
 
             // When casting a negative integer, we need to generate it with a suffix, since
             // directly casting to an unsigned integer (i.e. `-1 as u32`) doesn't work.
+            // The same is true when casting a big number to a type which is too small,
+            // so we output the number with the smallest possible explicit type.
             let expr = if let Expr::Literal(Lit::Int(LitInt { value, .. })) = expr {
               let expr = if *value < i64::MIN as i128 {
                 Literal::i128_suffixed(*value)
@@ -955,20 +957,16 @@ impl Expr {
                 Literal::i16_suffixed(*value as i16)
               } else if *value < 0 {
                 Literal::i8_suffixed(*value as i8)
+              } else if *value <= u8::MAX as i128 {
+                Literal::u8_suffixed(*value as u8)
+              } else if *value <= u16::MAX as i128 {
+                Literal::u16_suffixed(*value as u16)
+              } else if *value <= u32::MAX as i128 {
+                Literal::u32_suffixed(*value as u32)
+              } else if *value <= u64::MAX as i128 {
+                Literal::u64_suffixed(*value as u64)
               } else {
-                if ty.is_ptr() {
-                  Literal::i128_suffixed(*value)
-                } else if *value <= u8::MAX as i128 {
-                  Literal::u8_suffixed(*value as u8)
-                } else if *value <= u16::MAX as i128 {
-                  Literal::u16_suffixed(*value as u16)
-                } else if *value <= u32::MAX as i128 {
-                  Literal::u32_suffixed(*value as u32)
-                } else if *value <= u64::MAX as i128 {
-                  Literal::u64_suffixed(*value as u64)
-                } else {
-                  Literal::i128_unsuffixed(*value)
-                }
+                Literal::i128_suffixed(*value)
               };
 
               quote! { #expr }
