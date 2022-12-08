@@ -31,5 +31,4 @@ name = "headers"
 harness = false
 
 [patch.crates-io]
-clang-sys = { git = "https://github.com/reitermarkus/clang-sys", branch = "load-api" }
 clang = { git = "https://github.com/reitermarkus/clang-rs", branch = "load-api" }
