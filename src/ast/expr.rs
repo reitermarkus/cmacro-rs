@@ -11,7 +11,7 @@ use nom::{
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
   ParseTo, Slice,
 };
-use proc_macro2::TokenStream;
+use proc_macro2::{Literal, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
@@ -942,10 +942,31 @@ impl Expr {
             let (prec, _) = self.precedence();
             let (expr_prec, _) = expr.precedence();
 
-            let mut expr = expr.to_token_stream(ctx);
-            if expr_prec > prec {
-              expr = quote! { (#expr) };
-            }
+            // When casting a negative integer, we need to generate it with a suffix, since
+            // directly casting to an unsigned integer (i.e. `-1 as u32`) doesn't work.
+            let expr = if let Expr::Literal(Lit::Int(LitInt { value, .. })) = expr {
+              let expr = if *value < i64::MIN as i128 {
+                Literal::i128_suffixed(*value)
+              } else if *value < i32::MIN as i128 {
+                Literal::i64_suffixed(*value as i64)
+              } else if *value < i16::MIN as i128 {
+                Literal::i32_suffixed(*value as i32)
+              } else if *value < i8::MIN as i128 {
+                Literal::i16_suffixed(*value as i16)
+              } else if *value < 0 {
+                Literal::i8_suffixed(*value as i8)
+              } else {
+                Literal::i128_unsuffixed(*value)
+              };
+
+              quote! { #expr }
+            } else {
+              let mut expr = expr.to_token_stream(ctx);
+              if expr_prec > prec {
+                expr = quote! { (#expr) };
+              }
+              expr
+            };
 
             let ty = ty.to_token_stream(ctx);
             quote! { #expr as #ty }
