@@ -225,6 +225,7 @@ impl Type {
     matches!(self, Self::BuiltIn(BuiltInType::Void))
   }
 
+  /// Check if this is a pointer type.
   pub fn is_ptr(&self) -> bool {
     matches!(self, Self::Ptr { .. })
   }
