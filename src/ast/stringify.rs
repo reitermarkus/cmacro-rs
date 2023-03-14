@@ -27,7 +27,7 @@ pub struct Stringify {
 
 impl Stringify {
   /// Parse a stringification expression.
-  pub(crate) fn parse<'i, 'p, I>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
+  pub(crate) fn parse<'i, I>(tokens: &'i [I], ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputTake
@@ -48,7 +48,7 @@ impl Stringify {
     })(tokens)
   }
 
-  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {

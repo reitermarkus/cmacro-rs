@@ -158,9 +158,9 @@ impl BinaryExpr {
     self.op.precedence()
   }
 
-  pub(crate) fn finish<'g, C>(
+  pub(crate) fn finish<C>(
     &mut self,
-    ctx: &mut LocalContext<'g, C>,
+    ctx: &mut LocalContext<'_, C>,
   ) -> Result<(Option<Type>, Option<Type>), crate::Error>
   where
     C: CodegenContext,

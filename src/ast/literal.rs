@@ -95,7 +95,7 @@ impl Lit {
     ))(input)
   }
 
-  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -291,7 +291,7 @@ impl LitChar {
   }
 
   #[allow(unused_variables)]
-  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -455,7 +455,7 @@ impl LitString {
   }
 
   #[allow(unused_variables)]
-  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -601,7 +601,7 @@ impl LitFloat {
   }
 
   #[allow(unused_variables)]
-  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
@@ -840,7 +840,7 @@ impl LitInt {
   }
 
   #[allow(unused_variables)]
-  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {

@@ -128,7 +128,7 @@ where
   ))(input)
 }
 
-fn ty<'i, 'p, I>(input: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Type>
+fn ty<'i, I>(input: &'i [I], ctx: &ParseContext<'_>) -> IResult<&'i [I], Type>
 where
   I: Debug
     + InputTake
@@ -199,7 +199,7 @@ pub enum Type {
 
 impl Type {
   /// Parse a type.
-  pub(crate) fn parse<'i, 'p, I>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
+  pub(crate) fn parse<'i, I>(tokens: &'i [I], ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputTake
@@ -255,7 +255,7 @@ impl Type {
     }
   }
 
-  pub(crate) fn finish<'g, C>(&mut self, ctx: &mut LocalContext<'g, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
   where
     C: CodegenContext,
   {
