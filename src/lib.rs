@@ -106,20 +106,9 @@ impl VarMacro {
   where
     C: CodegenContext,
   {
+    let mut ctx = LocalContext::new(&self.name, &cx);
+
     let mut tokens = TokenStream::new();
-
-    let mut names = HashSet::new();
-    names.insert(self.name.clone());
-
-    let mut ctx = LocalContext {
-      root_name: self.name.clone(),
-      names,
-      arg_types: Default::default(),
-      arg_values: Default::default(),
-      export_as_macro: false,
-      global_context: &cx,
-    };
-
     let ty = self.value.finish(&mut ctx)?;
     self.value.to_tokens(&mut ctx, &mut tokens);
     let ty = ty.map(|ty| ty.to_token_stream(&mut ctx));
@@ -305,14 +294,7 @@ impl FnMacro {
     names.insert(self.name.clone());
 
     let arg_values = self.args.into_iter().zip(args.iter()).collect();
-    let mut ctx = LocalContext {
-      root_name: root_name.to_owned(),
-      names,
-      arg_types: Default::default(),
-      arg_values,
-      export_as_macro: false,
-      global_context: ctx.global_context,
-    };
+    let mut ctx = LocalContext::new_with_args(root_name, arg_values, ctx.global_context);
 
     self.body.finish(&mut ctx)?;
 
@@ -325,9 +307,6 @@ impl FnMacro {
     C: CodegenContext,
   {
     let mut tokens = TokenStream::new();
-
-    let mut names = HashSet::new();
-    names.insert(self.name.clone());
 
     let arg_types = self
       .args
@@ -344,14 +323,8 @@ impl FnMacro {
       })
       .collect::<Result<_, _>>()?;
 
-    let mut ctx = LocalContext {
-      root_name: self.name.clone(),
-      names,
-      arg_types,
-      arg_values: Default::default(),
-      export_as_macro: false,
-      global_context: &cx,
-    };
+    let mut ctx = LocalContext::new(&self.name, &cx);
+    ctx.arg_types = arg_types;
     let ret_ty = self.body.finish(&mut ctx)?;
 
     ctx.export_as_macro = ctx.export_as_macro

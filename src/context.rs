@@ -44,6 +44,33 @@ pub(crate) struct LocalContext<'g, C> {
   pub(crate) global_context: &'g C,
 }
 
+impl<'g, C> LocalContext<'g, C>
+where
+  C: CodegenContext,
+{
+  pub fn new(root_name: &str, cx: &'g C) -> Self {
+    let root_name = root_name.to_owned();
+
+    let mut names = HashSet::new();
+    names.insert(root_name.clone());
+
+    Self {
+      root_name,
+      names,
+      arg_types: Default::default(),
+      arg_values: Default::default(),
+      export_as_macro: false,
+      global_context: cx,
+    }
+  }
+
+  pub fn new_with_args(root_name: &str, arg_values: HashMap<String, &'g Expr>, cx: &'g C) -> Self {
+    let mut ctx = Self::new(root_name, cx);
+    ctx.arg_values = arg_values;
+    ctx
+  }
+}
+
 impl<'g, C> LocalContext<'g, C> {
   pub fn is_variadic(&self) -> bool {
     self.arg_types.contains_key("...")

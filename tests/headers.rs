@@ -14,7 +14,7 @@ fn location_in_scope(r: &SourceRange) -> bool {
   start.is_in_main_file() && !start.is_in_system_header() && location.file.is_some()
 }
 
-fn file_visit_macros<F: FnMut(&str, Option<&[&str]>, &[&str])>(file: &str, mut visitor: F) {
+fn file_visit_macros<F: FnMut(EntityKind, &str, Option<&[&str]>, &[&str])>(file: &str, mut visitor: F) {
   let clang = Clang::new().unwrap();
 
   let index = Index::new(&clang, false, true);
@@ -29,30 +29,49 @@ fn file_visit_macros<F: FnMut(&str, Option<&[&str]>, &[&str])>(file: &str, mut v
 
   let entity = tu.get_entity();
   entity.visit_children(|cur, _parent| {
-    if cur.get_kind() == EntityKind::MacroDefinition {
-      let range = cur.get_range().unwrap();
-      if !location_in_scope(&range) {
-        return EntityVisitResult::Continue
-      }
+    let range = cur.get_range().unwrap();
+    if !location_in_scope(&range) {
+      return EntityVisitResult::Continue
+    }
 
-      let mut tokens: Vec<_> = range.tokenize().into_iter().map(|token| token.get_spelling()).collect();
+    match cur.get_kind() {
+      kind @ EntityKind::FunctionDecl => {
+        let mut tokens = range.tokenize().into_iter().map(|token| token.get_spelling());
 
-      let name = tokens.remove(0);
+        let return_type = tokens.next().unwrap();
+        let name = tokens.next().unwrap();
+        tokens.next();
+        let args = tokens.take_while(|token| token != ")").collect::<Vec<_>>();
+        let args = args.iter().map(|t| t.as_str()).collect::<Vec<&str>>();
 
-      let args = if cur.is_function_like_macro() {
-        let n = tokens.iter().position(|t| t == ")").unwrap();
+        visitor(kind, &name, Some(args).as_deref(), &[&return_type])
+      },
+      kind @ EntityKind::MacroDefinition => {
+        let range = cur.get_range().unwrap();
+        if !location_in_scope(&range) {
+          return EntityVisitResult::Continue
+        }
 
-        let args = tokens.drain(0..(n + 1)).skip(1).take(n - 1).filter(|t| t != ",").collect::<Vec<_>>();
+        let mut tokens: Vec<_> = range.tokenize().into_iter().map(|token| token.get_spelling()).collect();
 
-        Some(args)
-      } else {
-        None
-      };
+        let name = tokens.remove(0);
 
-      let args = args.as_ref().map(|args| args.iter().map(|t| t.as_str()).collect::<Vec<&str>>());
-      let tokens = tokens.iter().map(|t| t.as_str()).collect::<Vec<&str>>();
+        let args = if cur.is_function_like_macro() {
+          let n = tokens.iter().position(|t| t == ")").unwrap();
 
-      visitor(&name, args.as_deref(), &tokens)
+          let args = tokens.drain(0..(n + 1)).skip(1).take(n - 1).filter(|t| t != ",").collect::<Vec<_>>();
+
+          Some(args)
+        } else {
+          None
+        };
+
+        let args = args.as_ref().map(|args| args.iter().map(|t| t.as_str()).collect::<Vec<&str>>());
+        let tokens = tokens.iter().map(|t| t.as_str()).collect::<Vec<&str>>();
+
+        visitor(kind, &name, args.as_deref(), &tokens)
+      },
+      _ => (),
     }
 
     EntityVisitResult::Continue
@@ -68,11 +87,16 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     #[derive(Debug, Clone, Default)]
     struct Context {
       pub macros: Vec<String>,
+      pub functions: HashMap<String, (Vec<String>, String)>,
       pub fn_macros: HashMap<String, FnMacro>,
       pub var_macros: HashMap<String, VarMacro>,
     }
 
     impl CodegenContext for Context {
+      fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
+        self.functions.get(name).cloned()
+      }
+
       fn function_macro(&self, name: &str) -> Option<&FnMacro> {
         self.fn_macros.get(name)
       }
@@ -84,16 +108,25 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let mut context = Context::default();
 
-    file_visit_macros(&header_path, |name, args, value| {
-      if let Some(args) = args {
-        if let Ok(fn_macro) = FnMacro::parse(name, args, value) {
-          context.fn_macros.insert(name.to_owned(), fn_macro);
+    file_visit_macros(&header_path, |kind, name, args, value| match kind {
+      EntityKind::FunctionDecl => {
+        context.functions.insert(
+          name.to_owned(),
+          (args.unwrap().into_iter().map(|&token| token.to_owned()).collect(), value[0].to_owned()),
+        );
+      },
+      EntityKind::MacroDefinition => {
+        if let Some(args) = args {
+          if let Ok(fn_macro) = FnMacro::parse(name, args, value) {
+            context.fn_macros.insert(name.to_owned(), fn_macro);
+          }
+        } else if let Ok(var_macro) = VarMacro::parse(name, value) {
+          context.var_macros.insert(name.to_owned(), var_macro);
         }
-      } else if let Ok(var_macro) = VarMacro::parse(name, value) {
-        context.var_macros.insert(name.to_owned(), var_macro);
-      }
 
-      context.macros.push(name.to_owned());
+        context.macros.push(name.to_owned());
+      },
+      _ => (),
     });
 
     let mut f = TokenStream::new();

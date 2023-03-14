@@ -1,5 +1,5 @@
 /// A parsing or codegen error.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
   /// Variable is unknown.
   UnknownVariable(String),
