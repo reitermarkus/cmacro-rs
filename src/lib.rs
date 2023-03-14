@@ -355,6 +355,7 @@ impl FnMacro {
     let ret_ty = self.body.finish(&mut ctx)?;
 
     ctx.export_as_macro = ctx.export_as_macro
+      || (ctx.function(&self.name).is_some() && ctx.function_macro(&self.name).is_some())
       || ctx.is_variadic()
       || !ctx.arg_types.iter().all(|(_, ty)| matches!(*ty, MacroArgType::Known(_)))
       || ret_ty.is_none();

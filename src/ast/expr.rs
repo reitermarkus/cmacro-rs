@@ -673,17 +673,13 @@ impl Expr {
         Ok(ty)
       },
       Self::FunctionCall(call) => {
-        if let Identifier::Literal(id) = &call.name {
-          if ctx.names.contains(id.as_str()) {
-            return Err(crate::Error::RecursiveDefinition(id.as_str().to_owned()))
-          }
-        }
-
         let ty = call.finish(ctx)?;
 
         if let Identifier::Literal(id) = &call.name {
           if !id.macro_arg {
-            if let Some(fn_macro) = ctx.function_macro(id.as_str()) {
+            if ctx.function(id.as_str()).is_some() {
+              return Ok(ty)
+            } else if let Some(fn_macro) = ctx.function_macro(id.as_str()) {
               let fn_macro = fn_macro.clone();
               match fn_macro.call(&ctx.root_name, &ctx.names, &call.args, ctx)? {
                 MacroBody::Statement(_) => return Err(crate::Error::UnsupportedExpression),
