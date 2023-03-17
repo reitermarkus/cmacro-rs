@@ -99,6 +99,46 @@ impl LitIdent {
   }
 }
 
+impl LitIdent {
+  /// Parse an identifier.
+  pub(crate) fn parse<'i, I, C>(tokens: &'i [I], ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
+  where
+    I: Debug
+      + InputIter<Item = C>
+      + InputTake
+      + InputLength
+      + Compare<&'static str>
+      + Slice<std::ops::RangeFrom<usize>>
+      + FindSubstring<&'static str>
+      + Clone,
+    C: AsChar,
+  {
+    map(identifier, |id| Self::map_raw(id, ctx))(tokens)
+  }
+
+  fn map_raw(raw_id: String, ctx: &ParseContext<'_>) -> Self {
+    let arg = if raw_id == "__VA_ARGS__" { "..." } else { raw_id.as_str() };
+    let macro_arg = ctx.args.contains(&arg);
+    LitIdent { id: raw_id, macro_arg }
+  }
+
+  /// Parse an identifier.
+  pub(crate) fn parse_concat<'i, I, C>(tokens: &'i [I], ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
+  where
+    I: Debug
+      + InputIter<Item = C>
+      + InputTake
+      + InputLength
+      + Compare<&'static str>
+      + Slice<std::ops::RangeFrom<usize>>
+      + FindSubstring<&'static str>
+      + Clone,
+    C: AsChar,
+  {
+    map(concat_identifier, |id| Self::map_raw(id, ctx))(tokens)
+  }
+}
+
 impl From<&str> for LitIdent {
   fn from(s: &str) -> Self {
     Self { id: s.to_owned(), macro_arg: false }
@@ -137,16 +177,10 @@ impl Identifier {
       + Clone,
     C: AsChar,
   {
-    fn map_raw_ident(id: String, ctx: &ParseContext<'_>) -> LitIdent {
-      let arg = if id == "__VA_ARGS__" { "..." } else { id.as_str() };
-      let macro_arg = ctx.args.contains(&arg);
-      LitIdent { id, macro_arg }
-    }
-
-    let (tokens, id) = map(identifier, |id| Self::Literal(map_raw_ident(id, ctx)))(tokens)?;
+    let (tokens, id) = map(|tokens| LitIdent::parse(tokens, ctx), Self::Literal)(tokens)?;
 
     fold_many0(
-      preceded(delimited(meta::<I>, token::<I>("##"), meta::<I>), map(concat_identifier, |id| map_raw_ident(id, ctx))),
+      preceded(delimited(meta::<I>, token::<I>("##"), meta::<I>), |tokens| LitIdent::parse_concat(tokens, ctx)),
       move || id.clone(),
       |acc, item| match acc {
         Self::Literal(id) => Self::Concat(vec![id, item]),
@@ -254,43 +288,20 @@ mod tests {
 
   #[test]
   fn parse_literal() {
-    let (_, id) = Identifier::parse(&["asdf"], &CTX).unwrap();
-    assert_eq!(id, Identifier::Literal("asdf".into()));
+    let (_, id) = LitIdent::parse(&["asdf"], &CTX).unwrap();
+    assert_eq!(id, "asdf".into());
 
-    let (_, id) = Identifier::parse(&["Δx"], &CTX).unwrap();
-    assert_eq!(id, Identifier::Literal("Δx".into()));
+    let (_, id) = LitIdent::parse(&["Δx"], &CTX).unwrap();
+    assert_eq!(id, "Δx".into());
 
-    let (_, id) = Identifier::parse(&["Δx".as_bytes()], &CTX).unwrap();
-    assert_eq!(id, Identifier::Literal("Δx".into()));
+    let (_, id) = LitIdent::parse(&["Δx".as_bytes()], &CTX).unwrap();
+    assert_eq!(id, "Δx".into());
 
-    let (_, id) = Identifier::parse(&["_123"], &CTX).unwrap();
-    assert_eq!(id, Identifier::Literal("_123".into()));
+    let (_, id) = LitIdent::parse(&["_123"], &CTX).unwrap();
+    assert_eq!(id, "_123".into());
 
-    let (_, id) = Identifier::parse(&["__INT_MAX__"], &CTX).unwrap();
-    assert_eq!(id, Identifier::Literal("__INT_MAX__".into()));
-  }
-
-  #[test]
-  fn parse_concat() {
-    let ctx = ParseContext::fn_macro("IDENTIFIER", &["abc"]);
-
-    let (_, id) = Identifier::parse(&["abc", "##", "def"], &ctx).unwrap();
-    assert_eq!(id, Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "def".into()]));
-
-    let (_, id) = Identifier::parse(&["abc", "##", "def", "##", "ghi"], &ctx).unwrap();
-    assert_eq!(
-      id,
-      Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "def".into(), "ghi".into()])
-    );
-
-    let (_, id) = Identifier::parse(&["abc", "##", "_def"], &ctx).unwrap();
-    assert_eq!(id, Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "_def".into()]));
-
-    let (_, id) = Identifier::parse(&["abc", "##", "123"], &ctx).unwrap();
-    assert_eq!(id, Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "123".into()]));
-
-    let (_, id) = Identifier::parse(&["__INT", "##", "_MAX__"], &CTX).unwrap();
-    assert_eq!(id, Identifier::Concat(vec!["__INT".into(), "_MAX__".into()]));
+    let (_, id) = LitIdent::parse(&["__INT_MAX__"], &CTX).unwrap();
+    assert_eq!(id, "__INT_MAX__".into());
   }
 
   #[test]

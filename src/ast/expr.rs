@@ -1128,6 +1128,37 @@ mod tests {
   }
 
   #[test]
+  fn parse_concat_ident() {
+    let ctx = ParseContext::fn_macro("IDENTIFIER", &["abc"]);
+
+    let (_, id) = Expr::parse(&["abc", "##", "def"], &ctx).unwrap();
+    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(@abc), lit_id!(def)]) });
+
+    let (_, id) = Expr::parse(&["abc", "##", "def", "##", "ghi"], &ctx).unwrap();
+    assert_eq!(
+      id,
+      Expr::Variable {
+        name: Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "def".into(), "ghi".into()])
+      }
+    );
+
+    let (_, id) = Expr::parse(&["abc", "##", "_def"], &ctx).unwrap();
+    assert_eq!(
+      id,
+      Expr::Variable { name: Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "_def".into()]) }
+    );
+
+    let (_, id) = Expr::parse(&["abc", "##", "123"], &ctx).unwrap();
+    assert_eq!(
+      id,
+      Expr::Variable { name: Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "123".into()]) }
+    );
+
+    let (_, id) = Expr::parse(&["__INT", "##", "_MAX__"], &CTX).unwrap();
+    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec!["__INT".into(), "_MAX__".into()]) });
+  }
+
+  #[test]
   fn parse_access() {
     let (_, expr) = Expr::parse(&["a", ".", "b"], &CTX).unwrap();
     assert_eq!(expr, Expr::FieldAccess { expr: Box::new(var!(a)), field: id!(b) });

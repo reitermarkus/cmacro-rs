@@ -1,14 +1,27 @@
-macro_rules! id {
+macro_rules! lit_id {
   (@ $name:ident) => {
-    $crate::ast::Identifier::Literal($crate::ast::LitIdent { id: stringify!($name).into(), macro_arg: true })
+    $crate::ast::LitIdent { id: stringify!($name).into(), macro_arg: true }
   };
   ($name:ident) => {
-    $crate::ast::Identifier::Literal($crate::ast::LitIdent { id: stringify!($name).into(), macro_arg: false })
+    $crate::ast::LitIdent { id: stringify!($name).into(), macro_arg: false }
+  };
+}
+pub(crate) use lit_id;
+
+macro_rules! id {
+  (@ $name:ident) => {
+    $crate::ast::Identifier::Literal($crate::ast::lit_id!(@ $name))
+  };
+  ($name:ident) => {
+    $crate::ast::Identifier::Literal($crate::ast::lit_id!($name))
   };
 }
 pub(crate) use id;
 
 macro_rules! var {
+  (@ $name:ident) => {
+    $crate::ast::Expr::Variable { name: $crate::ast::id!($name) }
+  };
   ($name:ident) => {
     $crate::ast::Expr::Variable { name: $crate::ast::id!($name) }
   };
