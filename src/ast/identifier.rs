@@ -216,7 +216,13 @@ impl Identifier {
       Self::Concat(ids) => {
         let trait_prefix = ctx.trait_prefix();
 
-        let ids = ids.iter().map(|id| Self::Literal(id.to_owned()).to_token_stream(ctx));
+        let ids = ids.iter().map(|id| {
+          if let Some(arg_value) = ctx.arg_value(id.as_str()).cloned() {
+            arg_value.to_token_stream(ctx)
+          } else {
+            Self::Literal(id.to_owned()).to_token_stream(ctx)
+          }
+        });
         quote! { #trait_prefix concat_idents!(#(#ids),*) }
       },
     }
