@@ -93,6 +93,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
       }
     }
 
+    eprintln!("Testing header {}", header_name);
+
     #[derive(Debug, Clone, Default)]
     struct Context {
       pub macros: Vec<String>,

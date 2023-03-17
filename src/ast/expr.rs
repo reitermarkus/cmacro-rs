@@ -638,36 +638,38 @@ impl Expr {
 
         match name {
           Identifier::Literal(name) => {
-            let name = name.as_str();
-
-            if let Some(arg_ty) = ctx.arg_type_mut(name) {
-              if let MacroArgType::Known(arg_ty) = arg_ty {
-                return Ok(Some(arg_ty.clone()))
-              }
-            } else if let Some(arg_value) = ctx.arg_value(name) {
-              *self = arg_value.clone();
-
-              // We are inside a function call evaluation, so the type cannot be evaluated yet.
-              return Ok(None)
-            } else {
-              // Expand variable-like macro.
-              match ctx.eval_variable(name) {
-                Ok((expr, ty)) => {
-                  *self = expr;
+            if name.macro_arg {
+              if let Some(arg_ty) = ctx.arg_type_mut(name.as_str()) {
+                if let MacroArgType::Known(arg_ty) = arg_ty {
+                  return Ok(Some(arg_ty.clone()))
+                } else {
                   return Ok(ty)
-                },
-                Err(err) => {
-                  // Built-in macros.
-                  return match name {
-                    "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
-                    "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
-                    "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
-                    "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
-                    "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
-                    _ => Err(err),
-                  }
-                },
+                }
+              } else if let Some(arg_value) = ctx.arg_value(name.as_str()) {
+                *self = arg_value.clone();
+
+                // We are inside a function call evaluation, so the type cannot be evaluated yet.
+                return Ok(None)
               }
+            }
+
+            // Expand variable-like macro.
+            match ctx.eval_variable(name.as_str()) {
+              Ok((expr, ty)) => {
+                *self = expr;
+                return Ok(ty)
+              },
+              Err(err) => {
+                // Built-in macros.
+                return match name.as_str() {
+                  "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
+                  "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
+                  "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
+                  "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
+                  "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
+                  _ => Err(err),
+                }
+              },
             }
           },
           Identifier::Concat(ids) => {
@@ -688,6 +690,27 @@ impl Expr {
             if let Ok((_, literal)) = parse_literal(tokens.as_slice()) {
               *self = Self::Literal(literal);
               return self.finish(ctx)
+            } else {
+              let name = literal.as_str();
+
+              // Expand variable-like macro.
+              match ctx.eval_variable(name) {
+                Ok((expr, ty)) => {
+                  *self = expr;
+                  return Ok(ty)
+                },
+                Err(err) => {
+                  // Built-in macros.
+                  return match name {
+                    "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
+                    "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
+                    "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
+                    "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
+                    "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
+                    _ => Err(err),
+                  }
+                },
+              }
             }
           },
         }

@@ -149,22 +149,8 @@ impl Identifier {
       preceded(delimited(meta::<I>, token::<I>("##"), meta::<I>), map(concat_identifier, |id| map_raw_ident(id, ctx))),
       move || id.clone(),
       |acc, item| match acc {
-        Self::Literal(mut id) => {
-          if !id.macro_arg && !item.macro_arg {
-            id.id.push_str(item.as_str());
-            Self::Literal(id)
-          } else {
-            Self::Concat(vec![id, item])
-          }
-        },
+        Self::Literal(mut id) => Self::Concat(vec![id, item]),
         Self::Concat(mut ids) => {
-          if let Some(last) = ids.last_mut() {
-            if !last.macro_arg && !item.macro_arg {
-              last.id.push_str(item.as_str());
-              return Self::Concat(ids)
-            }
-          }
-
           ids.push(item);
           Self::Concat(ids)
         },
@@ -253,15 +239,7 @@ impl Identifier {
       Self::Concat(ids) => {
         let trait_prefix = ctx.trait_prefix();
 
-        let ids = ids.iter().map(|id| {
-          if id.macro_arg {
-            if let Some(arg_value) = ctx.arg_value(id.as_str()).cloned() {
-              return arg_value.to_token_stream(ctx)
-            }
-          }
-
-          Self::Literal(id.to_owned()).to_token_stream(ctx)
-        });
+        let ids = ids.iter().map(|id| Self::Literal(id.to_owned()).to_token_stream(ctx));
         quote! { #trait_prefix concat_idents!(#(#ids),*) }
       },
     }
@@ -300,7 +278,10 @@ mod tests {
     assert_eq!(id, Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "def".into()]));
 
     let (_, id) = Identifier::parse(&["abc", "##", "def", "##", "ghi"], &ctx).unwrap();
-    assert_eq!(id, Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "defghi".into()]));
+    assert_eq!(
+      id,
+      Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "def".into(), "ghi".into()])
+    );
 
     let (_, id) = Identifier::parse(&["abc", "##", "_def"], &ctx).unwrap();
     assert_eq!(id, Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "_def".into()]));
@@ -309,7 +290,7 @@ mod tests {
     assert_eq!(id, Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "123".into()]));
 
     let (_, id) = Identifier::parse(&["__INT", "##", "_MAX__"], &CTX).unwrap();
-    assert_eq!(id, Identifier::Literal("__INT_MAX__".into()));
+    assert_eq!(id, Identifier::Concat(vec!["__INT".into(), "_MAX__".into()]));
   }
 
   #[test]
