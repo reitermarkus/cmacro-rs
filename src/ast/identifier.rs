@@ -117,8 +117,12 @@ impl LitIdent {
   }
 
   fn map_raw(raw_id: String, ctx: &ParseContext<'_>) -> Self {
-    let arg = if raw_id == "__VA_ARGS__" { "..." } else { raw_id.as_str() };
-    let macro_arg = ctx.args.contains(&arg);
+    let mut macro_arg = ctx.args.contains(&raw_id.as_str());
+
+    if raw_id == "__VA_ARGS__" {
+      macro_arg |= ctx.args.contains(&"...")
+    }
+
     LitIdent { id: raw_id, macro_arg }
   }
 
@@ -197,50 +201,80 @@ impl Identifier {
     C: CodegenContext,
   {
     if let Self::Concat(ref mut ids) = self {
-      *ids = ids
-        .drain(..)
-        .into_iter()
-        .flat_map(|id| {
-          if id.macro_arg {
-            if let Some(arg_value) = ctx.arg_value(id.as_str()) {
-              match arg_value {
-                Expr::Literal(Lit::Int(LitInt { value, suffix })) => {
-                  let lit = LitIdent { id: value.to_string(), macro_arg: false };
-                  if let Some(suffix) = suffix.and_then(|s| s.suffix()) {
-                    return vec![lit, LitIdent { id: suffix.to_owned(), macro_arg: false }].into_iter()
-                  } else {
-                    return vec![lit].into_iter()
-                  }
-                },
-                Expr::Literal(Lit::Float(LitFloat::Float(value))) => {
-                  return vec![
-                    LitIdent { id: value.to_string(), macro_arg: false },
-                    LitIdent { id: "f".to_owned(), macro_arg: false },
-                  ]
-                  .into_iter()
-                },
-                Expr::Literal(Lit::Float(LitFloat::Double(value))) => {
-                  return vec![LitIdent { id: value.to_string(), macro_arg: false }].into_iter()
-                },
-                Expr::Literal(Lit::Float(LitFloat::LongDouble(value))) => {
-                  return vec![
-                    LitIdent { id: value.to_string(), macro_arg: false },
-                    LitIdent { id: "l".to_owned(), macro_arg: false },
-                  ]
-                  .into_iter()
-                },
-                _ => (),
-              }
+      let mut new_ids = vec![];
+
+      let mut last_id: Option<String> = None;
+
+      for id in ids.drain(..) {
+        if id.macro_arg {
+          if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
+            *arg_type = MacroArgType::Ident;
+
+            if let Some(last_id) = last_id.take() {
+              new_ids.push(LitIdent { id: last_id, macro_arg: false });
             }
 
-            if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
-              *arg_type = MacroArgType::Ident;
-            }
+            new_ids.push(id);
+            continue
           }
 
-          vec![id].into_iter()
-        })
-        .collect();
+          if let Some(arg_value) = ctx.arg_value(id.as_str()) {
+            match arg_value {
+              Expr::Literal(Lit::Int(LitInt { value, suffix })) => {
+                let last_id = last_id.get_or_insert_with(String::new);
+
+                last_id.push_str(&value.to_string());
+                if let Some(suffix) = suffix.and_then(|s| s.suffix()) {
+                  last_id.push_str(suffix);
+                }
+              },
+              Expr::Literal(Lit::Float(LitFloat::Float(value))) => {
+                let last_id = last_id.get_or_insert_with(String::new);
+                last_id.push_str(&format!("{}f", value));
+              },
+              Expr::Literal(Lit::Float(LitFloat::Double(value))) => {
+                let last_id = last_id.get_or_insert_with(String::new);
+                last_id.push_str(&value.to_string());
+              },
+              Expr::Literal(Lit::Float(LitFloat::LongDouble(value))) => {
+                let last_id = last_id.get_or_insert_with(String::new);
+                last_id.push_str(&format!("{}l", value));
+              },
+              Expr::Variable { name: Identifier::Literal(id) } => {
+                if let Some(ref mut last_id) = last_id {
+                  last_id.push_str(id.as_str())
+                } else {
+                  last_id = Some(id.as_str().to_owned());
+                }
+              },
+              _ => unimplemented!(),
+            }
+
+            continue
+          }
+
+          if let Some(last_id) = last_id.take() {
+            new_ids.push(LitIdent { id: last_id, macro_arg: false });
+          }
+
+          new_ids.push(id);
+
+          continue
+        }
+
+        let last_id = last_id.get_or_insert_with(String::new);
+        last_id.push_str(id.as_str());
+      }
+
+      if let Some(last_id) = last_id.take() {
+        new_ids.push(LitIdent { id: last_id, macro_arg: false });
+      }
+
+      if new_ids.len() == 1 {
+        *self = Self::Literal(new_ids.remove(0));
+      } else {
+        *ids = new_ids;
+      }
     }
 
     // An identifier does not have a type.

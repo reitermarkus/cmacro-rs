@@ -657,7 +657,7 @@ impl Expr {
             match ctx.eval_variable(name.as_str()) {
               Ok((expr, ty)) => {
                 *self = expr;
-                return Ok(ty)
+                Ok(ty)
               },
               Err(err) => {
                 // Built-in macros.
@@ -667,34 +667,22 @@ impl Expr {
                   "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
                   "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
                   "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
-                  _ => Err(err),
+                  name => {
+                    let tokens = [name];
+                    let parse_literal = |tokens| all_consuming(Lit::parse)(tokens);
+
+                    if let Ok((_, literal)) = parse_literal(tokens.as_slice()) {
+                      *self = Self::Literal(literal);
+                      return self.finish(ctx)
+                    }
+
+                    Err(err)
+                  },
                 }
               },
             }
           },
-          Identifier::Concat(ids) => {
-            let mut literal = String::new();
-
-            for id in ids {
-              if id.macro_arg {
-                return Ok(ty)
-              }
-
-              literal.push_str(id.as_str());
-            }
-
-            let tokens = [literal.as_str()];
-
-            // TODO: Parse all literals instead of only identifiers in concatenation.
-            let parse_literal = |tokens| all_consuming(Lit::parse)(tokens);
-            if let Ok((_, literal)) = parse_literal(tokens.as_slice()) {
-              *self = Self::Literal(literal);
-              return self.finish(ctx)
-            }
-
-            *self = Self::Variable { name: Identifier::Literal(LitIdent { id: literal, macro_arg: false }) };
-            return self.finish(ctx)
-          },
+          Identifier::Concat(_) => Ok(None),
         }
       },
       Self::FunctionCall(call) => {
@@ -1135,27 +1123,21 @@ mod tests {
     assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(@abc), lit_id!(def)]) });
 
     let (_, id) = Expr::parse(&["abc", "##", "def", "##", "ghi"], &ctx).unwrap();
-    assert_eq!(
-      id,
-      Expr::Variable {
-        name: Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "def".into(), "ghi".into()])
-      }
-    );
+    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(@ abc), lit_id!(def), lit_id!(ghi)]) });
 
     let (_, id) = Expr::parse(&["abc", "##", "_def"], &ctx).unwrap();
-    assert_eq!(
-      id,
-      Expr::Variable { name: Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "_def".into()]) }
-    );
+    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(@ abc), lit_id!(_def)]) });
 
     let (_, id) = Expr::parse(&["abc", "##", "123"], &ctx).unwrap();
     assert_eq!(
       id,
-      Expr::Variable { name: Identifier::Concat(vec![LitIdent { id: "abc".into(), macro_arg: true }, "123".into()]) }
+      Expr::Variable {
+        name: Identifier::Concat(vec![lit_id!(@ abc), LitIdent { id: "123".into(), macro_arg: false },])
+      }
     );
 
     let (_, id) = Expr::parse(&["__INT", "##", "_MAX__"], &CTX).unwrap();
-    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec!["__INT".into(), "_MAX__".into()]) });
+    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(__INT), lit_id!(_MAX__)]) });
   }
 
   #[test]
