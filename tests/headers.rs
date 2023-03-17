@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let output_path = entry.as_path().with_extension("rs");
 
     if let Some(ref test_name) = test_name {
-      if !header_name.contains(test_name) {
+      if !test_name.starts_with("-") && !header_name.contains(test_name) {
         continue
       }
     }
