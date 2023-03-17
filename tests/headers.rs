@@ -126,11 +126,23 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
       },
       EntityKind::MacroDefinition => {
         if let Some(args) = args {
-          if let Ok(fn_macro) = FnMacro::parse(name, args, value) {
-            context.fn_macros.insert(name.to_owned(), fn_macro);
+          match FnMacro::parse(name, args, value) {
+            Ok(fn_macro) => {
+              context.fn_macros.insert(name.to_owned(), fn_macro);
+            },
+            Err(err) => {
+              eprintln!("Failed to parse macro {}({}): {}", name, format!("({})", args.join(", ")), err);
+            },
           }
-        } else if let Ok(var_macro) = VarMacro::parse(name, value) {
-          context.var_macros.insert(name.to_owned(), var_macro);
+        } else {
+          match VarMacro::parse(name, value) {
+            Ok(var_macro) => {
+              context.var_macros.insert(name.to_owned(), var_macro);
+            },
+            Err(err) => {
+              eprintln!("Failed to parse macro {}: {}", name, err)
+            },
+          }
         }
 
         context.macros.push(name.to_owned());
