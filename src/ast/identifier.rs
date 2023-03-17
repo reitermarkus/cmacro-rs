@@ -16,7 +16,7 @@ use super::{
   tokens::{meta, take_one, token},
   Type,
 };
-use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext};
+use crate::{CodegenContext, Expr, Lit, LitFloat, LitInt, LocalContext, MacroArgType, ParseContext};
 
 pub(crate) fn identifier<I>(tokens: &[I]) -> IResult<&[I], String>
 where
@@ -177,13 +177,50 @@ impl Identifier {
     C: CodegenContext,
   {
     if let Self::Concat(ref mut ids) = self {
-      for id in ids {
-        if id.macro_arg {
-          if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
-            *arg_type = MacroArgType::Ident;
+      *ids = ids
+        .drain(..)
+        .into_iter()
+        .flat_map(|id| {
+          if id.macro_arg {
+            if let Some(arg_value) = ctx.arg_value(id.as_str()) {
+              match arg_value {
+                Expr::Literal(Lit::Int(LitInt { value, suffix })) => {
+                  let lit = LitIdent { id: value.to_string(), macro_arg: false };
+                  if let Some(suffix) = suffix.and_then(|s| s.suffix()) {
+                    return vec![lit, LitIdent { id: suffix.to_owned(), macro_arg: false }].into_iter()
+                  } else {
+                    return vec![lit].into_iter()
+                  }
+                },
+                Expr::Literal(Lit::Float(LitFloat::Float(value))) => {
+                  return vec![
+                    LitIdent { id: value.to_string(), macro_arg: false },
+                    LitIdent { id: "f".to_owned(), macro_arg: false },
+                  ]
+                  .into_iter()
+                },
+                Expr::Literal(Lit::Float(LitFloat::Double(value))) => {
+                  return vec![LitIdent { id: value.to_string(), macro_arg: false }].into_iter()
+                },
+                Expr::Literal(Lit::Float(LitFloat::LongDouble(value))) => {
+                  return vec![
+                    LitIdent { id: value.to_string(), macro_arg: false },
+                    LitIdent { id: "l".to_owned(), macro_arg: false },
+                  ]
+                  .into_iter()
+                },
+                _ => (),
+              }
+            }
+
+            if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
+              *arg_type = MacroArgType::Ident;
+            }
           }
-        }
-      }
+
+          vec![id].into_iter()
+        })
+        .collect();
     }
 
     // An identifier does not have a type.
@@ -217,11 +254,13 @@ impl Identifier {
         let trait_prefix = ctx.trait_prefix();
 
         let ids = ids.iter().map(|id| {
-          if let Some(arg_value) = ctx.arg_value(id.as_str()).cloned() {
-            arg_value.to_token_stream(ctx)
-          } else {
-            Self::Literal(id.to_owned()).to_token_stream(ctx)
+          if id.macro_arg {
+            if let Some(arg_value) = ctx.arg_value(id.as_str()).cloned() {
+              return arg_value.to_token_stream(ctx)
+            }
           }
+
+          Self::Literal(id.to_owned()).to_token_stream(ctx)
         });
         quote! { #trait_prefix concat_idents!(#(#ids),*) }
       },

@@ -46,8 +46,30 @@ pub enum BuiltInType {
   LongLong,
   /// `unsigned long long`
   ULongLong,
+  /// `size_t`
+  SizeT,
+  /// `ssize_t`
+  SSizeT,
   /// `void`
   Void,
+}
+
+impl BuiltInType {
+  /// Return the suffix used for literals of this type.
+  pub fn suffix(&self) -> Option<&'static str> {
+    match self {
+      Self::Float => Some("f"),
+      Self::LongDouble => Some("l"),
+      Self::UInt => Some("u"),
+      Self::ULong => Some("ul"),
+      Self::Long => Some("l"),
+      Self::ULongLong => Some("ull"),
+      Self::LongLong => Some("ll"),
+      Self::SizeT => Some("uz"),
+      Self::SSizeT => Some("z"),
+      _ => None,
+    }
+  }
 }
 
 impl ToTokens for BuiltInType {
@@ -68,6 +90,8 @@ impl ToTokens for BuiltInType {
       Self::ULong => quote! { c_ulong },
       Self::LongLong => quote! { c_longlong },
       Self::ULongLong => quote! { c_ulonglong },
+      Self::SizeT => quote! { size_t },
+      Self::SSizeT => quote! { ssize_t },
       Self::Void => quote! { c_void },
     })
   }

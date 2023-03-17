@@ -5,7 +5,7 @@ use std::{
 
 use nom::{
   branch::alt,
-  combinator::{map, map_res, value},
+  combinator::{all_consuming, map, map_res, value},
   multi::{fold_many0, separated_list0},
   sequence::{delimited, pair, preceded, terminated, tuple},
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
@@ -636,38 +636,60 @@ impl Expr {
       Self::Variable { ref mut name } => {
         let ty = name.finish(ctx)?;
 
-        if let Identifier::Literal(name) = name {
-          let name = name.as_str();
+        match name {
+          Identifier::Literal(name) => {
+            let name = name.as_str();
 
-          if let Some(arg_ty) = ctx.arg_type_mut(name) {
-            if let MacroArgType::Known(arg_ty) = arg_ty {
-              return Ok(Some(arg_ty.clone()))
+            if let Some(arg_ty) = ctx.arg_type_mut(name) {
+              if let MacroArgType::Known(arg_ty) = arg_ty {
+                return Ok(Some(arg_ty.clone()))
+              }
+            } else if let Some(arg_value) = ctx.arg_value(name) {
+              *self = arg_value.clone();
+
+              // We are inside a function call evaluation, so the type cannot be evaluated yet.
+              return Ok(None)
+            } else {
+              // Expand variable-like macro.
+              match ctx.eval_variable(name) {
+                Ok((expr, ty)) => {
+                  *self = expr;
+                  return Ok(ty)
+                },
+                Err(err) => {
+                  // Built-in macros.
+                  return match name {
+                    "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
+                    "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
+                    "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
+                    "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
+                    "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
+                    _ => Err(err),
+                  }
+                },
+              }
             }
-          } else if let Some(arg_value) = ctx.arg_value(name) {
-            *self = arg_value.clone();
+          },
+          Identifier::Concat(ids) => {
+            let mut literal = String::new();
 
-            // We are inside a function call evaluation, so the type cannot be evaluated yet.
-            return Ok(None)
-          } else {
-            // Expand variable-like macro.
-            match ctx.eval_variable(name) {
-              Ok((expr, ty)) => {
-                *self = expr;
+            for id in ids {
+              if id.macro_arg {
                 return Ok(ty)
-              },
-              Err(err) => {
-                // Built-in macros.
-                return match name {
-                  "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
-                  "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
-                  "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
-                  "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
-                  "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
-                  _ => Err(err),
-                }
-              },
+              }
+
+              literal.push_str(id.as_str());
             }
-          }
+
+            let tokens = [literal.as_str()];
+
+            // TODO: Parse all literals instead of only identifiers in concatenation.
+            let parse_literal = |tokens| all_consuming(Lit::parse)(tokens);
+            if let Ok((_, literal)) = parse_literal(tokens.as_slice()) {
+              *self = Self::Literal(literal);
+              return self.finish(ctx)
+            }
+          },
         }
 
         Ok(ty)
