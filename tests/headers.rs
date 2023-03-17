@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, env, fs};
 
 use clang::{source::SourceRange, Clang, EntityKind, EntityVisitResult, Index};
 use glob::glob;
@@ -79,10 +79,19 @@ fn file_visit_macros<F: FnMut(EntityKind, &str, Option<&[&str]>, &[&str])>(file:
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
+  let test_name: Option<String> = env::args().skip(1).next();
+
   for entry in glob("./tests/fixtures/*.h").unwrap() {
     let entry = entry?;
+    let header_name = entry.as_path().file_stem().and_then(|s| s.to_str()).unwrap();
     let header_path = entry.as_path().display().to_string();
     let output_path = entry.as_path().with_extension("rs");
+
+    if let Some(ref test_name) = test_name {
+      if !header_name.contains(test_name) {
+        continue
+      }
+    }
 
     #[derive(Debug, Clone, Default)]
     struct Context {
