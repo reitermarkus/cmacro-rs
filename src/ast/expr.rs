@@ -690,32 +690,12 @@ impl Expr {
             if let Ok((_, literal)) = parse_literal(tokens.as_slice()) {
               *self = Self::Literal(literal);
               return self.finish(ctx)
-            } else {
-              let name = literal.as_str();
-
-              // Expand variable-like macro.
-              match ctx.eval_variable(name) {
-                Ok((expr, ty)) => {
-                  *self = expr;
-                  return Ok(ty)
-                },
-                Err(err) => {
-                  // Built-in macros.
-                  return match name {
-                    "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
-                    "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
-                    "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
-                    "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
-                    "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
-                    _ => Err(err),
-                  }
-                },
-              }
             }
+
+            *self = Self::Variable { name: Identifier::Literal(LitIdent { id: literal, macro_arg: false }) };
+            return self.finish(ctx)
           },
         }
-
-        Ok(ty)
       },
       Self::FunctionCall(call) => {
         let ty = call.finish(ctx)?;

@@ -149,7 +149,7 @@ impl Identifier {
       preceded(delimited(meta::<I>, token::<I>("##"), meta::<I>), map(concat_identifier, |id| map_raw_ident(id, ctx))),
       move || id.clone(),
       |acc, item| match acc {
-        Self::Literal(mut id) => Self::Concat(vec![id, item]),
+        Self::Literal(id) => Self::Concat(vec![id, item]),
         Self::Concat(mut ids) => {
           ids.push(item);
           Self::Concat(ids)
