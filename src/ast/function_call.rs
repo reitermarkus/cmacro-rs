@@ -71,6 +71,8 @@ impl FunctionCall {
             }
           }
         }
+      } else {
+        ctx.export_as_macro = true;
       }
     }
 

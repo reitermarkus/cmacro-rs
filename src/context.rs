@@ -100,7 +100,7 @@ where
     self.arg_values.get(name).copied()
   }
 
-  pub fn eval_variable(&self, name: &str) -> Result<(Expr, Option<Type>), crate::Error> {
+  pub fn eval_variable(&mut self, name: &str) -> Result<(Expr, Option<Type>), crate::Error> {
     if self.names.contains(name) {
       return Err(crate::Error::RecursiveDefinition(name.to_owned()))
     }
@@ -120,10 +120,16 @@ where
     match self.variable_macro(name).map(|var_macro| var_macro.value.clone()) {
       Some(mut expr) => {
         let ty = expr.finish(&mut ctx)?;
+        self.export_as_macro |= ctx.export_as_macro;
+
         Ok((expr, ty))
       },
       None if ctx.is_variable_macro() => Err(crate::Error::UnknownVariable(name.to_owned())),
-      None => Ok((Expr::Variable { name: Identifier::Literal(LitIdent { id: name.to_owned(), macro_arg: false }) }, None)),
+      None => {
+        self.export_as_macro = true;
+
+        Ok((Expr::Variable { name: Identifier::Literal(LitIdent { id: name.to_owned(), macro_arg: false }) }, None))
+      },
     }
   }
 
