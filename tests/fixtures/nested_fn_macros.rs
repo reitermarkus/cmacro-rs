@@ -18,6 +18,15 @@ pub use __cmacro__f2 as f2;
 
 #[doc(hidden)]
 #[macro_export]
+macro_rules! __cmacro__f3 {
+  ($x:expr) => {
+    x + x
+  };
+}
+pub use __cmacro__f3 as f3;
+
+#[doc(hidden)]
+#[macro_export]
 macro_rules! __cmacro__f4 {
   ($x:expr, $y:expr, $z:expr) => {
     ($x + $y) * $z

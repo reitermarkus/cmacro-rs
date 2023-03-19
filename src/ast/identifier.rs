@@ -241,13 +241,28 @@ impl Identifier {
                 last_id.push_str(&format!("{}l", value));
               },
               Expr::Variable { name: Identifier::Literal(id) } => {
-                if let Some(ref mut last_id) = last_id {
+                if id.macro_arg {
+                  if let Some(last_id) = last_id.take() {
+                    new_ids.push(LitIdent { id: last_id, macro_arg: false });
+                  }
+
+                  new_ids.push(id.clone())
+                } else if let Some(ref mut last_id) = last_id {
                   last_id.push_str(id.as_str())
                 } else {
                   last_id = Some(id.as_str().to_owned());
                 }
               },
-              _ => unimplemented!(),
+              Expr::Variable { name: Identifier::Concat(ids) } => {
+                if let Some(last_id) = last_id.take() {
+                  new_ids.push(LitIdent { id: last_id, macro_arg: false });
+                }
+
+                for id in ids {
+                  new_ids.push(id.clone());
+                }
+              },
+              _ => return Err(crate::Error::UnsupportedExpression),
             }
 
             continue

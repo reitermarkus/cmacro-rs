@@ -122,7 +122,8 @@ where
         let ty = expr.finish(&mut ctx)?;
         Ok((expr, ty))
       },
-      None => Err(crate::Error::UnknownVariable(name.to_owned())),
+      None if ctx.is_variable_macro() => Err(crate::Error::UnknownVariable(name.to_owned())),
+      None => Ok((Expr::Variable { name: Identifier::Literal(LitIdent { id: name.to_owned(), macro_arg: false }) }, None)),
     }
   }
 
