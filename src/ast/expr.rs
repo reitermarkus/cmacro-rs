@@ -651,6 +651,8 @@ impl Expr {
                 // We are inside a function call evaluation, so the type cannot be evaluated yet.
                 return Ok(None)
               }
+
+              return Ok(None)
             }
 
             // Expand variable-like macro.

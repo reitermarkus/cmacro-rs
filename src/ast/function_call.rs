@@ -101,6 +101,10 @@ impl FunctionCall {
         let arg = arg.to_token_stream(ctx);
         quote! { #arg }
       },
+      arg @ Expr::Variable { name: Identifier::Literal(id) } if id.as_str() == "__VA_ARGS__" && id.macro_arg => {
+        let arg = arg.to_token_stream(ctx);
+        quote! { #arg }
+      },
       // Exporting as a function means we inferred the types of the macro arguments,
       // so no `.into()` is needed in this case.
       arg @ Expr::Variable { name: Identifier::Literal(id) } if !ctx.export_as_macro && id.macro_arg => {
