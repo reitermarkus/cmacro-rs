@@ -114,8 +114,8 @@ impl VarMacro {
 
     // TODO: Move this special case into `LitString::finish`.
     let ty = if let Expr::Literal(Lit::String(_)) = self.value {
-      let prefix = ctx.ffi_prefix();
-      Some(quote! { & #prefix CStr })
+      let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix ffi:: });
+      Some(quote! { & #ffi_prefix CStr })
     } else {
       ty.map(|ty| ty.to_token_stream(&mut ctx))
     };
