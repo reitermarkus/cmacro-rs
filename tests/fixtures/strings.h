@@ -10,3 +10,6 @@
 // Normal string literal.
 #define HELLO1 "WORLD"
 #define HELLO2 (char* const)"WORLD"
+
+// Cast string.
+#define CAST_STRING (int*)"STRINGINT"

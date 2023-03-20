@@ -111,7 +111,14 @@ impl VarMacro {
     let mut tokens = TokenStream::new();
     let ty = self.value.finish(&mut ctx)?;
     self.value.to_tokens(&mut ctx, &mut tokens);
-    let ty = ty.map(|ty| ty.to_token_stream(&mut ctx));
+
+    // TODO: Move this special case into `LitString::finish`.
+    let ty = if let Expr::Literal(Lit::String(_)) = self.value {
+      let prefix = ctx.ffi_prefix();
+      Some(quote! { & #prefix CStr })
+    } else {
+      ty.map(|ty| ty.to_token_stream(&mut ctx))
+    };
 
     Ok((tokens, ty))
   }
@@ -188,7 +195,7 @@ impl VarMacro {
 /// assert_eq!(
 ///   output.to_string(),
 ///   quote! {
-///     #[allow(non_snake_case, unused_mut)]
+///     #[allow(non_snake_case, unused_mut, unsafe_code)]
 ///     #[inline(always)]
 ///     pub unsafe extern "C" fn FUNC(mut a: u32, mut b: u32, mut c: u32) -> u32 {
 ///       a + b * c
@@ -400,7 +407,7 @@ impl FnMacro {
       let semicolon = if return_type.is_none() { Some(quote! { ; }) } else { None };
 
       tokens.append_all(quote! {
-        #[allow(non_snake_case, unused_mut)]
+        #[allow(non_snake_case, unused_mut, unsafe_code)]
         #[inline(always)]
         pub unsafe extern "C" fn #name(#(mut #func_args),*) #return_type {
           #body

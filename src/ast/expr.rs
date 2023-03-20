@@ -615,6 +615,8 @@ impl Expr {
   {
     match self {
       Self::Cast { expr, ty } => {
+        expr.finish(ctx)?;
+
         // Handle ambiguous cast vs. binary operation, e.g. `(ty)&var` vs `(var1) & var2`.
         if let (Self::Unary(expr), Type::Identifier { name: Identifier::Literal(name), is_struct: false }) =
           (&**expr, &ty)
@@ -639,7 +641,14 @@ impl Expr {
           }
         }
 
-        expr.finish(ctx)?;
+        if matches!(
+          (&**expr, &ty), (Expr::Literal(Lit::String(_)), Type::Ptr { ty, .. })
+          if matches!(**ty, Type::BuiltIn(BuiltInType::Char))
+        ) {
+          *self = *expr.clone();
+          return self.finish(ctx)
+        }
+
         ty.finish(ctx)?;
         Ok(Some(ty.clone()))
       },
@@ -974,40 +983,50 @@ impl Expr {
             let (prec, _) = self.precedence();
             let (expr_prec, _) = expr.precedence();
 
-            // When casting a negative integer, we need to generate it with a suffix, since
-            // directly casting to an unsigned integer (i.e. `-1 as u32`) doesn't work.
-            // The same is true when casting a big number to a type which is too small,
-            // so we output the number with the smallest possible explicit type.
-            let expr = if let Expr::Literal(Lit::Int(LitInt { value, .. })) = expr {
-              let expr = if *value < i64::MIN as i128 {
-                Literal::i128_suffixed(*value)
-              } else if *value < i32::MIN as i128 {
-                Literal::i64_suffixed(*value as i64)
-              } else if *value < i16::MIN as i128 {
-                Literal::i32_suffixed(*value as i32)
-              } else if *value < i8::MIN as i128 {
-                Literal::i16_suffixed(*value as i16)
-              } else if *value < 0 {
-                Literal::i8_suffixed(*value as i8)
-              } else if *value <= u8::MAX as i128 {
-                Literal::u8_suffixed(*value as u8)
-              } else if *value <= u16::MAX as i128 {
-                Literal::u16_suffixed(*value as u16)
-              } else if *value <= u32::MAX as i128 {
-                Literal::u32_suffixed(*value as u32)
-              } else if *value <= u64::MAX as i128 {
-                Literal::u64_suffixed(*value as u64)
-              } else {
-                Literal::i128_suffixed(*value)
-              };
+            let expr = match expr {
+              // When casting a negative integer, we need to generate it with a suffix, since
+              // directly casting to an unsigned integer (i.e. `-1 as u32`) doesn't work.
+              // The same is true when casting a big number to a type which is too small,
+              // so we output the number with the smallest possible explicit type.
+              Expr::Literal(Lit::Int(LitInt { value, .. })) => {
+                let expr = if *value < i64::MIN as i128 {
+                  Literal::i128_suffixed(*value)
+                } else if *value < i32::MIN as i128 {
+                  Literal::i64_suffixed(*value as i64)
+                } else if *value < i16::MIN as i128 {
+                  Literal::i32_suffixed(*value as i32)
+                } else if *value < i8::MIN as i128 {
+                  Literal::i16_suffixed(*value as i16)
+                } else if *value < 0 {
+                  Literal::i8_suffixed(*value as i8)
+                } else if *value <= u8::MAX as i128 {
+                  Literal::u8_suffixed(*value as u8)
+                } else if *value <= u16::MAX as i128 {
+                  Literal::u16_suffixed(*value as u16)
+                } else if *value <= u32::MAX as i128 {
+                  Literal::u32_suffixed(*value as u32)
+                } else if *value <= u64::MAX as i128 {
+                  Literal::u64_suffixed(*value as u64)
+                } else {
+                  Literal::i128_suffixed(*value)
+                };
 
-              quote! { #expr }
-            } else {
-              let mut expr = expr.to_token_stream(ctx);
-              if expr_prec > prec {
-                expr = quote! { (#expr) };
-              }
-              expr
+                quote! { #expr }
+              },
+              Expr::Literal(Lit::String(_)) => {
+                let mut expr = expr.to_token_stream(ctx);
+                if expr_prec > 1 {
+                  expr = quote! { (#expr) };
+                }
+                quote! { #expr.as_ptr() }
+              },
+              _ => {
+                let mut expr = expr.to_token_stream(ctx);
+                if expr_prec > prec {
+                  expr = quote! { (#expr) };
+                }
+                expr
+              },
             };
 
             let ty = ty.to_token_stream(ctx);
