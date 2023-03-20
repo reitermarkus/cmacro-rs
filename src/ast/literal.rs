@@ -466,21 +466,21 @@ impl LitString {
     let byte_count = proc_macro2::Literal::usize_unsuffixed(bytes.len());
     let byte_string = proc_macro2::Literal::byte_string(&bytes);
 
-    let prefix = ctx.ffi_prefix();
-
     if ctx.is_variable_macro() {
+      let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix ffi:: });
       tokens.append_all(quote! {
         {
           const BYTES: [u8; #byte_count] = *#byte_string;
           #[allow(unsafe_code)]
-          unsafe { #prefix CStr::from_bytes_with_nul_unchecked(&BYTES) }
+          unsafe { #ffi_prefix CStr::from_bytes_with_nul_unchecked(&BYTES) }
         }
       })
     } else {
+      let ffi_prefix = ctx.ffi_prefix();
       tokens.append_all(quote! {
         {
           const BYTES: [u8; #byte_count] = *#byte_string;
-          BYTES.as_ptr() as * const c_char
+          BYTES.as_ptr() as *const #ffi_prefix c_char
         }
       })
     }
