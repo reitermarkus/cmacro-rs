@@ -79,7 +79,7 @@ fn file_visit_macros<F: FnMut(EntityKind, &str, Option<&[&str]>, &[&str])>(file:
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
-  let test_name: Option<String> = env::args().skip(1).next();
+  let test_name: Option<String> = env::args().nth(1);
 
   for entry in glob("./tests/fixtures/*.h").unwrap() {
     let entry = entry?;
@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let output_path = entry.as_path().with_extension("rs");
 
     if let Some(ref test_name) = test_name {
-      if !test_name.starts_with("-") && !header_name.contains(test_name) {
+      if !test_name.starts_with('-') && !header_name.contains(test_name) {
         continue
       }
     }
@@ -123,7 +123,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
       EntityKind::FunctionDecl => {
         context.functions.insert(
           name.to_owned(),
-          (args.unwrap().into_iter().map(|&token| token.to_owned()).collect(), value[0].to_owned()),
+          (args.unwrap().iter().map(|&token| token.to_owned()).collect(), value[0].to_owned()),
         );
       },
       EntityKind::MacroDefinition => {
