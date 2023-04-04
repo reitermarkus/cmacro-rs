@@ -15,6 +15,7 @@ use crate::{CodegenContext, LocalContext, ParseContext};
 
 /// A built-in type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BuiltInType {
   /// `float`
   Float,
@@ -30,6 +31,12 @@ pub enum BuiltInType {
   SChar,
   /// `unsigned char`
   UChar,
+  /// `char8_t`
+  Char8T,
+  /// `char16_t`
+  Char16T,
+  /// `char32_t`
+  Char32T,
   /// (`signed`) `short`
   Short,
   /// `unsigned short`
@@ -82,6 +89,9 @@ impl BuiltInType {
       Self::Char => syn::parse_quote! { #ffi_prefix c_char },
       Self::SChar => syn::parse_quote! { #ffi_prefix c_schar },
       Self::UChar => syn::parse_quote! { #ffi_prefix c_uchar },
+      Self::Char8T => syn::parse_quote! { u8 },
+      Self::Char16T => syn::parse_quote! { u16 },
+      Self::Char32T => syn::parse_quote! { u32 },
       Self::Short => syn::parse_quote! { #ffi_prefix c_short },
       Self::UShort => syn::parse_quote! { #ffi_prefix c_ushort },
       Self::Int => syn::parse_quote! { #ffi_prefix c_int },
@@ -268,6 +278,9 @@ impl Type {
       "char" => Type::BuiltIn(BuiltInType::Char),
       "signed char" => Type::BuiltIn(BuiltInType::SChar),
       "unsigned char" => Type::BuiltIn(BuiltInType::UChar),
+      "char8_t" => Type::BuiltIn(BuiltInType::Char8T),
+      "char16_t" => Type::BuiltIn(BuiltInType::Char16T),
+      "char32_t" => Type::BuiltIn(BuiltInType::Char32T),
       "short" => Type::BuiltIn(BuiltInType::Short),
       "unsigned short" => Type::BuiltIn(BuiltInType::UShort),
       "int" => Type::BuiltIn(BuiltInType::Int),
