@@ -179,7 +179,7 @@ impl VarMacro {
 /// impl CodegenContext for Context {
 ///   fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
 ///     match (macro_name, arg_name) {
-///       ("FUNC", "a" | "b" | "c") => Some("u32".into()),
+///       ("FUNC", "a" | "b" | "c") => Some("unsigned int".into()),
 ///       _ => None,
 ///     }
 ///   }
@@ -197,7 +197,7 @@ impl VarMacro {
 ///   quote! {
 ///     #[allow(non_snake_case, unused_mut, unsafe_code)]
 ///     #[inline(always)]
-///     pub unsafe extern "C" fn FUNC(mut a: u32, mut b: u32, mut c: u32) -> u32 {
+///     pub unsafe extern "C" fn FUNC(mut a: c_uint, mut b: c_uint, mut c: c_uint) -> c_uint {
 ///       a + b * c
 ///     }
 ///   }.to_string(),
@@ -320,8 +320,7 @@ impl FnMacro {
       .iter()
       .map(|arg| {
         let ty = if let Some(arg_ty) = cx.macro_arg_ty(&self.name, arg) {
-          let arg_ty = syn::parse_str::<syn::Type>(&arg_ty).unwrap();
-          MacroArgType::Known(Type::try_from(arg_ty)?)
+          MacroArgType::Known(arg_ty.parse()?)
         } else {
           MacroArgType::Unknown
         };

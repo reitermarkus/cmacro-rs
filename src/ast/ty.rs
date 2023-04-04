@@ -1,4 +1,4 @@
-use std::{fmt::Debug, ops::RangeFrom};
+use std::{fmt::Debug, ops::RangeFrom, str::FromStr};
 
 use nom::{
   branch::{alt, permutation},
@@ -343,6 +343,20 @@ impl Type {
   }
 }
 
+impl FromStr for Type {
+  type Err = crate::Error;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    // Pointer star needs to be a separate token.
+    let s = s.replace('*', " * ");
+
+    let tokens = s.split_whitespace().collect::<Vec<_>>();
+    let ctx = ParseContext { name: "", args: &[] };
+    let (_, ty) = Self::parse(&tokens, &ctx).map_err(|_| crate::Error::ParserError)?;
+    Ok(ty)
+  }
+}
+
 impl TryFrom<syn::Type> for Type {
   type Error = crate::Error;
 
@@ -485,5 +499,17 @@ mod tests {
 
     let (_, ty) = Type::parse(&["const", "int", "*", "const"], &CTX).unwrap();
     assert_eq!(ty, ty!(*const BuiltInType::Int));
+  }
+
+  #[test]
+  fn from_str() {
+    let ty = "unsigned int".parse::<Type>().unwrap();
+    assert_eq!(ty, ty!(BuiltInType::UInt));
+
+    let ty = "unsigned int*".parse::<Type>().unwrap();
+    assert_eq!(ty, ty!(*mut BuiltInType::UInt));
+
+    let ty = "char *".parse::<Type>().unwrap();
+    assert_eq!(ty, ty!(*mut BuiltInType::Char));
   }
 }
