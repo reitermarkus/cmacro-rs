@@ -108,7 +108,7 @@ where
     alt((keyword("unsigned"), keyword("signed")))(input)
   }
 
-  fn int_longness<I>(input: &[I]) -> IResult<&[I], &'static str>
+  fn int_length<I>(input: &[I]) -> IResult<&[I], &'static str>
   where
     I: Debug + InputTake + InputLength + Slice<std::ops::RangeFrom<usize>> + Compare<&'static str> + Clone,
   {
@@ -128,14 +128,14 @@ where
       },
     ),
     // [const] [(unsigned | signed)] (long | short) [int]
-    map(permutation((const_qualifier, opt(int_signedness), int_longness, opt(keyword("int")))), |(_, s, i, _)| match (
-      s, i,
-    ) {
-      (Some("unsigned"), "short") => BuiltInType::UShort,
-      (_, "short") => BuiltInType::Short,
-      (Some("unsigned"), "long") => BuiltInType::ULong,
-      (_, "long") => BuiltInType::Long,
-      _ => unreachable!(),
+    map(permutation((const_qualifier, opt(int_signedness), int_length, opt(keyword("int")))), |(_, s, i, _)| {
+      match (s, i) {
+        (Some("unsigned"), "short") => BuiltInType::UShort,
+        (_, "short") => BuiltInType::Short,
+        (Some("unsigned"), "long") => BuiltInType::ULong,
+        (_, "long") => BuiltInType::Long,
+        _ => unreachable!(),
+      }
     }),
     // [const] [(unsigned | signed)] (char | int)
     map(
