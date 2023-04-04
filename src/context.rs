@@ -142,7 +142,7 @@ impl<'g, C> CodegenContext for LocalContext<'g, C>
 where
   C: CodegenContext,
 {
-  fn ffi_prefix(&self) -> Option<TokenStream> {
+  fn ffi_prefix(&self) -> Option<syn::Path> {
     self.global_context.ffi_prefix()
   }
 
@@ -174,7 +174,7 @@ where
 /// Context for code generation.
 pub trait CodegenContext {
   /// Get the prefix for FFI types, e.g. `c_char` or `c_ulong`.
-  fn ffi_prefix(&self) -> Option<TokenStream> {
+  fn ffi_prefix(&self) -> Option<syn::Path> {
     None
   }
 
@@ -238,7 +238,7 @@ impl<T> CodegenContext for &T
 where
   T: CodegenContext,
 {
-  fn ffi_prefix(&self) -> Option<TokenStream> {
+  fn ffi_prefix(&self) -> Option<syn::Path> {
     T::ffi_prefix(self)
   }
 

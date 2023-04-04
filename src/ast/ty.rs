@@ -70,30 +70,35 @@ impl BuiltInType {
       _ => None,
     }
   }
-}
 
-impl ToTokens for BuiltInType {
-  fn to_tokens(&self, tokens: &mut TokenStream) {
-    tokens.append_all(match self {
-      Self::Float => quote! { f32 },
-      Self::Double => quote! { f64 },
-      Self::LongDouble => quote! { c_longdouble },
-      Self::Bool => quote! { bool },
-      Self::Char => quote! { c_char },
-      Self::SChar => quote! { c_schar },
-      Self::UChar => quote! { c_uchar },
-      Self::Short => quote! { c_short },
-      Self::UShort => quote! { c_ushort },
-      Self::Int => quote! { c_int },
-      Self::UInt => quote! { c_uint },
-      Self::Long => quote! { c_long },
-      Self::ULong => quote! { c_ulong },
-      Self::LongLong => quote! { c_longlong },
-      Self::ULongLong => quote! { c_ulonglong },
-      Self::SizeT => quote! { size_t },
-      Self::SSizeT => quote! { ssize_t },
-      Self::Void => quote! { c_void },
-    })
+  fn to_rust_ty(self, ffi_prefix: Option<syn::Path>) -> syn::Type {
+    let ffi_prefix = ffi_prefix.map(|prefix| quote! { #prefix :: });
+
+    match self {
+      Self::Float => syn::parse_quote! { f32 },
+      Self::Double => syn::parse_quote! { f64 },
+      Self::LongDouble => syn::parse_quote! { #ffi_prefix c_longdouble },
+      Self::Bool => syn::parse_quote! { bool },
+      Self::Char => syn::parse_quote! { #ffi_prefix c_char },
+      Self::SChar => syn::parse_quote! { #ffi_prefix c_schar },
+      Self::UChar => syn::parse_quote! { #ffi_prefix c_uchar },
+      Self::Short => syn::parse_quote! { #ffi_prefix c_short },
+      Self::UShort => syn::parse_quote! { #ffi_prefix c_ushort },
+      Self::Int => syn::parse_quote! { #ffi_prefix c_int },
+      Self::UInt => syn::parse_quote! { #ffi_prefix c_uint },
+      Self::Long => syn::parse_quote! { #ffi_prefix c_long },
+      Self::ULong => syn::parse_quote! { #ffi_prefix c_ulong },
+      Self::LongLong => syn::parse_quote! { #ffi_prefix c_longlong },
+      Self::ULongLong => syn::parse_quote! { #ffi_prefix c_ulonglong },
+      Self::SizeT => syn::parse_quote! { #ffi_prefix size_t },
+      Self::SSizeT => syn::parse_quote! { #ffi_prefix ssize_t },
+      Self::Void => syn::parse_quote! { #ffi_prefix c_void },
+    }
+  }
+
+  pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+    let ffi_prefix = ctx.ffi_prefix();
+    self.to_rust_ty(ffi_prefix).to_tokens(tokens);
   }
 }
 
@@ -310,14 +315,7 @@ impl Type {
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     match self {
-      Self::BuiltIn(ty) => {
-        let prefix = ctx.ffi_prefix();
-
-        match ty {
-          BuiltInType::Float | BuiltInType::Double | BuiltInType::Bool => ty.to_tokens(tokens),
-          ty => tokens.append_all(quote! { #prefix #ty }),
-        }
-      },
+      Self::BuiltIn(ty) => ty.to_tokens(ctx, tokens),
       Self::Identifier { name, .. } => name.to_tokens(ctx, tokens),
       Self::Path { segments, leading_colon } => {
         let leading_colon = if *leading_colon { Some(quote! {  :: }) } else { None };
