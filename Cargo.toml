@@ -14,7 +14,7 @@ homepage = "https://github.com/reitermarkus/cmacro-rs"
 
 [dependencies]
 nom = "7"
-syn = "1"
+syn = "2"
 proc-macro2 = "1"
 quote = "1"
 unicode-ident = "1"
