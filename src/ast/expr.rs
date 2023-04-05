@@ -729,6 +729,12 @@ impl Expr {
         // Type should only be set if calling an actual function, not a function macro.
         Ok(ty)
       },
+      // Convert character literals to casts.
+      Self::Literal(lit) if matches!(lit, Lit::Char(..)) => {
+        let ty = lit.finish(ctx)?;
+        *self = Self::Cast { expr: Box::new(Self::Literal(lit.clone())), ty: ty.clone().unwrap() };
+        Ok(ty)
+      },
       Self::Literal(lit) => lit.finish(ctx),
       Self::FieldAccess { expr, field } => {
         expr.finish(ctx)?;
@@ -1141,10 +1147,10 @@ mod tests {
   #[test]
   fn parse_literal() {
     let (_, expr) = Expr::parse(&["u8", "'a'"], &CTX).unwrap();
-    assert_eq!(expr, lit!('a'));
+    assert_eq!(expr, lit!(u8 'a'));
 
     let (_, expr) = Expr::parse(&["U'🍩'"], &CTX).unwrap();
-    assert_eq!(expr, lit!('🍩'));
+    assert_eq!(expr, lit!(U '🍩'));
   }
 
   #[test]

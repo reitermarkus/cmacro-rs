@@ -29,6 +29,18 @@ macro_rules! var {
 pub(crate) use var;
 
 macro_rules! lit {
+  (u8 $c:literal) => {
+    $crate::ast::Expr::Literal($crate::ast::Lit::Char($crate::ast::LitChar::Utf8($c as u8)))
+  };
+  (u $c:literal) => {
+    $crate::ast::Expr::Literal($crate::ast::Lit::Char($crate::ast::LitChar::Utf16($c as u16)))
+  };
+  (U $c:literal) => {
+    $crate::ast::Expr::Literal($crate::ast::Lit::Char($crate::ast::LitChar::Utf32($c as u32)))
+  };
+  (L $c:literal) => {
+    $crate::ast::Expr::Literal($crate::ast::Lit::Char($crate::ast::LitChar::Wide($c as u32)))
+  };
   ($lit:literal) => {
     $crate::ast::Expr::Literal($crate::ast::Lit::from($lit))
   };

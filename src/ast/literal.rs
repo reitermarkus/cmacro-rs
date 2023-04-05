@@ -25,7 +25,7 @@ use super::{
   tokens::{meta, take_one, token},
   ty::BuiltInType,
 };
-use crate::{CodegenContext, LocalContext, Type};
+use crate::{CodegenContext, Identifier, LitIdent, LocalContext, Type};
 
 /// A literal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +54,13 @@ impl From<f64> for Lit {
 
 impl From<char> for Lit {
   fn from(c: char) -> Lit {
-    Lit::Char(LitChar { repr: c as u32 })
+    let c = c as u32;
+
+    if c <= 0xff {
+      Lit::Char(LitChar::Ordinary(c as u8))
+    } else {
+      panic!()
+    }
   }
 }
 
@@ -180,16 +186,38 @@ where
 }
 
 /// A character literal.
-///
-/// ```c
-/// #define CHAR 'a'
-/// #define CHAR u8'a'
-/// #define CHAR u'猫'
-/// #define CHAR U'🍌'
-/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LitChar {
-  pub(crate) repr: u32,
+pub enum LitChar {
+  /// An ordinary character (`char`) literal.
+  ///
+  /// ```c
+  /// #define CHAR 'a'
+  /// ```
+  Ordinary(u8),
+  /// A UTF-8 character (`char8_t`) literal.
+  ///
+  /// ```c
+  /// #define CHAR u8'a'
+  /// ```
+  Utf8(u8),
+  /// A UTF-16 character (`char16_t`) literal.
+  ///
+  /// ```c
+  /// #define CHAR u'猫'
+  /// ```
+  Utf16(u16),
+  /// A UTF-32 character (`char32_t`) literal.
+  ///
+  /// ```c
+  /// #define CHAR U'🍌'
+  /// ```
+  Utf32(u32),
+  /// A wide character (`wchar_t`) literal.
+  ///
+  /// ```c
+  /// #define CHAR L'β'
+  /// ```
+  Wide(u32),
 }
 
 impl LitChar {
@@ -211,71 +239,45 @@ impl LitChar {
     let (input, utf8_prefix) = if let Ok((input, _)) = token("u8")(input) { (input, true) } else { (input, false) };
     let (input2, token) = take_one(input)?;
 
-    let fold_char = |input| {
-      fold_many1(
-        alt((preceded(char('\\'), escaped_char), map(none_of("\\\'\n"), |b| b.as_char() as u32))),
-        || 0,
-        |acc, c| {
-          if c <= u8::MAX as u32 {
-            acc << 8 | c
-          } else if c <= u16::MAX as u32 {
-            acc << 16 | c
-          } else {
-            c
-          }
-        },
-      )(input)
-    };
+    let one_char =
+      |input| alt((preceded(char('\\'), escaped_char), map(none_of("\\\'\n"), |b| b.as_char() as u32)))(input);
 
-    let parse_char = |(prefix, c)| {
-      let max = match prefix {
-        Some("u8") => 0x7f,
-        Some("u") => 0xffff,
-        Some("U") | Some("L") => u32::MAX,
-        _ => 0xff,
-      };
+    #[derive(Clone, Copy)]
+    enum LitCharPrefix {
+      Utf8,
+      Utf16,
+      Utf32,
+      Wide,
+    }
 
-      if c <= max {
-        let c = if let Some(c) = char::from_u32(c) {
-          c as u32
-        } else {
-          let b = c.to_be_bytes();
-          if let Some(c) = str::from_utf8(&b).ok().and_then(|s| s.chars().last()) {
-            c as u32
-          } else {
-            c
-          }
-        };
-
-        Some(c)
-      } else {
-        None
-      }
+    let parse_char = |(prefix, c)| match prefix {
+      None if c <= 0xff => Some(LitChar::Ordinary(c as u8)),
+      Some(LitCharPrefix::Utf8) if c <= 0x7f => Some(LitChar::Utf8(c as u8)),
+      Some(LitCharPrefix::Utf16) if c <= u16::MAX as u32 => Some(LitChar::Utf16(c as u16)),
+      Some(LitCharPrefix::Utf32) => Some(LitChar::Utf32(c)),
+      Some(LitCharPrefix::Wide) => Some(LitChar::Wide(c)),
+      _ => None,
     };
 
     let (_, c) = all_consuming(terminated(
       alt((
-        map_opt(cond(utf8_prefix, map(preceded(char('\''), fold_char), |c| parse_char((Some("u8"), c)))), |c| {
-          c.flatten()
-        }),
-        preceded(
-          char('\''),
-          map_opt(
-            fold_many1(
-              alt((preceded(char('\\'), escaped_char), map(none_of("\\\'\n"), |b| b.as_char() as u32))),
-              || 0u32,
-              |_, c| c,
-            ),
-            |c| if c <= 0xff { Some(c) } else { None },
-          ),
+        map_opt(
+          cond(utf8_prefix, map(preceded(char('\''), one_char), |c| parse_char((Some(LitCharPrefix::Utf8), c)))),
+          |c| c.flatten(),
         ),
+        preceded(char('\''), map_opt(one_char, |c| parse_char((None, c)))),
         map_opt(
           pair(
             terminated(
-              opt(alt((value("u8", tag("u8")), value("u", tag("u")), value("U", tag("U")), value("L", tag("L"))))),
+              opt(alt((
+                value(LitCharPrefix::Utf8, tag("u8")),
+                value(LitCharPrefix::Utf16, tag("u")),
+                value(LitCharPrefix::Utf32, tag("U")),
+                value(LitCharPrefix::Wide, tag("L")),
+              ))),
               char('\''),
             ),
-            fold_char,
+            one_char,
           ),
           parse_char,
         ),
@@ -284,7 +286,7 @@ impl LitChar {
     ))(token)
     .map_err(|err| err.map_input(|_| input))?;
 
-    Ok((input2, Self { repr: c }))
+    Ok((input2, c))
   }
 
   #[allow(unused_variables)]
@@ -292,36 +294,65 @@ impl LitChar {
   where
     C: CodegenContext,
   {
-    if self.repr <= u8::MAX as u32 {
-      Ok(Some(Type::BuiltIn(BuiltInType::Char)))
-    } else {
-      Ok(None)
-    }
+    Ok(match self {
+      LitChar::Ordinary(_) => Some(Type::BuiltIn(BuiltInType::Char)),
+      LitChar::Utf8(_) => Some(Type::BuiltIn(BuiltInType::Char8T)),
+      LitChar::Utf16(_) => Some(Type::BuiltIn(BuiltInType::Char16T)),
+      LitChar::Utf32(_) => Some(Type::BuiltIn(BuiltInType::Char32T)),
+      LitChar::Wide(_) => {
+        let mut ty = Type::Identifier {
+          name: Identifier::Literal(LitIdent { id: "wchar_t".to_owned(), macro_arg: false }),
+          is_struct: false,
+        };
+        ty.finish(ctx)?;
+        Some(ty)
+      },
+    })
   }
 
+  #[allow(unused_variables)]
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
-    let c = self.repr;
+    let c = match *self {
+      Self::Ordinary(c) => {
+        if let Some(c) = char::from_u32(c as u32) {
+          proc_macro2::Literal::character(c)
+        } else {
+          proc_macro2::Literal::u8_suffixed(c)
+        }
+      },
+      Self::Utf8(c) => {
+        if let Some(c) = char::from_u32(c as u32) {
+          proc_macro2::Literal::character(c)
+        } else {
+          proc_macro2::Literal::u8_suffixed(c)
+        }
+      },
+      Self::Utf16(c) => {
+        if let Some(c) = char::from_u32(c as u32) {
+          proc_macro2::Literal::character(c)
+        } else {
+          proc_macro2::Literal::u16_suffixed(c)
+        }
+      },
+      Self::Utf32(c) => {
+        if let Some(c) = char::from_u32(c) {
+          proc_macro2::Literal::character(c)
+        } else {
+          proc_macro2::Literal::u32_suffixed(c)
+        }
+      },
+      Self::Wide(c) => {
+        if let Some(c) = char::from_u32(c) {
+          proc_macro2::Literal::character(c)
+        } else {
+          proc_macro2::Literal::u32_suffixed(c)
+        }
+      },
+    };
 
-    tokens.append_all(if c <= u8::MAX as u32 {
-      let ffi_prefix = &ctx.ffi_prefix();
-      let c = match char::from_u32(c) {
-        Some(c) => proc_macro2::Literal::character(c),
-        None => proc_macro2::Literal::u8_suffixed(c as u8),
-      };
-      quote! { #c as #ffi_prefix c_char }
-    } else if c <= u16::MAX as u32 {
-      let c = match char::from_u32(c) {
-        Some(c) => proc_macro2::Literal::character(c),
-        None => proc_macro2::Literal::u16_suffixed(c as u16),
-      };
-      quote! { #c as char16_t }
-    } else {
-      let c = match char::from_u32(c) {
-        Some(c) => proc_macro2::Literal::character(c),
-        None => proc_macro2::Literal::u32_suffixed(c),
-      };
-      quote! { #c as char32_t }
-    })
+    // Output only the character itself, the type is added
+    // by converting this to a cast in `Expr::finish`.
+    tokens.append_all(quote! { #c });
   }
 }
 
@@ -1039,27 +1070,26 @@ mod tests {
   #[test]
   fn parse_char() {
     let (rest, id) = LitChar::parse(&[r#"'a'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: 'a' as u32 });
+    assert_eq!(id, LitChar::Ordinary('a' as u8));
     assert!(rest.is_empty());
 
-    let (_, id) = LitChar::parse(&[r#"'abc'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: 'c' as u32 });
-
     let (_, id) = LitChar::parse(&[r#"'\n'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: '\n' as u32 });
+    assert_eq!(id, LitChar::Ordinary('\n' as u8));
 
     let (_, id) = LitChar::parse(&[r#"u'\uFFee'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: 0xffee });
+    assert_eq!(id, LitChar::Utf16(0xffee));
 
     let (_, id) = LitChar::parse(&[r#"U'\U0001f369'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: 0x0001f369 });
+    assert_eq!(id, LitChar::Utf32(0x0001f369));
 
     let (_, id) = LitChar::parse(&[r#"U'🍌'"#]).unwrap();
-    assert_eq!(id, LitChar { repr: 0x0001f34c });
+    assert_eq!(id, LitChar::Utf32(0x0001f34c));
 
-    let c: &[u8] = &[b'U', b'\'', 0x00, 0x01, 0xf3, 0x4c, b'\''];
-    let (_, id) = LitChar::parse(&[c]).unwrap();
-    assert_eq!(id, LitChar { repr: 0x0001f34c });
+    let (_, id) = LitChar::parse(&[r#"'\xff'"#]).unwrap();
+    assert_eq!(id, LitChar::Ordinary(0xff));
+
+    let (_, id) = LitChar::parse(&[r#"'ÿ'"#]).unwrap();
+    assert_eq!(id, LitChar::Ordinary(0xff));
   }
 
   #[test]
