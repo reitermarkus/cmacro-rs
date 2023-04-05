@@ -185,6 +185,14 @@ where
   ))(input)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LitCharPrefix {
+  Utf8,
+  Utf16,
+  Utf32,
+  Wide,
+}
+
 /// A character literal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LitChar {
@@ -241,14 +249,6 @@ impl LitChar {
 
     let one_char =
       |input| alt((preceded(char('\\'), escaped_char), map(none_of("\\\'\n"), |b| b.as_char() as u32)))(input);
-
-    #[derive(Clone, Copy)]
-    enum LitCharPrefix {
-      Utf8,
-      Utf16,
-      Utf32,
-      Wide,
-    }
 
     let parse_char = |(prefix, c)| match prefix {
       None if c <= 0xff => Some(LitChar::Ordinary(c as u8)),
@@ -388,7 +388,12 @@ impl LitString {
 
     let res: IResult<I, Vec<u8>> = all_consuming(map_opt(
       pair(
-        opt(alt((value("u8", tag("u8")), value("u", tag("u")), value("U", tag("U")), value("L", tag("L"))))),
+        opt(alt((
+          value(LitCharPrefix::Utf8, tag("u8")),
+          value(LitCharPrefix::Utf16, tag("u")),
+          value(LitCharPrefix::Utf32, tag("U")),
+          value(LitCharPrefix::Wide, tag("L")),
+        ))),
         delimited(
           char('\"'),
           fold_many0(
@@ -410,15 +415,15 @@ impl LitString {
       ),
       |(prefix, s)| {
         match prefix {
-          Some("u8") | Some("u") | Some("U") => {
-            if prefix == Some("u8") {
+          Some(LitCharPrefix::Utf8) | Some(LitCharPrefix::Utf16) | Some(LitCharPrefix::Utf32) => {
+            if prefix == Some(LitCharPrefix::Utf8) {
               let s_utf8: Option<Vec<u8>> = s.iter().map(|c| if *c <= 0xff { Some(*c as u8) } else { None }).collect();
               if let Some(s) = s_utf8.and_then(|s| String::from_utf8(s).ok()) {
                 return Some(s.into())
               }
             }
 
-            if prefix == Some("u") {
+            if prefix == Some(LitCharPrefix::Utf16) {
               let s_utf8: Option<Vec<u16>> =
                 s.iter().map(|c| if *c <= 0xffff { Some(*c as u16) } else { None }).collect();
               if let Some(s) = s_utf8.and_then(|s| String::from_utf16(&s).ok()) {
