@@ -83,8 +83,7 @@ impl BuiltInType {
 
     match self {
       Self::Float => syn::parse_quote! { f32 },
-      Self::Double => syn::parse_quote! { f64 },
-      Self::LongDouble => syn::parse_quote! { #ffi_prefix c_longdouble },
+      Self::Double | Self::LongDouble => syn::parse_quote! { f64 },
       Self::Bool => syn::parse_quote! { bool },
       Self::Char => syn::parse_quote! { #ffi_prefix c_char },
       Self::SChar => syn::parse_quote! { #ffi_prefix c_schar },
