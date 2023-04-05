@@ -424,9 +424,9 @@ impl LitString {
             }
 
             if prefix == Some(LitCharPrefix::Utf16) {
-              let s_utf8: Option<Vec<u16>> =
+              let s_utf16: Option<Vec<u16>> =
                 s.iter().map(|c| if *c <= 0xffff { Some(*c as u16) } else { None }).collect();
-              if let Some(s) = s_utf8.and_then(|s| String::from_utf16(&s).ok()) {
+              if let Some(s) = s_utf16.and_then(|s| String::from_utf16(&s).ok()) {
                 return Some(s.into())
               }
             }
