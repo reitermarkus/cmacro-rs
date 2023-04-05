@@ -11,8 +11,8 @@ use nom::{
     complete::{anychar, char, digit1, hex_digit1, none_of, oct_digit1, one_of},
     is_hex_digit, is_oct_digit,
   },
-  combinator::{all_consuming, cond, eof, map, map_opt, map_parser, opt, recognize, success, value, verify},
-  multi::{fold_many0, fold_many1, fold_many_m_n},
+  combinator::{all_consuming, cond, eof, map, map_opt, map_parser, map_res, opt, recognize, success, value, verify},
+  multi::{fold_many0, fold_many_m_n},
   sequence::{delimited, pair, preceded, terminated, tuple},
   AsBytes, AsChar, Compare, CompareResult, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake,
   InputTakeAtPosition, Offset, ParseTo, Slice,
@@ -119,6 +119,52 @@ impl Lit {
   }
 }
 
+fn simple_escape_sequence<I>(input: I) -> IResult<I, u32>
+where
+  I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
+  <I as InputIter>::Item: AsChar + Copy,
+  &'static str: FindToken<<I as InputIter>::Item>,
+{
+  alt((
+    map(char('a'), |_| '\x07' as u32),
+    map(char('b'), |_| '\x08' as u32),
+    map(char('e'), |_| '\x1b' as u32),
+    map(char('f'), |_| '\x0c' as u32),
+    map(char('n'), |_| '\n' as u32),
+    map(char('r'), |_| '\r' as u32),
+    map(char('t'), |_| '\t' as u32),
+    map(char('v'), |_| '\x0b' as u32),
+    map(one_of(r#"\'"?"#), |c| c as u32),
+  ))(input)
+}
+
+fn numeric_escape_sequence<I>(input: I) -> IResult<I, u32>
+where
+  I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
+  <I as InputIter>::Item: AsChar + Copy,
+  &'static str: FindToken<<I as InputIter>::Item>,
+{
+  alt((
+    fold_many_m_n(
+      1,
+      3,
+      map_opt(verify(anychar, |c| is_oct_digit(*c as u8)), |c| c.to_digit(8)),
+      || 0,
+      |acc, n| acc * 8 + n,
+    ),
+    preceded(
+      tag_no_case("x"),
+      fold_many_m_n(
+        2,
+        2,
+        map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16)),
+        || 0,
+        |acc, n| acc * 16 + n,
+      ),
+    ),
+  ))(input)
+}
+
 pub(crate) fn universal_char<I>(input: I) -> IResult<I, u32>
 where
   I: Debug + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone,
@@ -154,35 +200,7 @@ where
   <I as InputIter>::Item: AsChar + Copy,
   &'static str: FindToken<<I as InputIter>::Item>,
 {
-  alt((
-    map(char('a'), |_| b'\x07' as u32),
-    map(char('b'), |_| b'\x08' as u32),
-    map(char('e'), |_| b'\x1b' as u32),
-    map(char('f'), |_| b'\x0c' as u32),
-    map(char('n'), |_| b'\n' as u32),
-    map(char('r'), |_| b'\r' as u32),
-    map(char('t'), |_| b'\t' as u32),
-    map(char('v'), |_| b'\x0b' as u32),
-    map(one_of(r#"\'"?"#), |c| c as u32),
-    fold_many_m_n(
-      1,
-      3,
-      map_opt(verify(anychar, |c| is_oct_digit(*c as u8)), |c| c.to_digit(8)),
-      || 0,
-      |acc, n| acc * 8 + n,
-    ),
-    preceded(
-      tag_no_case("x"),
-      fold_many_m_n(
-        2,
-        2,
-        map_opt(verify(anychar, |c| is_hex_digit(*c as u8)), |c| c.to_digit(16)),
-        || 0,
-        |acc, n| acc * 16 + n,
-      ),
-    ),
-    universal_char,
-  ))(input)
+  alt((simple_escape_sequence, numeric_escape_sequence, universal_char))(input)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -357,20 +375,209 @@ impl LitChar {
 }
 
 /// A string literal.
-///
-/// ```c
-/// #define STRING "abc"
-/// #define STRING L"def"
-/// #define STRING u8"ghi"
-/// #define STRING u"jkl"
-/// #define STRING U"mno"
-/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LitString {
-  pub(crate) repr: Vec<u8>,
+pub enum LitString {
+  /// An ordinary string (`const char*`) literal.
+  ///
+  /// ```c
+  /// #define STRING "abc"
+  /// ```
+  Ordinary(Vec<u8>),
+  /// A UTF-8 string (`const char8_t*`) literal.
+  ///
+  /// ```c
+  /// #define STRING u8"def"
+  /// ```
+  Utf8(String),
+  /// A UTF-16 string (`const char16_t*`) literal.
+  ///
+  /// ```c
+  /// #define STRING u"ghi"
+  /// ```
+  Utf16(String),
+  /// A UTF-32 string (`const char32_t*`) literal.
+  ///
+  /// ```c
+  /// #define STRING U"jkl"
+  /// ```
+  Utf32(String),
+  /// A wide string (`const wchar_t*`) literal.
+  ///
+  /// ```c
+  /// #define STRING L"mno"
+  /// ```
+  Wide(Vec<u32>),
 }
 
 impl LitString {
+  fn parse_ordinary<I, C>(input: I) -> IResult<I, Vec<u8>>
+  where
+    I: Debug
+      + InputTake
+      + InputLength
+      + Slice<RangeFrom<usize>>
+      + InputIter<Item = C>
+      + Clone
+      + InputTakeAtPosition<Item = C>
+      + Compare<&'static str>,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
+  {
+    delimited(
+      char('\"'),
+      fold_many0(
+        alt((
+          map_opt(preceded(char('\\'), escaped_char), |c| if c <= 0xff { Some(vec![c as u8]) } else { None }),
+          map(is_not("\\\"\n"), |b: I| {
+            let s: String = b.iter_elements().map(|c| c.as_char()).collect();
+            s.into_bytes()
+          }),
+        )),
+        Vec::new,
+        |mut acc, c| {
+          acc.extend(c);
+          acc
+        },
+      ),
+      char('\"'),
+    )(input)
+  }
+
+  fn parse_utf8<I, C>(input: I) -> IResult<I, String>
+  where
+    I: Debug
+      + InputTake
+      + InputLength
+      + Slice<RangeFrom<usize>>
+      + InputIter<Item = C>
+      + Clone
+      + InputTakeAtPosition<Item = C>
+      + Compare<&'static str>,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
+  {
+    map_res(
+      delimited(
+        char('\"'),
+        fold_many0(
+          alt((
+            map_opt(preceded(char('\\'), escaped_char), |c| if c <= 0x7f { Some(vec![c as u8]) } else { None }),
+            map(is_not("\\\"\n"), |b: I| {
+              let s: String = b.iter_elements().map(|c| c.as_char()).collect();
+              s.into_bytes()
+            }),
+          )),
+          Vec::new,
+          |mut acc, c| {
+            acc.extend(c);
+            acc
+          },
+        ),
+        char('\"'),
+      ),
+      String::from_utf8,
+    )(input)
+  }
+
+  fn parse_utf16<I, C>(input: I) -> IResult<I, String>
+  where
+    I: Debug
+      + InputTake
+      + InputLength
+      + Slice<RangeFrom<usize>>
+      + InputIter<Item = C>
+      + Clone
+      + InputTakeAtPosition<Item = C>
+      + Compare<&'static str>,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
+  {
+    map_res(
+      delimited(
+        char('\"'),
+        fold_many0(
+          alt((
+            map_opt(preceded(char('\\'), escaped_char), |c| if c <= 0xffff { Some(vec![c as u16]) } else { None }),
+            map(is_not("\\\"\n"), |b: I| {
+              let s: String = b.iter_elements().map(|c| c.as_char()).collect();
+              s.encode_utf16().collect()
+            }),
+          )),
+          Vec::new,
+          |mut acc, c| {
+            acc.extend(c);
+            acc
+          },
+        ),
+        char('\"'),
+      ),
+      |v| String::from_utf16(&v),
+    )(input)
+  }
+
+  fn parse_utf32<I, C>(input: I) -> IResult<I, String>
+  where
+    I: Debug
+      + InputTake
+      + InputLength
+      + Slice<RangeFrom<usize>>
+      + InputIter<Item = C>
+      + Clone
+      + InputTakeAtPosition<Item = C>
+      + Compare<&'static str>,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
+  {
+    map_opt(
+      delimited(
+        char('\"'),
+        fold_many0(
+          alt((
+            map(preceded(char('\\'), escaped_char), |c| vec![c]),
+            map(is_not("\\\"\n"), |b: I| b.iter_elements().map(|c| c.as_char() as u32).collect()),
+          )),
+          Vec::new,
+          |mut acc, c| {
+            acc.extend(c);
+            acc
+          },
+        ),
+        char('\"'),
+      ),
+      |chars| chars.into_iter().map(char::from_u32).collect::<Option<String>>(),
+    )(input)
+  }
+
+  fn parse_wide<I, C>(input: I) -> IResult<I, Vec<u32>>
+  where
+    I: Debug
+      + InputTake
+      + InputLength
+      + Slice<RangeFrom<usize>>
+      + InputIter<Item = C>
+      + Clone
+      + InputTakeAtPosition<Item = C>
+      + Compare<&'static str>,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
+  {
+    delimited(
+      char('\"'),
+      fold_many0(
+        alt((
+          map(preceded(char('\\'), escaped_char), |c| vec![c]),
+          map(is_not("\\\"\n"), |b: I| b.iter_elements().map(|c| c.as_char() as u32).collect()),
+        )),
+        Vec::new,
+        |mut acc, c| {
+          acc.extend(c);
+          acc
+        },
+      ),
+      char('\"'),
+    )(input)
+  }
+
   fn parse_inner<I, C>(input: &[I]) -> IResult<&[I], Self>
   where
     I: Debug
@@ -386,76 +593,16 @@ impl LitString {
   {
     let (input2, token) = take_one(input)?;
 
-    let res: IResult<I, Vec<u8>> = all_consuming(map_opt(
-      pair(
-        opt(alt((
-          value(LitCharPrefix::Utf8, tag("u8")),
-          value(LitCharPrefix::Utf16, tag("u")),
-          value(LitCharPrefix::Utf32, tag("U")),
-          value(LitCharPrefix::Wide, tag("L")),
-        ))),
-        delimited(
-          char('\"'),
-          fold_many0(
-            alt((
-              fold_many1(preceded(char('\\'), escaped_char), Vec::new, |mut acc, c| {
-                acc.push(c);
-                acc
-              }),
-              map(is_not("\\\"\n"), |b: I| b.iter_elements().map(|c| c.as_char() as u32).collect()),
-            )),
-            Vec::new,
-            |mut acc, c| {
-              acc.extend(c);
-              acc
-            },
-          ),
-          char('\"'),
-        ),
-      ),
-      |(prefix, s)| {
-        match prefix {
-          Some(LitCharPrefix::Utf8) | Some(LitCharPrefix::Utf16) | Some(LitCharPrefix::Utf32) => {
-            if prefix == Some(LitCharPrefix::Utf8) {
-              let s_utf8: Option<Vec<u8>> = s.iter().map(|c| if *c <= 0xff { Some(*c as u8) } else { None }).collect();
-              if let Some(s) = s_utf8.and_then(|s| String::from_utf8(s).ok()) {
-                return Some(s.into())
-              }
-            }
-
-            if prefix == Some(LitCharPrefix::Utf16) {
-              let s_utf16: Option<Vec<u16>> =
-                s.iter().map(|c| if *c <= 0xffff { Some(*c as u16) } else { None }).collect();
-              if let Some(s) = s_utf16.and_then(|s| String::from_utf16(&s).ok()) {
-                return Some(s.into())
-              }
-            }
-
-            let s: Option<String> = s.iter().map(|c| char::from_u32(*c)).collect();
-            return Some(s?.into())
-          },
-          _ => {},
-        }
-
-        let mut acc = Vec::new();
-        for c in s.into_iter() {
-          let c = if c <= u8::MAX as u32 {
-            vec![c as u8]
-          } else if c <= u16::MAX as u32 {
-            (c as u16).to_be_bytes().to_vec()
-          } else {
-            c.to_be_bytes().to_vec()
-          };
-
-          acc.extend(c);
-        }
-
-        Some(acc)
-      },
-    ))(token);
+    let res: IResult<I, Self> = all_consuming(alt((
+      map(Self::parse_ordinary, Self::Ordinary),
+      preceded(tag("u8"), map(Self::parse_utf8, Self::Utf8)),
+      preceded(tag("u"), map(Self::parse_utf16, Self::Utf16)),
+      preceded(tag("U"), map(Self::parse_utf32, Self::Utf32)),
+      preceded(tag("L"), map(Self::parse_wide, Self::Wide)),
+    )))(token);
 
     if let Ok((_, s)) = res {
-      return Ok((input2, Self { repr: s }))
+      return Ok((input2, s))
     }
 
     Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
@@ -477,14 +624,78 @@ impl LitString {
   {
     let (input, s) = Self::parse_inner(input)?;
 
-    fold_many0(
-      Self::parse_inner,
-      move || s.clone(),
-      |mut acc, s| {
-        acc.repr.extend(s.repr);
-        acc
-      },
-    )(input)
+    match s {
+      Self::Ordinary(bytes) => map(
+        fold_many0(
+          map_parser(take_one, |token| {
+            all_consuming(Self::parse_ordinary)(token)
+              .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| input))
+          }),
+          move || bytes.clone(),
+          |mut acc, s| {
+            acc.extend(s);
+            acc
+          },
+        ),
+        Self::Ordinary,
+      )(input),
+      Self::Utf8(s) => map(
+        fold_many0(
+          map_parser(take_one, |token| {
+            all_consuming(Self::parse_utf8)(token)
+              .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| input))
+          }),
+          move || s.clone(),
+          |mut acc, s| {
+            acc.push_str(&s);
+            acc
+          },
+        ),
+        Self::Utf8,
+      )(input),
+      Self::Utf16(s) => map(
+        fold_many0(
+          map_parser(take_one, |token| {
+            all_consuming(Self::parse_utf16)(token)
+              .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| input))
+          }),
+          move || s.clone(),
+          |mut acc, s| {
+            acc.push_str(&s);
+            acc
+          },
+        ),
+        Self::Utf16,
+      )(input),
+      Self::Utf32(s) => map(
+        fold_many0(
+          map_parser(take_one, |token| {
+            all_consuming(Self::parse_utf32)(token)
+              .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| input))
+          }),
+          move || s.clone(),
+          |mut acc, s| {
+            acc.push_str(&s);
+            acc
+          },
+        ),
+        Self::Utf32,
+      )(input),
+      Self::Wide(v) => map(
+        fold_many0(
+          map_parser(take_one, |token| {
+            all_consuming(Self::parse_wide)(token)
+              .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| input))
+          }),
+          move || v.clone(),
+          |mut acc, s| {
+            acc.extend(s);
+            acc
+          },
+        ),
+        Self::Wide,
+      )(input),
+    }
   }
 
   #[allow(unused_variables)]
@@ -492,45 +703,89 @@ impl LitString {
   where
     C: CodegenContext,
   {
-    Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
+    let ty = match self {
+      Self::Ordinary(_) => Type::BuiltIn(BuiltInType::Char),
+      Self::Utf8(_) => Type::BuiltIn(BuiltInType::Char8T),
+      Self::Utf16(_) => Type::BuiltIn(BuiltInType::Char16T),
+      Self::Utf32(_) => Type::BuiltIn(BuiltInType::Char32T),
+      Self::Wide(_) => {
+        let mut ty = Type::Identifier {
+          name: Identifier::Literal(LitIdent { id: "wchar_t".to_owned(), macro_arg: false }),
+          is_struct: false,
+        };
+        ty.finish(ctx)?;
+        ty
+      },
+    };
+
+    Ok(Some(Type::Ptr { ty: Box::new(ty), mutable: false }))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
-    let mut bytes = self.repr.clone();
-    bytes.push(0);
+    match self {
+      Self::Ordinary(bytes) => {
+        let mut bytes = bytes.clone();
+        bytes.push(0);
 
-    let byte_count = proc_macro2::Literal::usize_unsuffixed(bytes.len());
-    let byte_string = proc_macro2::Literal::byte_string(&bytes);
+        let byte_count = proc_macro2::Literal::usize_unsuffixed(bytes.len());
+        let byte_string = proc_macro2::Literal::byte_string(&bytes);
 
-    if ctx.is_variable_macro() {
-      let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix ffi:: });
-      tokens.append_all(quote! {
-        {
-          const BYTES: [u8; #byte_count] = *#byte_string;
-          #[allow(unsafe_code)]
-          unsafe { #ffi_prefix CStr::from_bytes_with_nul_unchecked(&BYTES) }
+        if ctx.is_variable_macro() {
+          let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix ffi:: });
+          tokens.append_all(quote! {
+            {
+              const BYTES: &[u8; #byte_count] = #byte_string;
+              #[allow(unsafe_code)]
+              unsafe { #ffi_prefix CStr::from_bytes_with_nul_unchecked(BYTES) }
+            }
+          })
+        } else {
+          let ffi_prefix = ctx.ffi_prefix();
+          tokens.append_all(quote! {
+            {
+              const BYTES: &[u8; #byte_count] = #byte_string;
+              BYTES.as_ptr() as *const #ffi_prefix c_char
+            }
+          })
         }
-      })
-    } else {
-      let ffi_prefix = ctx.ffi_prefix();
-      tokens.append_all(quote! {
-        {
-          const BYTES: [u8; #byte_count] = *#byte_string;
-          BYTES.as_ptr() as *const #ffi_prefix c_char
-        }
-      })
+      },
+      Self::Utf8(s) => {
+        let mut bytes = s.as_bytes().to_vec();
+        bytes.push(0);
+
+        let byte_string = proc_macro2::Literal::byte_string(&bytes);
+        tokens.append_all(quote! { #byte_string })
+      },
+      Self::Utf16(s) => {
+        let c = s.encode_utf16().chain(std::iter::once(0));
+        tokens.append_all(quote! { &[#(#c),*] })
+      },
+      Self::Utf32(s) => {
+        let c = s.chars().map(u32::from).chain(std::iter::once(0));
+        tokens.append_all(quote! { &[#(#c),*] })
+      },
+      Self::Wide(s) => {
+        let s = s.iter().cloned().chain(std::iter::once(0)).map(proc_macro2::Literal::u32_unsuffixed);
+        tokens.append_all(quote! { &[#(#s),*] })
+      },
     }
   }
 
   /// Get the raw string representation as bytes.
-  pub fn as_bytes(&self) -> &[u8] {
-    &self.repr
+  pub(crate) fn as_bytes(&self) -> Option<&[u8]> {
+    match self {
+      Self::Ordinary(bytes) => Some(bytes.as_slice()),
+      Self::Utf8(s) => Some(s.as_bytes()),
+      Self::Utf16(s) => Some(s.as_bytes()),
+      Self::Utf32(s) => Some(s.as_bytes()),
+      Self::Wide(_) => None,
+    }
   }
 }
 
 impl PartialEq<&str> for LitString {
   fn eq(&self, other: &&str) -> bool {
-    self.repr == other.as_bytes()
+    self.as_bytes() == Some(other.as_bytes())
   }
 }
 
@@ -1100,22 +1355,19 @@ mod tests {
   #[test]
   fn parse_string() {
     let (_, id) = LitString::parse(&[r#""asdf""#]).unwrap();
-    assert_eq!(id, LitString { repr: "asdf".into() });
+    assert_eq!(id, LitString::Ordinary("asdf".into()));
 
     let (_, id) = LitString::parse(&[r#""abc\ndef""#]).unwrap();
-    assert_eq!(id, LitString { repr: "abc\ndef".into() });
+    assert_eq!(id, LitString::Ordinary("abc\ndef".into()));
 
     let (_, id) = LitString::parse(&[r#""escaped\"quote""#]).unwrap();
-    assert_eq!(id, LitString { repr: r#"escaped"quote"#.into() });
+    assert_eq!(id, LitString::Ordinary(r#"escaped"quote"#.into()));
 
     let (_, id) = LitString::parse(&[r#"u8"🎧""#]).unwrap();
-    assert_eq!(id, LitString { repr: "🎧".into() });
+    assert_eq!(id, LitString::Utf8("🎧".into()));
 
     let (_, id) = LitString::parse(&[r#"u8"Put your 🎧 on.""#]).unwrap();
-    assert_eq!(id, LitString { repr: "Put your 🎧 on.".into() });
-
-    let (_, id) = LitString::parse(&[r#"u8"Put your 🎧 on.""#.as_bytes()]).unwrap();
-    assert_eq!(id, LitString { repr: "Put your 🎧 on.".into() });
+    assert_eq!(id, LitString::Utf8("Put your 🎧 on.".into()));
   }
 
   #[test]

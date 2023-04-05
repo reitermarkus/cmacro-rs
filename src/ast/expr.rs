@@ -787,23 +787,26 @@ impl Expr {
         for name in &mut *names {
           name.finish(ctx)?;
 
-          if let Self::Literal(Lit::String(LitString { repr })) = name {
-            if let Some(ref mut current_name) = current_name {
-              current_name.extend_from_slice(repr);
-            } else {
-              current_name = Some(repr.clone());
+          if let Self::Literal(Lit::String(lit)) = name {
+            if let Some(lit_bytes) = lit.as_bytes() {
+              if let Some(ref mut current_name) = current_name {
+                current_name.extend_from_slice(lit_bytes);
+              } else {
+                current_name = Some(lit_bytes.to_vec());
+              }
+              continue
             }
-          } else {
-            if let Some(current_name) = current_name.take() {
-              new_names.push(Self::Literal(Lit::String(LitString { repr: current_name })));
-            }
-
-            new_names.push(name.clone());
           }
+
+          if let Some(current_name) = current_name.take() {
+            new_names.push(Self::Literal(Lit::String(LitString::Ordinary(current_name))));
+          }
+
+          new_names.push(name.clone());
         }
 
         if let Some(current_name) = current_name.take() {
-          new_names.push(Self::Literal(Lit::String(LitString { repr: current_name })));
+          new_names.push(Self::Literal(Lit::String(LitString::Ordinary(current_name))));
         }
 
         if new_names.len() == 1 {
@@ -1163,14 +1166,14 @@ mod tests {
   #[test]
   fn parse_concat() {
     let (_, expr) = Expr::parse(&[r#""abc""#, r#""def""#], &CTX).unwrap();
-    assert_eq!(expr, Expr::Literal(Lit::String(LitString { repr: "abcdef".into() })));
+    assert_eq!(expr, Expr::Literal(Lit::String(LitString::Ordinary("abcdef".into()))));
 
     let ctx = ParseContext::fn_macro("EXPR", &["a"]);
     let (_, expr) = Expr::parse(&[r#""def""#, "#", "a"], &ctx).unwrap();
     assert_eq!(
       expr,
       Expr::Concat(vec![
-        Expr::Literal(Lit::String(LitString { repr: "def".into() })),
+        Expr::Literal(Lit::String(LitString::Ordinary("def".into()))),
         Expr::Stringify(Stringify { id: id!(@a) }),
       ])
     );

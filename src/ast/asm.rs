@@ -8,7 +8,7 @@ use std::{
 use nom::{
   branch::alt,
   character::complete::{alpha1, char, digit1, none_of},
-  combinator::{all_consuming, map, map_opt, map_res, opt, value},
+  combinator::{all_consuming, map, map_opt, opt, value},
   multi::{fold_many0, fold_many1, separated_list0},
   sequence::{delimited, pair, preceded, tuple},
   AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
@@ -169,7 +169,7 @@ impl Asm {
       delimited(
         meta,
         map_opt(LitString::parse, |s| {
-          let (_, template) = Self::parse_template(s.as_bytes()).ok()?;
+          let (_, template) = Self::parse_template(s.as_bytes()?).ok()?;
           Some(template)
         }),
         meta,
@@ -181,7 +181,7 @@ impl Asm {
           map(
             pair(
               map_opt(LitString::parse, |s| {
-                let (_, operands) = Self::parse_output_operands(s.as_bytes()).ok()?;
+                let (_, operands) = Self::parse_output_operands(s.as_bytes()?).ok()?;
                 Some(operands)
               }),
               parenthesized(|tokens| Expr::parse(tokens, ctx)),
@@ -196,7 +196,7 @@ impl Asm {
           delimited(meta, token(","), meta),
           pair(
             map_opt(LitString::parse, |s| {
-              let (_, operands) = Self::parse_input_operands(s.as_bytes()).ok()?;
+              let (_, operands) = Self::parse_input_operands(s.as_bytes()?).ok()?;
               Some(operands)
             }),
             parenthesized(|tokens| Expr::parse(tokens, ctx)),
@@ -205,7 +205,10 @@ impl Asm {
       )),
       opt(preceded(
         delimited(meta, token(":"), meta),
-        separated_list0(tuple((meta, token(","), meta)), map_res(LitString::parse, |s| String::from_utf8(s.repr))),
+        separated_list0(
+          tuple((meta, token(","), meta)),
+          map_opt(LitString::parse, |s| String::from_utf8(s.as_bytes()?.to_vec()).ok()),
+        ),
       )),
     )))(tokens)?;
 

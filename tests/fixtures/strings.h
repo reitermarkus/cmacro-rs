@@ -13,3 +13,15 @@
 
 // Cast string.
 #define CAST_STRING (int*)"STRINGINT"
+
+// UTF-8 string prefix.
+#define UTF8 u8"UTF-8"
+
+// UTF-16 string prefix.
+#define UTF16 u"UTF-16"
+
+// UTF-32 string prefix.
+#define UTF32 U"UTF-32"
+
+// Wide string prefix.
+#define WIDE L"WIDE"
