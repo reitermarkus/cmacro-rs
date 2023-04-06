@@ -42,6 +42,7 @@ pub(crate) struct LocalContext<'g, C> {
   pub(crate) arg_values: HashMap<String, &'g Expr>,
   pub(crate) export_as_macro: bool,
   pub(crate) global_context: &'g C,
+  pub(crate) generate_cstr: bool,
 }
 
 impl<'g, C> LocalContext<'g, C>
@@ -61,6 +62,7 @@ where
       arg_values: Default::default(),
       export_as_macro: false,
       global_context: cx,
+      generate_cstr: true,
     }
   }
 
@@ -115,6 +117,7 @@ where
       arg_values: Default::default(),
       export_as_macro: false,
       global_context: self.global_context,
+      generate_cstr: true,
     };
 
     match self.variable_macro(name).map(|var_macro| var_macro.value.clone()) {
@@ -142,6 +145,10 @@ impl<'g, C> CodegenContext for LocalContext<'g, C>
 where
   C: CodegenContext,
 {
+  fn rust_target(&self) -> Option<String> {
+    self.global_context.rust_target()
+  }
+
   fn ffi_prefix(&self) -> Option<syn::Path> {
     self.global_context.ffi_prefix()
   }
@@ -173,6 +180,11 @@ where
 
 /// Context for code generation.
 pub trait CodegenContext {
+  /// Get the minimum Rust target to generate code for.
+  fn rust_target(&self) -> Option<String> {
+    None
+  }
+
   /// Get the prefix for FFI types, e.g. `c_char` or `c_ulong`.
   fn ffi_prefix(&self) -> Option<syn::Path> {
     None
@@ -238,6 +250,10 @@ impl<T> CodegenContext for &T
 where
   T: CodegenContext,
 {
+  fn rust_target(&self) -> Option<String> {
+    T::rust_target(self)
+  }
+
   fn ffi_prefix(&self) -> Option<syn::Path> {
     T::ffi_prefix(self)
   }

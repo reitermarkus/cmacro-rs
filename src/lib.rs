@@ -27,6 +27,7 @@ use nom::{
 };
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
+use semver::{Version, VersionReq};
 
 pub mod ast;
 pub use ast::*;
@@ -107,6 +108,15 @@ impl VarMacro {
     C: CodegenContext,
   {
     let mut ctx = LocalContext::new(&self.name, &cx);
+
+    ctx.generate_cstr = ctx
+      .rust_target()
+      .and_then(|v| {
+        let version = Version::parse(&v).ok()?;
+        let req = VersionReq::parse(">=1.59").unwrap();
+        Some(req.matches(&version))
+      })
+      .unwrap_or(true);
 
     let mut tokens = TokenStream::new();
     let ty = self.value.finish(&mut ctx)?;

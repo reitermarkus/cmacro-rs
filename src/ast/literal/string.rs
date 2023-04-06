@@ -339,18 +339,22 @@ impl LitString {
 
         match method {
           GenerationMethod::Array => {
-            let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix::ffi }).into_iter();
-            let ty = quote! { #(#ffi_prefix::)*CStr };
-            (
-              quote! { &#ty },
-              quote! {
-                {
-                  const BYTES: #array_ty = #byte_string;
-                  #[allow(unsafe_code)]
-                  unsafe { #ty::from_bytes_with_nul_unchecked(BYTES) }
-                }
-              },
-            )
+            if ctx.generate_cstr {
+              let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix::ffi }).into_iter();
+              let ty = quote! { #(#ffi_prefix::)*CStr };
+              (
+                quote! { &#ty },
+                quote! {
+                  {
+                    const BYTES: #array_ty = #byte_string;
+                    #[allow(unsafe_code)]
+                    unsafe { #ty::from_bytes_with_nul_unchecked(BYTES) }
+                  }
+                },
+              )
+            } else {
+              (array_ty, quote! { #byte_string })
+            }
           },
           GenerationMethod::Ptr => {
             let ffi_prefix = ctx.ffi_prefix().into_iter();
