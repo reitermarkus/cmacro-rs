@@ -76,15 +76,14 @@ pub struct Asm {
 }
 
 impl Asm {
-  fn parse_template(bytes: &[u8]) -> IResult<&[u8], Vec<String>> {
+  fn parse_template(input: &str) -> IResult<&str, Vec<String>> {
     all_consuming(map(
       fold_many0(
         alt((
           map(
             preceded(
               char('%'),
-              map_opt(digit1, |s: &[u8]| {
-                let s = str::from_utf8(s).ok()?;
+              map_opt(digit1, |s: &str| {
                 let n = s.parse::<usize>().ok()?;
                 Some(n)
               }),
@@ -93,7 +92,7 @@ impl Asm {
           ),
           // Escape Rust format string.
           map(alt((char('{'), char('}'))), |c| format!("{0}{0}", c)),
-          fold_many1(none_of::<_, _, nom::error::Error<&[u8]>>("%"), String::new, |mut acc, c| {
+          fold_many1(none_of::<_, _, nom::error::Error<&str>>("%"), String::new, |mut acc, c| {
             acc.push(c);
             acc
           }),
@@ -116,35 +115,35 @@ impl Asm {
           })
           .collect()
       },
-    ))(bytes)
+    ))(input)
   }
 
-  fn parse_reg_constraint(bytes: &[u8]) -> IResult<&[u8], RegConstraint> {
-    map_opt(alpha1, |s: &[u8]| {
-      if s.contains(&b'r') {
+  fn parse_reg_constraint(input: &str) -> IResult<&str, RegConstraint> {
+    map_opt(alpha1, |s: &str| {
+      if s.contains('r') {
         Some(RegConstraint::Reg)
-      } else if s.contains(&b'Q') {
+      } else if s.contains('Q') {
         Some(RegConstraint::RegAbcd)
-      } else if s.contains(&b'q') {
+      } else if s.contains('q') {
         Some(RegConstraint::RegByte)
-      } else if s.contains(&b'f') {
+      } else if s.contains('f') {
         Some(RegConstraint::Freg)
-      } else if s.contains(&b'i') || s.contains(&b'g') {
+      } else if s.contains('i') || s.contains('g') {
         Some(RegConstraint::Reg)
       } else {
         None
       }
-    })(bytes)
+    })(input)
   }
 
-  fn parse_output_operands(bytes: &[u8]) -> IResult<&[u8], (Dir, RegConstraint)> {
+  fn parse_output_operands(input: &str) -> IResult<&str, (Dir, RegConstraint)> {
     all_consuming(pair(alt((value(Dir::Out, char('=')), value(Dir::InOut, char('+')))), Self::parse_reg_constraint))(
-      bytes,
+      input,
     )
   }
 
-  fn parse_input_operands(bytes: &[u8]) -> IResult<&[u8], RegConstraint> {
-    all_consuming(Self::parse_reg_constraint)(bytes)
+  fn parse_input_operands(input: &str) -> IResult<&str, RegConstraint> {
+    all_consuming(Self::parse_reg_constraint)(input)
   }
 
   pub(crate) fn parse<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
@@ -169,7 +168,7 @@ impl Asm {
       delimited(
         meta,
         map_opt(LitString::parse, |s| {
-          let (_, template) = Self::parse_template(s.as_bytes()?).ok()?;
+          let (_, template) = Self::parse_template(s.as_str()?).ok()?;
           Some(template)
         }),
         meta,
@@ -181,7 +180,7 @@ impl Asm {
           map(
             pair(
               map_opt(LitString::parse, |s| {
-                let (_, operands) = Self::parse_output_operands(s.as_bytes()?).ok()?;
+                let (_, operands) = Self::parse_output_operands(s.as_str()?).ok()?;
                 Some(operands)
               }),
               parenthesized(|tokens| Expr::parse(tokens, ctx)),
@@ -196,7 +195,7 @@ impl Asm {
           delimited(meta, token(","), meta),
           pair(
             map_opt(LitString::parse, |s| {
-              let (_, operands) = Self::parse_input_operands(s.as_bytes()?).ok()?;
+              let (_, operands) = Self::parse_input_operands(s.as_str()?).ok()?;
               Some(operands)
             }),
             parenthesized(|tokens| Expr::parse(tokens, ctx)),
@@ -205,10 +204,7 @@ impl Asm {
       )),
       opt(preceded(
         delimited(meta, token(":"), meta),
-        separated_list0(
-          tuple((meta, token(","), meta)),
-          map_opt(LitString::parse, |s| String::from_utf8(s.as_bytes()?.to_vec()).ok()),
-        ),
+        separated_list0(tuple((meta, token(","), meta)), map_opt(LitString::parse, |s| Some(s.as_str()?.to_owned()))),
       )),
     )))(tokens)?;
 
@@ -290,7 +286,7 @@ mod tests {
 
   #[test]
   fn parse_template() {
-    let template = "btsl %2,%1\n\tsbb %0,%0".as_bytes();
+    let template = "btsl %2,%1\n\tsbb %0,%0";
     let (rest, template_tokens) = Asm::parse_template(template).unwrap();
 
     assert!(rest.is_empty());

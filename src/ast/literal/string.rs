@@ -1,4 +1,4 @@
-use std::{fmt::Debug, ops::RangeFrom};
+use std::{fmt::Debug, ops::RangeFrom, str};
 
 use nom::{
   branch::alt,
@@ -374,6 +374,17 @@ impl LitString {
       Self::Utf16(s) => Some(s.as_bytes()),
       Self::Utf32(s) => Some(s.as_bytes()),
       Self::Wide(_) => None,
+    }
+  }
+
+  /// Get the raw string representation as bytes.
+  pub(crate) fn as_str(&self) -> Option<&str> {
+    match self {
+      Self::Ordinary(ref bytes) => str::from_utf8(bytes).ok(),
+      Self::Utf8(s) => Some(s.as_str()),
+      Self::Utf16(s) => Some(s.as_str()),
+      Self::Utf32(s) => Some(s.as_str()),
+      _ => None,
     }
   }
 }

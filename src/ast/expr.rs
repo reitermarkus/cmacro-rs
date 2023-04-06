@@ -795,6 +795,9 @@ impl Expr {
                 current_name = Some(lit_bytes.to_vec());
               }
               continue
+            } else {
+              // FIXME: Cannot concatenate wide strings due to unknown size of `wchar_t`.
+              return Err(crate::Error::UnsupportedExpression)
             }
           }
 
