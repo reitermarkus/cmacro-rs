@@ -110,33 +110,14 @@ impl VarMacro {
 
     let mut tokens = TokenStream::new();
     let ty = self.value.finish(&mut ctx)?;
-    self.value.to_tokens(&mut ctx, &mut tokens);
 
     // TODO: Move this special case into `LitString::finish`.
     let ty = if let Expr::Literal(Lit::String(ref lit)) = self.value {
-      match lit {
-        LitString::Ordinary(_) => {
-          let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix::ffi }).into_iter();
-          Some(quote! { & #(#ffi_prefix::)*CStr })
-        },
-        LitString::Utf8(s) => {
-          let len = proc_macro2::Literal::usize_unsuffixed(s.as_bytes().len() + 1);
-          Some(quote! { &[u8; #len] })
-        },
-        LitString::Utf16(s) => {
-          let len = proc_macro2::Literal::usize_unsuffixed(s.encode_utf16().count() + 1);
-          Some(quote! { &[u16; #len] })
-        },
-        LitString::Utf32(s) => {
-          let len = proc_macro2::Literal::usize_unsuffixed(s.chars().count() + 1);
-          Some(quote! { &[u32; #len] })
-        },
-        LitString::Wide(v) => {
-          let len = proc_macro2::Literal::usize_unsuffixed(v.len() + 1);
-          Some(quote! { &[wchar_t; #len] })
-        },
-      }
+      let (ty, s) = lit.to_token_stream(&mut ctx);
+      tokens.append_all(s);
+      Some(ty)
     } else {
+      self.value.to_tokens(&mut ctx, &mut tokens);
       ty.map(|ty| ty.to_token_stream(&mut ctx))
     };
 

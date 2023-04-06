@@ -10,7 +10,7 @@ use nom::{
   AsChar, Compare, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Slice,
 };
 use proc_macro2::TokenStream;
-use quote::{quote, TokenStreamExt};
+use quote::quote;
 
 use crate::{BuiltInType, CodegenContext, LocalContext, Type};
 
@@ -316,7 +316,14 @@ impl LitString {
     Ok(Some(Type::Ptr { ty: Box::new(ty), mutable: false }))
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> (TokenStream, TokenStream) {
+    enum GenerationMethod {
+      Array,
+      Ptr,
+    }
+
+    let method = if ctx.is_variable_macro() { GenerationMethod::Array } else { GenerationMethod::Ptr };
+
     match self {
       Self::Ordinary(bytes) => {
         let mut bytes = bytes.clone();
@@ -324,44 +331,121 @@ impl LitString {
 
         let byte_count = proc_macro2::Literal::usize_unsuffixed(bytes.len());
         let byte_string = proc_macro2::Literal::byte_string(&bytes);
+        let array_ty = quote! { &[u8; #byte_count] };
 
-        if ctx.is_variable_macro() {
-          let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix::ffi }).into_iter();
-          tokens.append_all(quote! {
-            {
-              const BYTES: &[u8; #byte_count] = #byte_string;
-              #[allow(unsafe_code)]
-              unsafe { #(#ffi_prefix::)*CStr::from_bytes_with_nul_unchecked(BYTES) }
-            }
-          })
-        } else {
-          let ffi_prefix = ctx.ffi_prefix().into_iter();
-          tokens.append_all(quote! {
-            {
-              const BYTES: &[u8; #byte_count] = #byte_string;
-              BYTES.as_ptr() as *const #(#ffi_prefix::)*c_char
-            }
-          })
+        match method {
+          GenerationMethod::Array => {
+            let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix::ffi }).into_iter();
+            let ty = quote! { #(#ffi_prefix::)*CStr };
+            (
+              quote! { &#ty },
+              quote! {
+                {
+                  const BYTES: #array_ty = #byte_string;
+                  #[allow(unsafe_code)]
+                  unsafe { #ty::from_bytes_with_nul_unchecked(BYTES) }
+                }
+              },
+            )
+          },
+          GenerationMethod::Ptr => {
+            let ffi_prefix = ctx.ffi_prefix().into_iter();
+            let ty = quote! { *const #(#ffi_prefix::)*c_char };
+            (
+              ty.clone(),
+              quote! {
+                {
+                  const BYTES: #array_ty = #byte_string;
+                  BYTES.as_ptr() as #ty
+                }
+              },
+            )
+          },
         }
       },
       Self::Utf8(s) => {
         let mut bytes = s.as_bytes().to_vec();
         bytes.push(0);
 
+        let byte_count = proc_macro2::Literal::usize_unsuffixed(bytes.len());
         let byte_string = proc_macro2::Literal::byte_string(&bytes);
-        tokens.append_all(quote! { #byte_string })
+        let array_ty = quote! { &[u8; #byte_count] };
+
+        match method {
+          GenerationMethod::Array => (array_ty, quote! { #byte_string }),
+          GenerationMethod::Ptr => (
+            quote! { *const u8 },
+            quote! {
+              {
+                const BYTES: #array_ty = #byte_string;
+                BYTES.as_ptr()
+              }
+            },
+          ),
+        }
       },
       Self::Utf16(s) => {
-        let c = s.encode_utf16().chain(std::iter::once(0));
-        tokens.append_all(quote! { &[#(#c),*] })
+        let words = s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<_>>();
+
+        let word_count = proc_macro2::Literal::usize_unsuffixed(words.len());
+        let word_array = quote! { &[#(#words),*] };
+        let array_ty = quote! { &[u16; #word_count] };
+
+        match method {
+          GenerationMethod::Array => (array_ty, word_array),
+          GenerationMethod::Ptr => (
+            quote! { *const u16 },
+            quote! {
+              {
+                const WORDS: #array_ty = #word_array;
+                WORDS.as_ptr()
+              }
+            },
+          ),
+        }
       },
       Self::Utf32(s) => {
-        let c = s.chars().map(u32::from).chain(std::iter::once(0));
-        tokens.append_all(quote! { &[#(#c),*] })
+        let dwords = s.chars().map(u32::from).chain(std::iter::once(0)).collect::<Vec<_>>();
+
+        let dword_count = proc_macro2::Literal::usize_unsuffixed(dwords.len());
+        let dword_array = quote! { &[#(#dwords),*] };
+        let array_ty = quote! { &[u32; #dword_count] };
+
+        match method {
+          GenerationMethod::Array => (array_ty, dword_array),
+          GenerationMethod::Ptr => (
+            quote! { *const u32 },
+            quote! {
+              {
+                const DWORDS: #array_ty = #dword_array;
+                DWORDS.as_ptr()
+              }
+            },
+          ),
+        }
       },
       Self::Wide(s) => {
-        let s = s.iter().cloned().chain(std::iter::once(0)).map(proc_macro2::Literal::u32_unsuffixed);
-        tokens.append_all(quote! { &[#(#s),*] })
+        let wchars =
+          s.iter().cloned().chain(std::iter::once(0)).map(proc_macro2::Literal::u32_unsuffixed).collect::<Vec<_>>();
+
+        let wchar_ty =
+          Type::from_resolved_type(&ctx.resolve_ty("wchar_t").unwrap_or_else(|| "wchar_t".into())).to_token_stream(ctx);
+        let wchar_count = proc_macro2::Literal::usize_unsuffixed(wchars.len());
+        let wchar_array = quote! { &[#(#wchars as #wchar_ty),*] };
+        let array_ty = quote! { &[#wchar_ty; #wchar_count] };
+
+        match method {
+          GenerationMethod::Array => (array_ty, wchar_array),
+          GenerationMethod::Ptr => (
+            quote! { *const #wchar_ty },
+            quote! {
+              {
+                const WCHARS: #array_ty = #wchar_array;
+                WCHARS.as_ptr()
+              }
+            },
+          ),
+        }
       },
     }
   }
@@ -377,7 +461,7 @@ impl LitString {
     }
   }
 
-  /// Get the raw string representation as bytes.
+  /// Convert the raw string representation to a UTF-8 string, if possible.
   pub(crate) fn as_str(&self) -> Option<&str> {
     match self {
       Self::Ordinary(ref bytes) => str::from_utf8(bytes).ok(),

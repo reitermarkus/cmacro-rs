@@ -115,7 +115,10 @@ impl Lit {
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     match self {
       Self::Char(c) => c.to_tokens(ctx, tokens),
-      Self::String(s) => s.to_tokens(ctx, tokens),
+      Self::String(s) => {
+        let (_, s) = s.to_token_stream(ctx);
+        tokens.append_all(s)
+      },
       Self::Float(f) => f.to_tokens(ctx, tokens),
       Self::Int(i) => i.to_tokens(ctx, tokens),
     }
