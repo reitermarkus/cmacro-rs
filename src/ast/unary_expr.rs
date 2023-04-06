@@ -98,7 +98,7 @@ impl UnaryExpr {
     let expr = if expr_prec > prec {
       quote! { (#raw_expr) }
     } else {
-      raw_expr.clone()
+      quote! { #raw_expr }
     };
 
     match self.op {
@@ -114,19 +114,11 @@ impl UnaryExpr {
       UnaryOp::PostDec => {
         quote! { { let prev = #raw_expr; #raw_expr -= 1; prev } }
       },
-      UnaryOp::Not => {
-        quote! { !#expr }
-      },
-      UnaryOp::Comp => {
-        quote! { !#expr }
-      },
-      UnaryOp::Plus => {
-        quote! { +#expr }
-      },
-      UnaryOp::Minus => {
-        quote! { -#expr }
-      },
-      UnaryOp::Deref => format!("*{}", expr).parse::<TokenStream>().unwrap(),
+      UnaryOp::Not => format!("!{expr}").parse::<TokenStream>().unwrap(),
+      UnaryOp::Comp => format!("!{expr}").parse::<TokenStream>().unwrap(),
+      UnaryOp::Plus => format!("+{expr}").parse::<TokenStream>().unwrap(),
+      UnaryOp::Minus => format!("-{expr}").parse::<TokenStream>().unwrap(),
+      UnaryOp::Deref => format!("*{expr}").parse::<TokenStream>().unwrap(),
       UnaryOp::AddrOf => {
         let trait_prefix = ctx.trait_prefix().into_iter();
         quote! { #(#trait_prefix::)*ptr::addr_of_mut!(#raw_expr) }
