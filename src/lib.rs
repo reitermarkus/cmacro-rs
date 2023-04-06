@@ -113,7 +113,7 @@ impl VarMacro {
 
     // TODO: Move this special case into `LitString::finish`.
     let ty = if let Expr::Literal(Lit::String(ref lit)) = self.value {
-      let (ty, s) = lit.to_token_stream(&mut ctx);
+      let (ty, s) = lit.to_token_stream(&mut ctx, true);
       tokens.append_all(s);
       Some(ty)
     } else {

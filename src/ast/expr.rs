@@ -1025,13 +1025,6 @@ impl Expr {
 
                 quote! { #expr }
               },
-              Expr::Literal(Lit::String(_)) => {
-                let mut expr = expr.to_token_stream(ctx);
-                if expr_prec > 1 {
-                  expr = quote! { (#expr) };
-                }
-                quote! { #expr.as_ptr() }
-              },
               _ => {
                 let mut expr = expr.to_token_stream(ctx);
                 if expr_prec > prec {

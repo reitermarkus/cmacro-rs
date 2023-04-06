@@ -116,7 +116,7 @@ impl Lit {
     match self {
       Self::Char(c) => c.to_tokens(ctx, tokens),
       Self::String(s) => {
-        let (_, s) = s.to_token_stream(ctx);
+        let (_, s) = s.to_token_stream(ctx, false);
         tokens.append_all(s)
       },
       Self::Float(f) => f.to_tokens(ctx, tokens),

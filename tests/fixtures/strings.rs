@@ -37,9 +37,8 @@ pub unsafe extern "C" fn HELLO3() -> *const c_char {
 
 pub const CAST_STRING: *mut c_int = {
   const BYTES: &[u8; 10] = b"STRINGINT\0";
-  #[allow(unsafe_code)]
-  unsafe { CStr::from_bytes_with_nul_unchecked(BYTES) }
-}.as_ptr() as *mut c_int;
+  BYTES.as_ptr() as *const c_char
+} as *mut c_int;
 
 pub const UTF8: &[u8; 6] = b"UTF-8\0";
 #[allow(non_snake_case, unused_mut, unsafe_code)]

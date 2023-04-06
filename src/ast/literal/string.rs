@@ -316,13 +316,17 @@ impl LitString {
     Ok(Some(Type::Ptr { ty: Box::new(ty), mutable: false }))
   }
 
-  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> (TokenStream, TokenStream) {
+  pub(crate) fn to_token_stream<C: CodegenContext>(
+    &self,
+    ctx: &mut LocalContext<'_, C>,
+    generate_as_array: bool,
+  ) -> (TokenStream, TokenStream) {
     enum GenerationMethod {
       Array,
       Ptr,
     }
 
-    let method = if ctx.is_variable_macro() { GenerationMethod::Array } else { GenerationMethod::Ptr };
+    let method = if generate_as_array { GenerationMethod::Array } else { GenerationMethod::Ptr };
 
     match self {
       Self::Ordinary(bytes) => {
