@@ -701,20 +701,20 @@ impl LitString {
         let byte_string = proc_macro2::Literal::byte_string(&bytes);
 
         if ctx.is_variable_macro() {
-          let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix ffi:: });
+          let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix::ffi }).into_iter();
           tokens.append_all(quote! {
             {
               const BYTES: &[u8; #byte_count] = #byte_string;
               #[allow(unsafe_code)]
-              unsafe { #ffi_prefix CStr::from_bytes_with_nul_unchecked(BYTES) }
+              unsafe { #(#ffi_prefix::)*CStr::from_bytes_with_nul_unchecked(BYTES) }
             }
           })
         } else {
-          let ffi_prefix = ctx.ffi_prefix();
+          let ffi_prefix = ctx.ffi_prefix().into_iter();
           tokens.append_all(quote! {
             {
               const BYTES: &[u8; #byte_count] = #byte_string;
-              BYTES.as_ptr() as *const #ffi_prefix c_char
+              BYTES.as_ptr() as *const #(#ffi_prefix::)*c_char
             }
           })
         }
@@ -882,16 +882,15 @@ impl LitFloat {
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
-    let trait_prefix = &ctx.trait_prefix();
-
+    let trait_prefix = ctx.trait_prefix().into_iter();
     tokens.append_all(match self {
       Self::Float(f) => match f.classify() {
-        FpCategory::Nan => quote! { #trait_prefix f32::NAN },
+        FpCategory::Nan => quote! { #(#trait_prefix::)*f32::NAN },
         FpCategory::Infinite => {
           if f.is_sign_positive() {
-            quote! { #trait_prefix f32::INFINITY }
+            quote! { #(#trait_prefix::)*f32::INFINITY }
           } else {
-            quote! { #trait_prefix f32::NEG_INFINITY }
+            quote! { #(#trait_prefix::)*f32::NEG_INFINITY }
           }
         },
         FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {
@@ -899,12 +898,12 @@ impl LitFloat {
         },
       },
       Self::Double(f) | Self::LongDouble(f) => match f.classify() {
-        FpCategory::Nan => quote! { #trait_prefix f64::NAN },
+        FpCategory::Nan => quote! { #(#trait_prefix::)*f64::NAN },
         FpCategory::Infinite => {
           if f.is_sign_positive() {
-            quote! { #trait_prefix f64::INFINITY }
+            quote! { #(#trait_prefix::)*f64::INFINITY }
           } else {
-            quote! { #trait_prefix f64::NEG_INFINITY }
+            quote! { #(#trait_prefix::)*f64::NEG_INFINITY }
           }
         },
         FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => {

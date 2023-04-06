@@ -270,10 +270,9 @@ impl Asm {
 
     let options = if options.is_empty() { None } else { Some(quote! { options(#(#options),*), }) };
 
-    let trait_prefix = ctx.trait_prefix();
-
+    let trait_prefix = ctx.trait_prefix().into_iter();
     tokens.append_all(quote! {
-      #trait_prefix arch::asm!(
+      #(#trait_prefix::)*arch::asm!(
         #(#template,)*
         #(#outputs,)*
         #(#inputs,)*

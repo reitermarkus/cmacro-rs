@@ -86,12 +86,12 @@ impl FunctionCall {
     let args = self.args.iter().map(|arg| match arg {
       Expr::Cast { ty: Type::Ptr { mutable, .. }, expr } => match **expr {
         Expr::Literal(Lit::Int(LitInt { value: 0, .. })) => {
-          let prefix = ctx.trait_prefix();
+          let prefix = ctx.trait_prefix().into_iter();
 
           if *mutable {
-            quote! { #prefix ptr::null_mut() }
+            quote! { #(#prefix::)*ptr::null_mut() }
           } else {
-            quote! { #prefix ptr::null() }
+            quote! { #(#prefix::)*ptr::null() }
           }
         },
         _ => {

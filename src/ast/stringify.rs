@@ -73,13 +73,18 @@ impl Stringify {
   pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
     let id = self.id.to_token_stream(ctx);
 
-    let ffi_prefix = ctx.ffi_prefix();
-    let trait_prefix = ctx.trait_prefix();
+    let ffi_prefix = ctx.ffi_prefix().into_iter();
+    let trait_prefix = ctx.trait_prefix().into_iter();
+
+    let stringify = {
+      let trait_prefix = trait_prefix.clone();
+      quote! { #(#trait_prefix::)*stringify!(#id) }
+    };
 
     quote! {
       {
-        const BYTES: &[u8] = #trait_prefix concat!(#trait_prefix stringify!(#id), '\0').as_bytes();
-        BYTES.as_ptr() as *const #ffi_prefix c_char
+        const BYTES: &[u8] = #(#trait_prefix::)*concat!(#stringify, '\0').as_bytes();
+        BYTES.as_ptr() as *const #(#ffi_prefix::)*c_char
       }
     }
   }

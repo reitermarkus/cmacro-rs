@@ -146,7 +146,7 @@ where
     self.global_context.ffi_prefix()
   }
 
-  fn trait_prefix(&self) -> Option<TokenStream> {
+  fn trait_prefix(&self) -> Option<syn::Path> {
     self.global_context.trait_prefix()
   }
 
@@ -181,7 +181,7 @@ pub trait CodegenContext {
   /// Get the prefix for traits, macros and constants, e.g. `arch::asm!` or `f32::INFINITY`.
   ///
   /// Most of the time, this is either `::core::` or `::std::`.
-  fn trait_prefix(&self) -> Option<TokenStream> {
+  fn trait_prefix(&self) -> Option<syn::Path> {
     None
   }
 
@@ -242,7 +242,7 @@ where
     T::ffi_prefix(self)
   }
 
-  fn trait_prefix(&self) -> Option<TokenStream> {
+  fn trait_prefix(&self) -> Option<syn::Path> {
     T::trait_prefix(self)
   }
 

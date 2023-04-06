@@ -79,29 +79,29 @@ impl BuiltInType {
   }
 
   fn to_rust_ty(self, ffi_prefix: Option<syn::Path>) -> syn::Type {
-    let ffi_prefix = ffi_prefix.map(|prefix| quote! { #prefix :: });
+    let ffi_prefix = ffi_prefix.into_iter();
 
     match self {
       Self::Float => syn::parse_quote! { f32 },
       Self::Double | Self::LongDouble => syn::parse_quote! { f64 },
       Self::Bool => syn::parse_quote! { bool },
-      Self::Char => syn::parse_quote! { #ffi_prefix c_char },
-      Self::SChar => syn::parse_quote! { #ffi_prefix c_schar },
-      Self::UChar => syn::parse_quote! { #ffi_prefix c_uchar },
+      Self::Char => syn::parse_quote! { #(#ffi_prefix::)*c_char },
+      Self::SChar => syn::parse_quote! { #(#ffi_prefix::)*c_schar },
+      Self::UChar => syn::parse_quote! { #(#ffi_prefix::)*c_uchar },
       Self::Char8T => syn::parse_quote! { u8 },
       Self::Char16T => syn::parse_quote! { u16 },
       Self::Char32T => syn::parse_quote! { u32 },
-      Self::Short => syn::parse_quote! { #ffi_prefix c_short },
-      Self::UShort => syn::parse_quote! { #ffi_prefix c_ushort },
-      Self::Int => syn::parse_quote! { #ffi_prefix c_int },
-      Self::UInt => syn::parse_quote! { #ffi_prefix c_uint },
-      Self::Long => syn::parse_quote! { #ffi_prefix c_long },
-      Self::ULong => syn::parse_quote! { #ffi_prefix c_ulong },
-      Self::LongLong => syn::parse_quote! { #ffi_prefix c_longlong },
-      Self::ULongLong => syn::parse_quote! { #ffi_prefix c_ulonglong },
-      Self::SizeT => syn::parse_quote! { #ffi_prefix size_t },
-      Self::SSizeT => syn::parse_quote! { #ffi_prefix ssize_t },
-      Self::Void => syn::parse_quote! { #ffi_prefix c_void },
+      Self::Short => syn::parse_quote! { #(#ffi_prefix::)*c_short },
+      Self::UShort => syn::parse_quote! { #(#ffi_prefix::)*c_ushort },
+      Self::Int => syn::parse_quote! { #(#ffi_prefix::)*c_int },
+      Self::UInt => syn::parse_quote! { #(#ffi_prefix::)*c_uint },
+      Self::Long => syn::parse_quote! { #(#ffi_prefix::)*c_long },
+      Self::ULong => syn::parse_quote! { #(#ffi_prefix::)*c_ulong },
+      Self::LongLong => syn::parse_quote! { #(#ffi_prefix::)*c_longlong },
+      Self::ULongLong => syn::parse_quote! { #(#ffi_prefix::)*c_ulonglong },
+      Self::SizeT => syn::parse_quote! { #(#ffi_prefix::)*size_t },
+      Self::SSizeT => syn::parse_quote! { #(#ffi_prefix::)*ssize_t },
+      Self::Void => syn::parse_quote! { #(#ffi_prefix::)*c_void },
     }
   }
 

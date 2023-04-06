@@ -976,12 +976,12 @@ impl Expr {
     match self {
       Self::Cast { ref expr, ref ty } => tokens.append_all(match (ty, &**expr) {
         (Type::Ptr { mutable, .. }, Expr::Literal(Lit::Int(LitInt { value: 0, .. }))) => {
-          let prefix = ctx.trait_prefix();
+          let prefix = ctx.trait_prefix().into_iter();
 
           if *mutable {
-            quote! { #prefix ptr::null_mut() }
+            quote! { #(#prefix::)*ptr::null_mut() }
           } else {
-            quote! { #prefix ptr::null() }
+            quote! { #(#prefix::)*ptr::null() }
           }
         },
         (ty, expr) => {
@@ -1045,14 +1045,14 @@ impl Expr {
       }),
       Self::Variable { ref name } => {
         if let Identifier::Literal(name) = name {
-          let prefix = &ctx.ffi_prefix();
+          let prefix = ctx.ffi_prefix().into_iter();
 
           match name.as_str() {
-            "__SCHAR_MAX__" => return tokens.append_all(quote! { #prefix c_schar::MAX }),
-            "__SHRT_MAX__" => return tokens.append_all(quote! { #prefix c_short::MAX }),
-            "__INT_MAX__" => return tokens.append_all(quote! { #prefix c_int::MAX }),
-            "__LONG_MAX__" => return tokens.append_all(quote! { #prefix c_long::MAX }),
-            "__LONG_LONG_MAX__" => return tokens.append_all(quote! { #prefix c_longlong::MAX }),
+            "__SCHAR_MAX__" => return tokens.append_all(quote! { #(#prefix::)*c_schar::MAX }),
+            "__SHRT_MAX__" => return tokens.append_all(quote! { #(#prefix::)*c_short::MAX }),
+            "__INT_MAX__" => return tokens.append_all(quote! { #(#prefix::)*c_int::MAX }),
+            "__LONG_MAX__" => return tokens.append_all(quote! { #(#prefix::)*c_long::MAX }),
+            "__LONG_LONG_MAX__" => return tokens.append_all(quote! { #(#prefix::)*c_longlong::MAX }),
             _ => (),
           }
         }
@@ -1093,16 +1093,17 @@ impl Expr {
         stringify.to_tokens(ctx, tokens);
       },
       Self::Concat(ref names) => {
-        let ffi_prefix = ctx.ffi_prefix();
-        let trait_prefix = ctx.trait_prefix();
+        let ffi_prefix = ctx.ffi_prefix().into_iter();
+        let trait_prefix = ctx.trait_prefix().into_iter();
 
         let names = names
           .iter()
           .map(|e| match e {
             Self::Stringify(s) => {
               let id = s.id.to_token_stream(ctx);
+              let trait_prefix = trait_prefix.clone();
 
-              quote! { #trait_prefix stringify!(#id) }
+              quote! { #(#trait_prefix::)*stringify!(#id) }
             },
             e => e.to_token_stream(ctx),
           })
@@ -1110,8 +1111,8 @@ impl Expr {
 
         tokens.append_all(quote! {
           {
-            const BYTES: &[u8] = #trait_prefix concat!(#(#names),*, '\0').as_bytes();
-            BYTES.as_ptr() as *const #ffi_prefix c_char
+            const BYTES: &[u8] = #(#trait_prefix::)*concat!(#(#names),*, '\0').as_bytes();
+            BYTES.as_ptr() as *const #(#ffi_prefix::)*c_char
           }
         })
       },

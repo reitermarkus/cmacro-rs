@@ -116,8 +116,8 @@ impl VarMacro {
     let ty = if let Expr::Literal(Lit::String(ref lit)) = self.value {
       match lit {
         LitString::Ordinary(_) => {
-          let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix ffi:: });
-          Some(quote! { & #ffi_prefix CStr })
+          let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix::ffi }).into_iter();
+          Some(quote! { & #(#ffi_prefix::)*CStr })
         },
         LitString::Utf8(s) => {
           let len = proc_macro2::Literal::usize_unsuffixed(s.as_bytes().len() + 1);
