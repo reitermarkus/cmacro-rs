@@ -12,7 +12,7 @@ use nom::{
     is_hex_digit, is_oct_digit,
   },
   combinator::{all_consuming, cond, eof, map, map_opt, map_parser, map_res, opt, recognize, success, value, verify},
-  multi::{fold_many0, fold_many_m_n},
+  multi::{fold_many0, fold_many_m_n, many0, many1},
   sequence::{delimited, pair, preceded, terminated, tuple},
   AsBytes, AsChar, Compare, CompareResult, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake,
   InputTakeAtPosition, Offset, ParseTo, Slice,
@@ -200,7 +200,7 @@ where
   <I as InputIter>::Item: AsChar + Copy,
   &'static str: FindToken<<I as InputIter>::Item>,
 {
-  alt((simple_escape_sequence, numeric_escape_sequence, universal_char))(input)
+  preceded(char('\\'), alt((simple_escape_sequence, numeric_escape_sequence, universal_char)))(input)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -265,8 +265,7 @@ impl LitChar {
     let (input, utf8_prefix) = if let Ok((input, _)) = token("u8")(input) { (input, true) } else { (input, false) };
     let (input2, token) = take_one(input)?;
 
-    let one_char =
-      |input| alt((preceded(char('\\'), escaped_char), map(none_of("\\\'\n"), |b| b.as_char() as u32)))(input);
+    let one_char = |input| alt((escaped_char, map(none_of("\\\'\n"), |b| u32::from(b.as_char()))))(input);
 
     let parse_char = |(prefix, c)| match prefix {
       None if c <= 0xff => Some(LitChar::Ordinary(c as u8)),
@@ -427,7 +426,7 @@ impl LitString {
       char('\"'),
       fold_many0(
         alt((
-          map_opt(preceded(char('\\'), escaped_char), |c| if c <= 0xff { Some(vec![c as u8]) } else { None }),
+          map_opt(escaped_char, |c| if c <= 0xff { Some(vec![c as u8]) } else { None }),
           map(is_not("\\\"\n"), |b: I| {
             let s: String = b.iter_elements().map(|c| c.as_char()).collect();
             s.into_bytes()
@@ -461,7 +460,7 @@ impl LitString {
         char('\"'),
         fold_many0(
           alt((
-            map_opt(preceded(char('\\'), escaped_char), |c| if c <= 0x7f { Some(vec![c as u8]) } else { None }),
+            many1(map_res(escaped_char, u8::try_from)),
             map(is_not("\\\"\n"), |b: I| {
               let s: String = b.iter_elements().map(|c| c.as_char()).collect();
               s.into_bytes()
@@ -497,7 +496,7 @@ impl LitString {
         char('\"'),
         fold_many0(
           alt((
-            map_opt(preceded(char('\\'), escaped_char), |c| if c <= 0xffff { Some(vec![c as u16]) } else { None }),
+            many1(map_res(escaped_char, u16::try_from)),
             map(is_not("\\\"\n"), |b: I| {
               let s: String = b.iter_elements().map(|c| c.as_char()).collect();
               s.encode_utf16().collect()
@@ -528,24 +527,9 @@ impl LitString {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
   {
-    map_opt(
-      delimited(
-        char('\"'),
-        fold_many0(
-          alt((
-            map(preceded(char('\\'), escaped_char), |c| vec![c]),
-            map(is_not("\\\"\n"), |b: I| b.iter_elements().map(|c| c.as_char() as u32).collect()),
-          )),
-          Vec::new,
-          |mut acc, c| {
-            acc.extend(c);
-            acc
-          },
-        ),
-        char('\"'),
-      ),
-      |chars| chars.into_iter().map(char::from_u32).collect::<Option<String>>(),
-    )(input)
+    map_opt(delimited(char('\"'), many0(alt((escaped_char, map(none_of("\\\"\n"), u32::from)))), char('\"')), |chars| {
+      chars.into_iter().map(char::from_u32).collect::<Option<String>>()
+    })(input)
   }
 
   fn parse_wide<I, C>(input: I) -> IResult<I, Vec<u32>>
@@ -561,21 +545,7 @@ impl LitString {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
   {
-    delimited(
-      char('\"'),
-      fold_many0(
-        alt((
-          map(preceded(char('\\'), escaped_char), |c| vec![c]),
-          map(is_not("\\\"\n"), |b: I| b.iter_elements().map(|c| c.as_char() as u32).collect()),
-        )),
-        Vec::new,
-        |mut acc, c| {
-          acc.extend(c);
-          acc
-        },
-      ),
-      char('\"'),
-    )(input)
+    delimited(char('\"'), many0(alt((escaped_char, map(none_of("\\\"\n"), u32::from)))), char('\"'))(input)
   }
 
   fn parse_inner<I, C>(input: &[I]) -> IResult<&[I], Self>
@@ -1336,6 +1306,9 @@ mod tests {
     let (_, id) = LitChar::parse(&[r#"'\n'"#]).unwrap();
     assert_eq!(id, LitChar::Ordinary('\n' as u8));
 
+    let (_, id) = LitChar::parse(&[r#"'\''"#]).unwrap();
+    assert_eq!(id, LitChar::Ordinary('\'' as u8));
+
     let (_, id) = LitChar::parse(&[r#"u'\uFFee'"#]).unwrap();
     assert_eq!(id, LitChar::Utf16(0xffee));
 
@@ -1357,17 +1330,26 @@ mod tests {
     let (_, id) = LitString::parse(&[r#""asdf""#]).unwrap();
     assert_eq!(id, LitString::Ordinary("asdf".into()));
 
+    let (_, id) = LitString::parse(&[r#""\360\237\216\247🎧""#]).unwrap();
+    assert_eq!(id, LitString::Ordinary("🎧🎧".into()));
+
     let (_, id) = LitString::parse(&[r#""abc\ndef""#]).unwrap();
     assert_eq!(id, LitString::Ordinary("abc\ndef".into()));
 
     let (_, id) = LitString::parse(&[r#""escaped\"quote""#]).unwrap();
     assert_eq!(id, LitString::Ordinary(r#"escaped"quote"#.into()));
 
-    let (_, id) = LitString::parse(&[r#"u8"🎧""#]).unwrap();
-    assert_eq!(id, LitString::Utf8("🎧".into()));
+    let (_, id) = LitString::parse(&[r#"u8"🎧\xf0\x9f\x8e\xa4""#]).unwrap();
+    assert_eq!(id, LitString::Utf8("🎧🎤".into()));
 
     let (_, id) = LitString::parse(&[r#"u8"Put your 🎧 on.""#]).unwrap();
     assert_eq!(id, LitString::Utf8("Put your 🎧 on.".into()));
+
+    let (_, id) = LitString::parse(&[r#"u"🎧\uD83C\uDFA4""#]).unwrap();
+    assert_eq!(id, LitString::Utf16("🎧🎤".into()));
+
+    let (_, id) = LitString::parse(&[r#"U"🎧\U0001F3A4""#]).unwrap();
+    assert_eq!(id, LitString::Utf32("🎧🎤".into()));
   }
 
   #[test]
