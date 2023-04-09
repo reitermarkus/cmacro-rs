@@ -187,3 +187,36 @@ impl LitChar {
     tokens.append_all(quote! { #c });
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn parse_char() {
+    let (rest, id) = LitChar::parse(&[r#"'a'"#]).unwrap();
+    assert_eq!(id, LitChar::Ordinary('a' as u8));
+    assert!(rest.is_empty());
+
+    let (_, id) = LitChar::parse(&[r#"'\n'"#]).unwrap();
+    assert_eq!(id, LitChar::Ordinary('\n' as u8));
+
+    let (_, id) = LitChar::parse(&[r#"'\''"#]).unwrap();
+    assert_eq!(id, LitChar::Ordinary('\'' as u8));
+
+    let (_, id) = LitChar::parse(&[r#"u'\uFFee'"#]).unwrap();
+    assert_eq!(id, LitChar::Utf16(0xffee));
+
+    let (_, id) = LitChar::parse(&[r#"U'\U0001f369'"#]).unwrap();
+    assert_eq!(id, LitChar::Utf32(0x0001f369));
+
+    let (_, id) = LitChar::parse(&[r#"U'🍌'"#]).unwrap();
+    assert_eq!(id, LitChar::Utf32(0x0001f34c));
+
+    let (_, id) = LitChar::parse(&[r#"'\xff'"#]).unwrap();
+    assert_eq!(id, LitChar::Ordinary(0xff));
+
+    let (_, id) = LitChar::parse(&[r#"'ÿ'"#]).unwrap();
+    assert_eq!(id, LitChar::Ordinary(0xff));
+  }
+}

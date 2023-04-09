@@ -480,3 +480,35 @@ impl LitString {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn parse_string() {
+    let (_, id) = LitString::parse(&[r#""asdf""#]).unwrap();
+    assert_eq!(id, LitString::Ordinary("asdf".into()));
+
+    let (_, id) = LitString::parse(&[r#""\360\237\216\247🎧""#]).unwrap();
+    assert_eq!(id, LitString::Ordinary("🎧🎧".into()));
+
+    let (_, id) = LitString::parse(&[r#""abc\ndef""#]).unwrap();
+    assert_eq!(id, LitString::Ordinary("abc\ndef".into()));
+
+    let (_, id) = LitString::parse(&[r#""escaped\"quote""#]).unwrap();
+    assert_eq!(id, LitString::Ordinary(r#"escaped"quote"#.into()));
+
+    let (_, id) = LitString::parse(&[r#"u8"🎧\xf0\x9f\x8e\xa4""#]).unwrap();
+    assert_eq!(id, LitString::Utf8("🎧🎤".into()));
+
+    let (_, id) = LitString::parse(&[r#"u8"Put your 🎧 on.""#]).unwrap();
+    assert_eq!(id, LitString::Utf8("Put your 🎧 on.".into()));
+
+    let (_, id) = LitString::parse(&[r#"u"🎧\uD83C\uDFA4""#]).unwrap();
+    assert_eq!(id, LitString::Utf16("🎧🎤".into()));
+
+    let (_, id) = LitString::parse(&[r#"U"🎧\U0001F3A4""#]).unwrap();
+    assert_eq!(id, LitString::Utf32("🎧🎤".into()));
+  }
+}
