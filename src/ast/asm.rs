@@ -44,6 +44,7 @@ enum RegConstraint {
   RegAbcd,
   RegByte,
   Freg,
+  Digit(u8),
 }
 
 impl ToTokens for RegConstraint {
@@ -53,6 +54,10 @@ impl ToTokens for RegConstraint {
       Self::RegAbcd => quote! { reg_abcd },
       Self::RegByte => quote! { reg_byte },
       Self::Freg => quote! { freg },
+      Self::Digit(digit) => {
+        let digit = proc_macro2::Literal::u8_unsuffixed(*digit);
+        quote! { #digit }
+      },
     })
   }
 }
@@ -80,15 +85,15 @@ impl Asm {
     all_consuming(map(
       fold_many0(
         alt((
-          map(
-            preceded(
-              char('%'),
+          preceded(
+            char('%'),
+            alt((
               map_opt(digit1, |s: &str| {
                 let n = s.parse::<usize>().ok()?;
-                Some(n)
+                Some(format!("{{{}}}", n))
               }),
-            ),
-            |n| format!("{{{}}}", n),
+              map(alpha1, |reg| format!("%{reg}")),
+            )),
           ),
           // Escape Rust format string.
           map(alt((char('{'), char('}'))), |c| format!("{0}{0}", c)),
@@ -119,21 +124,26 @@ impl Asm {
   }
 
   fn parse_reg_constraint(input: &str) -> IResult<&str, RegConstraint> {
-    map_opt(alpha1, |s: &str| {
-      if s.contains('r') {
-        Some(RegConstraint::Reg)
-      } else if s.contains('Q') {
-        Some(RegConstraint::RegAbcd)
-      } else if s.contains('q') {
-        Some(RegConstraint::RegByte)
-      } else if s.contains('f') {
-        Some(RegConstraint::Freg)
-      } else if s.contains('i') || s.contains('g') {
-        Some(RegConstraint::Reg)
-      } else {
-        None
-      }
-    })(input)
+    alt((
+      map_opt(alpha1, |s: &str| {
+        if s.contains('r') {
+          Some(RegConstraint::Reg)
+        } else if s.contains('Q') {
+          Some(RegConstraint::RegAbcd)
+        } else if s.contains('q') {
+          Some(RegConstraint::RegByte)
+        } else if s.contains('f') {
+          Some(RegConstraint::Freg)
+        } else if s.contains('i') || s.contains('g') {
+          Some(RegConstraint::Reg)
+        } else if let Ok(digit) = s.parse::<u8>() {
+          Some(RegConstraint::Digit(digit))
+        } else {
+          None
+        }
+      }),
+      map_opt(digit1, |s: &str| if let Ok(digit) = s.parse::<u8>() { Some(RegConstraint::Digit(digit)) } else { None }),
+    ))(input)
   }
 
   fn parse_output_operands(input: &str) -> IResult<&str, (Dir, RegConstraint)> {
@@ -228,21 +238,53 @@ impl Asm {
       input.finish(ctx)?;
     }
 
+    if self.is_global() {
+      ctx.export_as_macro = true;
+    }
+
     Ok(None)
+  }
+
+  fn is_att_syntax(&self) -> bool {
+    self.template.iter().any(|s| {
+      // GCC template variables (e.g. `%0`) have already been replaced (e.g. `{{0}}`).
+      // AT&T syntax uses e.g. `(%0,...)` while Intel syntax uses e.g. `[%0,...]` for
+      // indirect addresses.
+      s.contains("({") ||
+      // Remaining `%` mean registers use AT&T syntax (e.g. `%eax`).
+      s.contains('%') ||
+      // Immediate values are prefixed with `$`.
+      s.contains('$')
+    })
+  }
+
+  fn is_global(&self) -> bool {
+    self.outputs.is_empty() && self.inputs.is_empty() && self.clobbers.is_empty()
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
     let template = &self.template;
-    let outputs = self
-      .outputs
+
+    let mut outputs = self.outputs.clone();
+    let mut inputs = self.inputs.clone();
+
+    for (constraint, _) in self.inputs.iter() {
+      if let RegConstraint::Digit(d) = constraint {
+        if let Some((ref mut dir, _, _)) = outputs.get_mut(*d as usize) {
+          inputs.remove(*d as usize);
+          *dir = Dir::InOut;
+        }
+      }
+    }
+
+    let outputs = outputs
       .iter()
       .map(|(dir, reg, var)| {
         let var = var.to_token_stream(ctx);
         quote! { #dir(#reg) #var }
       })
       .collect::<Vec<_>>();
-    let inputs = self
-      .inputs
+    let inputs = inputs
       .iter()
       .map(|(reg, var)| {
         let var = var.to_token_stream(ctx);
@@ -254,26 +296,38 @@ impl Asm {
 
     let mut options = Vec::new();
 
-    // Memory is not clobbered, so add `nomem` option.
-    if !clobbers.remove("memory") {
-      options.push(quote! { nomem });
+    if self.is_att_syntax() {
+      options.push(quote! { att_syntax });
     }
 
-    // Flags are not clobbered, so add `preserves_flags` option.
-    if !clobbers.remove("cc") {
-      options.push(quote! { preserves_flags });
-    }
+    let (asm, clobber_abi) = if self.is_global() {
+      (quote! { global_asm! }, None)
+    } else {
+      // Memory is not clobbered, so add `nomem` option.
+      if !clobbers.remove("memory") {
+        options.push(quote! { nomem });
+      }
+
+      // Flags are not clobbered, so add `preserves_flags` option.
+      if !clobbers.remove("cc") {
+        options.push(quote! { preserves_flags });
+      }
+
+      let clobber_abi = if clobbers.is_empty() { None } else { Some(quote! { clobber_abi("C"), }) };
+
+      (quote! { asm! }, clobber_abi)
+    };
 
     let options = if options.is_empty() { None } else { Some(quote! { options(#(#options),*), }) };
 
     let trait_prefix = ctx.trait_prefix().into_iter();
     tokens.append_all(quote! {
-      #(#trait_prefix::)*arch::asm!(
+      #(#trait_prefix::)*arch::#asm(
         #(#template,)*
         #(#outputs,)*
         #(#inputs,)*
         #(out(#clobbers) _,)*
-        clobber_abi("C"),
+        #clobber_abi
         #options
       )
     })
