@@ -108,18 +108,7 @@ impl Asm {
           acc
         },
       ),
-      |s| {
-        s.split('\n')
-          .filter_map(|s| {
-            let s = s.trim();
-            if s.is_empty() {
-              None
-            } else {
-              Some(s.to_owned())
-            }
-          })
-          .collect()
-      },
+      |s| s.split('\n').map(|s| s.trim().to_owned()).collect(),
     ))(input)
   }
 
