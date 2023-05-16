@@ -1,10 +1,14 @@
-use std::{collections::HashMap, env, fs};
+use std::{collections::HashMap, env, fs, process::exit};
 
 use clang::{source::SourceRange, Clang, EntityKind, EntityVisitResult, Index};
 use glob::glob;
-use pretty_assertions::assert_eq;
+use pretty_assertions::StrComparison;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
+use yansi::{
+  Color::{Green, Red},
+  Style,
+};
 
 use cmacro::{CodegenContext, FnMacro, VarMacro};
 
@@ -81,6 +85,8 @@ fn file_visit_macros<F: FnMut(EntityKind, &str, Option<&[&str]>, &[&str])>(file:
 fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
   let test_name: Option<String> = env::args().nth(1);
 
+  let mut errors = HashMap::new();
+
   for entry in glob("./tests/fixtures/*.h").unwrap() {
     let entry = entry?;
     let header_name = entry.as_path().file_stem().and_then(|s| s.to_str()).unwrap();
@@ -93,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
       }
     }
 
-    eprintln!("Testing header {}", header_name);
+    print!("test {} ... ", header_name);
 
     #[derive(Debug, Clone, Default)]
     struct Context {
@@ -174,9 +180,33 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
       }
     }
 
-    let output = fs::read_to_string(output_path)?.parse::<TokenStream>()?;
+    let expected = prettyplease::unparse(&syn::parse2::<syn::File>(f)?);
+    let actual = prettyplease::unparse(&syn::parse_str::<syn::File>(&fs::read_to_string(output_path)?)?);
 
-    assert_eq!(f.to_string(), output.to_string());
+    if actual == expected {
+      println!(" {}", Style::new(Green).paint("ok"));
+    } else {
+      println!(" {}", Style::new(Red).paint("FAILED"));
+      errors.insert(header_name.to_owned(), (actual, expected));
+    }
+  }
+
+  if !errors.is_empty() {
+    println!("\nfailures:\n");
+
+    for (header_name, (actual, expected)) in &errors {
+      let diff = StrComparison::new(expected, actual);
+      print!("---- {} diff ----\n{}", header_name, diff);
+    }
+
+    println!("\nfailures:");
+
+    for header_name in errors.keys() {
+      println!("    {}", header_name);
+    }
+
+    println!();
+    exit(1);
   }
 
   Ok(())
