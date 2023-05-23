@@ -322,7 +322,9 @@ impl LitString {
     generate_as_array: bool,
   ) -> (TokenStream, TokenStream) {
     enum GenerationMethod {
+      /// Generate the string as an array type.
       Array,
+      /// Generate the string as a pointer type.
       Ptr,
     }
 
