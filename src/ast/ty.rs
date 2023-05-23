@@ -308,7 +308,9 @@ impl Type {
         if let Identifier::Literal(id) = name {
           let id = id.as_str();
 
-          if let Some(Expr::Variable { name }) = ctx.arg_value(id).or_else(|| ctx.variable_macro_value(id)) {
+          let expr = if let Some(expr) = ctx.arg_value(id) { Some(expr) } else { ctx.variable_macro_value(id)? };
+
+          if let Some(Expr::Variable { name }) = expr {
             *self = Self::Identifier { name: name.clone(), is_struct: false };
             return self.finish(ctx)
           }

@@ -755,7 +755,7 @@ impl Expr {
                 _ => return Err(crate::CodegenError::UnsupportedExpression),
               }
             }
-          } else if let Some(expr) = ctx.variable_macro_value(id.as_str()) {
+          } else if let Some(expr) = ctx.variable_macro_value(id.as_str())? {
             match expr {
               Self::Variable { name } => {
                 *field = name.clone();

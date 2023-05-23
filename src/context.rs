@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use super::*;
 
@@ -120,8 +120,9 @@ where
       generate_cstr: true,
     };
 
-    match self.variable_macro(name).map(|var_macro| var_macro.value.clone()) {
-      Some(mut expr) => {
+    match self.variable_macro_value(name)? {
+      Some(expr) => {
+        let mut expr = expr.clone();
         let ty = expr.finish(&mut ctx)?;
         self.export_as_macro |= ctx.export_as_macro;
 
@@ -136,8 +137,13 @@ where
     }
   }
 
-  pub fn variable_macro_value(&self, name: &str) -> Option<&Expr> {
-    self.variable_macro(name).map(|var_macro| &var_macro.value)
+  pub fn variable_macro_value(&self, name: &str) -> Result<Option<&Expr>, crate::CodegenError> {
+    if let Some(var_macro) = self.variable_macro(name) {
+      // Cannot generate non-expression variable-like macros.
+      return var_macro.value().map(Some).ok_or(crate::CodegenError::NonExpressionVarMacro)
+    }
+
+    Ok(None)
   }
 }
 
