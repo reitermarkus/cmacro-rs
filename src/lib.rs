@@ -26,3 +26,6 @@ pub use var_macro::VarMacro;
 
 mod fn_macro;
 pub use fn_macro::FnMacro;
+
+mod macro_set;
+pub use macro_set::{ExpansionError, MacroSet};
