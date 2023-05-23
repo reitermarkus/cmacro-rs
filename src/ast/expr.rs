@@ -609,7 +609,7 @@ impl Expr {
     Self::parse_term_prec14(tokens, ctx)
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -716,7 +716,7 @@ impl Expr {
             } else if let Some(fn_macro) = ctx.function_macro(id.as_str()) {
               let fn_macro = fn_macro.clone();
               match fn_macro.call(&ctx.root_name, &ctx.names, &call.args, ctx)? {
-                MacroBody::Statement(_) => return Err(crate::Error::UnsupportedExpression),
+                MacroBody::Statement(_) => return Err(crate::CodegenError::UnsupportedExpression),
                 MacroBody::Expr(expr) => {
                   *self = expr;
                   return self.finish(ctx)
@@ -752,7 +752,7 @@ impl Expr {
                   *field = name.clone();
                   return self.finish(ctx)
                 },
-                _ => return Err(crate::Error::UnsupportedExpression),
+                _ => return Err(crate::CodegenError::UnsupportedExpression),
               }
             }
           } else if let Some(expr) = ctx.variable_macro_value(id.as_str()) {
@@ -761,7 +761,7 @@ impl Expr {
                 *field = name.clone();
                 return self.finish(ctx)
               },
-              _ => return Err(crate::Error::UnsupportedExpression),
+              _ => return Err(crate::CodegenError::UnsupportedExpression),
             }
           }
         }
@@ -776,7 +776,7 @@ impl Expr {
           Some(Type::Ptr { ty, .. }) => Ok(Some(*ty)),
           None => Ok(None),
           // Type can only be either a pointer-type or unknown.
-          _ => Err(crate::Error::UnsupportedExpression),
+          _ => Err(crate::CodegenError::UnsupportedExpression),
         }
       },
       Self::Stringify(stringify) => stringify.finish(ctx),
@@ -797,7 +797,7 @@ impl Expr {
               continue
             } else {
               // FIXME: Cannot concatenate wide strings due to unknown size of `wchar_t`.
-              return Err(crate::Error::UnsupportedExpression)
+              return Err(crate::CodegenError::UnsupportedExpression)
             }
           }
 
@@ -871,7 +871,7 @@ impl Expr {
             }
           },
           (UnaryOp::Comp, Self::Literal(Lit::Float(_) | Lit::String(_))) => {
-            return Err(crate::Error::UnsupportedExpression)
+            return Err(crate::CodegenError::UnsupportedExpression)
           },
           _ => (),
         }

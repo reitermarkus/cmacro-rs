@@ -20,7 +20,7 @@ pub struct FunctionCall {
 }
 
 impl FunctionCall {
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -34,7 +34,7 @@ impl FunctionCall {
             name.finish(ctx)?;
             self.name = name;
           },
-          _ => return Err(crate::Error::UnsupportedExpression),
+          _ => return Err(crate::CodegenError::UnsupportedExpression),
         }
       }
     }
@@ -49,7 +49,7 @@ impl FunctionCall {
       if let Some((known_args, known_ret_ty)) = ctx.function(function_name.as_str()) {
         // Cannot call external functions in `const` context.
         if ctx.is_variable_macro() {
-          return Err(crate::Error::UnsupportedExpression)
+          return Err(crate::CodegenError::UnsupportedExpression)
         }
 
         if known_args.len() == self.args.len() {

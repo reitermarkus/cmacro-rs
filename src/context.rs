@@ -102,9 +102,9 @@ where
     self.arg_values.get(name).copied()
   }
 
-  pub fn eval_variable(&mut self, name: &str) -> Result<(Expr, Option<Type>), crate::Error> {
+  pub fn eval_variable(&mut self, name: &str) -> Result<(Expr, Option<Type>), crate::CodegenError> {
     if self.names.contains(name) {
-      return Err(crate::Error::RecursiveDefinition(name.to_owned()))
+      return Err(crate::CodegenError::RecursiveDefinition(name.to_owned()))
     }
 
     let mut names = self.names.clone();
@@ -127,7 +127,7 @@ where
 
         Ok((expr, ty))
       },
-      None if ctx.is_variable_macro() => Err(crate::Error::UnknownVariable(name.to_owned())),
+      None if ctx.is_variable_macro() => Err(crate::CodegenError::UnknownVariable(name.to_owned())),
       None => {
         self.export_as_macro = true;
 

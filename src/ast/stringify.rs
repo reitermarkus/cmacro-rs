@@ -48,7 +48,7 @@ impl Stringify {
     })(tokens)
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -63,7 +63,7 @@ impl Stringify {
     }
 
     // Only macro arguments can be stringified.
-    Err(crate::Error::UnsupportedExpression)
+    Err(crate::CodegenError::UnsupportedExpression)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {

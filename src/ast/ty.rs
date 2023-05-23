@@ -296,7 +296,7 @@ impl Type {
     }
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -354,21 +354,21 @@ impl Type {
 }
 
 impl FromStr for Type {
-  type Err = crate::Error;
+  type Err = crate::CodegenError;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     // Pointer star needs to be a separate token.
-    let s = s.replace('*', " * ");
+    let ty = s.replace('*', " * ");
 
-    let tokens = s.split_whitespace().collect::<Vec<_>>();
+    let tokens = ty.split_whitespace().collect::<Vec<_>>();
     let ctx = ParseContext { name: "", args: &[] };
-    let (_, ty) = Self::parse(&tokens, &ctx).map_err(|_| crate::Error::ParserError)?;
+    let (_, ty) = Self::parse(&tokens, &ctx).map_err(|_| crate::CodegenError::UnsupportedType(s.to_owned()))?;
     Ok(ty)
   }
 }
 
 impl TryFrom<syn::Type> for Type {
-  type Error = crate::Error;
+  type Error = crate::CodegenError;
 
   fn try_from(ty: syn::Type) -> Result<Self, Self::Error> {
     match ty {
@@ -389,7 +389,7 @@ impl TryFrom<syn::Type> for Type {
           .map(|s| Identifier::Literal(LitIdent { id: s.ident.to_string(), macro_arg: false }))
           .collect(),
       }),
-      _ => Err(crate::Error::ParserError),
+      ty => Err(crate::CodegenError::UnsupportedType(ty.into_token_stream().to_string())),
     }
   }
 }

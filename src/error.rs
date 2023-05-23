@@ -2,24 +2,49 @@ use std::fmt;
 
 /// A parsing or codegen error.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Error {
-  /// Variable is unknown.
-  UnknownVariable(String),
-  /// Parsing failed.
-  ParserError,
-  /// Cannot evaluate expression.
-  UnsupportedExpression,
-  /// Recursive macro definition.
-  RecursiveDefinition(String),
+pub enum ParserError {
+  /// Invalid macro name.
+  InvalidMacroName,
+  /// Invalid macro arguments.
+  InvalidMacroArgs,
+  /// Invalid macro body.
+  InvalidMacroBody,
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for ParserError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      Self::UnknownVariable(var_name) => write!(f, "unknown variable {}", var_name),
-      Self::ParserError => write!(f, "parser error"),
-      Self::UnsupportedExpression => write!(f, "unsupported expression"),
-      Self::RecursiveDefinition(macro_name) => write!(f, "recursive macro definition {}", macro_name),
+      Self::InvalidMacroName => write!(f, "invalid macro name"),
+      Self::InvalidMacroArgs => write!(f, "invalid macro arguments"),
+      Self::InvalidMacroBody => write!(f, "invalid macro body"),
     }
   }
 }
+
+impl std::error::Error for ParserError {}
+
+/// A code generation error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CodegenError {
+  /// Recursive macro definition.
+  RecursiveDefinition(String),
+  /// Expression is not supported in Rust.
+  UnsupportedExpression,
+  /// Type is not supported.
+  UnsupportedType(String),
+  /// Variable is unknown.
+  UnknownVariable(String),
+}
+
+impl fmt::Display for CodegenError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Self::RecursiveDefinition(macro_name) => write!(f, "recursive macro definition {}", macro_name),
+      Self::UnsupportedExpression => write!(f, "unsupported expression"),
+      Self::UnsupportedType(ty) => write!(f, "unsupported type {}", ty),
+      Self::UnknownVariable(var_name) => write!(f, "unknown variable {}", var_name),
+    }
+  }
+}
+
+impl std::error::Error for CodegenError {}

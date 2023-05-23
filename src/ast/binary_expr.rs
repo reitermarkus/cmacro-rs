@@ -161,7 +161,7 @@ impl BinaryExpr {
   pub(crate) fn finish<C>(
     &mut self,
     ctx: &mut LocalContext<'_, C>,
-  ) -> Result<(Option<Type>, Option<Type>), crate::Error>
+  ) -> Result<(Option<Type>, Option<Type>), crate::CodegenError>
   where
     C: CodegenContext,
   {

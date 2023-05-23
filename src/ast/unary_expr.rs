@@ -61,7 +61,7 @@ impl UnaryExpr {
     self.op.precedence()
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::Error>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -72,7 +72,7 @@ impl UnaryExpr {
       UnaryOp::Deref => {
         // Cannot dereference pointers in variable macros, i.e. constants.
         if ctx.is_variable_macro() {
-          return Err(crate::Error::UnsupportedExpression)
+          return Err(crate::CodegenError::UnsupportedExpression)
         }
 
         if let Some(Type::Ptr { ty, .. }) = ty {

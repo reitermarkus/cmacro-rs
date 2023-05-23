@@ -45,7 +45,7 @@ pub use context::*;
 /// # Examples
 ///
 /// ```
-/// # fn main() -> Result<(), cmacro::Error> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use cmacro::VarMacro;
 ///
 /// // #define VAR 4 + 7 + 82
@@ -68,7 +68,7 @@ pub struct VarMacro {
 
 impl VarMacro {
   /// Parse a variable-like macro from a name and value tokens.
-  pub fn parse<I, C>(name: I, value: &[I]) -> Result<Self, crate::Error>
+  pub fn parse<I, C>(name: I, value: &[I]) -> Result<Self, crate::ParserError>
   where
     I: Debug
       + InputTake
@@ -86,16 +86,17 @@ impl VarMacro {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    let name = if let Ok((_, name)) = identifier(&[name]) { name } else { return Err(crate::Error::ParserError) };
+    let name =
+      if let Ok((_, name)) = identifier(&[name]) { name } else { return Err(crate::ParserError::InvalidMacroName) };
 
     let ctx = ParseContext::var_macro(&name);
     let body = match MacroBody::parse(value, &ctx) {
       Ok((_, body)) => body,
-      Err(_) => return Err(crate::Error::ParserError),
+      Err(_) => return Err(crate::ParserError::InvalidMacroBody),
     };
 
     let value = match body {
-      MacroBody::Statement(_) => return Err(crate::Error::ParserError),
+      MacroBody::Statement(_) => return Err(crate::ParserError::InvalidMacroBody),
       MacroBody::Expr(expr) => expr,
     };
 
@@ -103,7 +104,7 @@ impl VarMacro {
   }
 
   /// Evaluate the value and type of this macro and generate corresponding Rust code.
-  pub fn generate<C>(&mut self, cx: C) -> Result<(TokenStream, Option<TokenStream>), crate::Error>
+  pub fn generate<C>(&mut self, cx: C) -> Result<(TokenStream, Option<TokenStream>), crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -144,7 +145,7 @@ impl VarMacro {
 /// generated as a Rust macro.
 ///
 /// ```
-/// # fn main() -> Result<(), cmacro::Error> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use cmacro::{FnMacro, CodegenContext};
 /// use quote::quote;
 ///
@@ -181,7 +182,7 @@ impl VarMacro {
 /// a function is generated instead of a macro, as seen in the following example:
 ///
 /// ```
-/// # fn main() -> Result<(), cmacro::Error> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use cmacro::{FnMacro, CodegenContext};
 /// use quote::quote;
 ///
@@ -266,7 +267,7 @@ impl FnMacro {
   }
 
   /// Parse a function-like macro from a name, arguments and body tokens.
-  pub fn parse<I, C>(name: I, args: &[I], body: &[I]) -> Result<Self, crate::Error>
+  pub fn parse<I, C>(name: I, args: &[I], body: &[I]) -> Result<Self, crate::ParserError>
   where
     I: Debug
       + InputTake
@@ -284,12 +285,12 @@ impl FnMacro {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    let (_, name) = identifier(&[name]).map_err(|_| crate::Error::ParserError)?;
-    let (_, args) = Self::parse_args(args).map_err(|_| crate::Error::ParserError)?;
+    let (_, name) = identifier(&[name]).map_err(|_| crate::ParserError::InvalidMacroName)?;
+    let (_, args) = Self::parse_args(args).map_err(|_| crate::ParserError::InvalidMacroArgs)?;
 
     let ctx_args = args.iter().map(|a| a.as_str()).collect::<Vec<_>>();
     let ctx = ParseContext::fn_macro(&name, &ctx_args);
-    let (_, body) = MacroBody::parse(body, &ctx).map_err(|_| crate::Error::ParserError)?;
+    let (_, body) = MacroBody::parse(body, &ctx).map_err(|_| crate::ParserError::InvalidMacroBody)?;
 
     Ok(Self { name, args, body })
   }
@@ -300,12 +301,12 @@ impl FnMacro {
     names: &HashSet<String>,
     args: &[Expr],
     ctx: &LocalContext<C>,
-  ) -> Result<MacroBody, crate::Error>
+  ) -> Result<MacroBody, crate::CodegenError>
   where
     C: CodegenContext,
   {
     if ctx.names.contains(&self.name) {
-      return Err(crate::Error::RecursiveDefinition(self.name))
+      return Err(crate::CodegenError::RecursiveDefinition(self.name))
     }
 
     let mut names = names.clone();
@@ -320,7 +321,7 @@ impl FnMacro {
   }
 
   /// Infer the type of this function macro and generate corresponding Rust code.
-  pub fn generate<C>(&mut self, cx: C) -> Result<TokenStream, crate::Error>
+  pub fn generate<C>(&mut self, cx: C) -> Result<TokenStream, crate::CodegenError>
   where
     C: CodegenContext,
   {
