@@ -1,4 +1,5 @@
 use std::{
+  borrow::Cow,
   collections::{HashMap, HashSet},
   mem,
 };
@@ -51,7 +52,7 @@ fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
           "__VA_ARGS__" => Token::VarArgs,
           "#" => Token::Stringify,
           "##" => Token::Concat,
-          token => Token::Plain(token),
+          token => Token::Plain(Cow::Borrowed(token)),
         }
       }
     })
@@ -81,7 +82,6 @@ fn detokenize(arg_names: &[String], tokens: Vec<Token<'_>>) -> Vec<String> {
 
           format!("{:?}", s)
         },
-        Token::ConcatArg(tokens) => detokenize(arg_names, tokens).join(""),
         Token::Placemarker => return None,
       })
     })
@@ -90,16 +90,14 @@ fn detokenize(arg_names: &[String], tokens: Vec<Token<'_>>) -> Vec<String> {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Token<'s> {
-  Plain(&'s str),
+  Plain(Cow<'s, str>),
   MacroArg(usize),
   VarArgs,
-  NonReplacable(&'s str),
+  NonReplacable(Cow<'s, str>),
   Stringify,
   Concat,
   StringifyArg(Vec<Token<'s>>),
   Placemarker,
-  // TODO: Get rid of `ConcatArg`, since the resulting token is also available for macro replacement.
-  ConcatArg(Vec<Token<'s>>),
 }
 
 impl MacroSet {
@@ -127,7 +125,7 @@ impl MacroSet {
 
   fn expand_macro_body<'s>(
     &'s self,
-    non_replaced_names: HashSet<&'s str>,
+    non_replaced_names: HashSet<&str>,
     body: &[Token<'s>],
   ) -> Result<Vec<Token<'s>>, ExpansionError> {
     let mut tokens = vec![];
@@ -143,24 +141,26 @@ impl MacroSet {
           tokens.push(token.clone());
         },
         Token::Plain(t) => {
-          if non_replaced_names.contains(t) {
-            tokens.push(Token::NonReplacable(t));
-          } else if let Some(body) = self.var_macros.get(t) {
+          if non_replaced_names.contains(t.as_ref()) {
+            tokens.push(Token::NonReplacable(t.clone()));
+          } else if let Some(body) = self.var_macros.get(t.as_ref()) {
             let body = tokenize(&[], body);
-            tokens.extend(self.expand_var_macro_body(non_replaced_names.clone(), t, &body)?);
+            tokens.extend(self.expand_var_macro_body(non_replaced_names.clone(), t.as_ref(), &body)?);
             tokens.extend(it);
             return self.expand_macro_body(non_replaced_names, &tokens)
-          } else if let Some((arg_names, body)) = self.fn_macros.get(t) {
+          } else if let Some((arg_names, body)) = self.fn_macros.get(t.as_ref()) {
             if let Ok(args) = self.collect_args(&mut it) {
               let body = tokenize(arg_names, body);
-              tokens.extend(self.expand_fn_macro_body(non_replaced_names.clone(), t, arg_names, Some(&args), &body)?);
+              let expanded_tokens =
+                self.expand_fn_macro_body(non_replaced_names.clone(), t.as_ref(), arg_names, Some(&args), &body)?;
+              tokens.extend(expanded_tokens);
               tokens.extend(it);
               return self.expand_macro_body(non_replaced_names, &tokens)
             } else {
-              tokens.push(token);
+              tokens.push(Token::Plain(t));
             }
           } else {
-            tokens.push(token)
+            tokens.push(Token::Plain(t))
           }
         },
         token => tokens.push(token),
@@ -170,10 +170,10 @@ impl MacroSet {
     Ok(tokens)
   }
 
-  fn expand_var_macro_body<'s>(
+  fn expand_var_macro_body<'s, 'n>(
     &'s self,
-    mut non_replaced_names: HashSet<&'s str>,
-    name: &'s str,
+    mut non_replaced_names: HashSet<&'n str>,
+    name: &'n str,
     body: &[Token<'s>],
   ) -> Result<Vec<Token<'s>>, ExpansionError> {
     Self::check_concat_begin_end(body)?;
@@ -195,14 +195,14 @@ impl MacroSet {
     match (lhs, rhs) {
       (Token::Placemarker, rhs) => rhs,
       (lhs, Token::Placemarker) => lhs,
-      (lhs, rhs) => Token::ConcatArg(vec![lhs, rhs]),
+      (lhs, rhs) => Token::Plain(Cow::Owned(detokenize(&[], vec![lhs, rhs]).join(""))),
     }
   }
 
-  fn expand_fn_macro_body<'s>(
+  fn expand_fn_macro_body<'s, 'n>(
     &'s self,
-    mut non_replaced_names: HashSet<&'s str>,
-    name: &'s str,
+    mut non_replaced_names: HashSet<&'n str>,
+    name: &'n str,
     arg_names: &[String],
     args: Option<&[Vec<Token<'s>>]>,
     body: &[Token<'s>],
@@ -266,38 +266,41 @@ impl MacroSet {
     let mut it2 = it.clone();
 
     match it2.next() {
-      Some(Token::Plain("(")) => (),
+      Some(Token::Plain(t)) if t.as_ref() == "(" => (),
       _ => return Err(ExpansionError::MissingOpenParenthesis('(')),
     }
 
     while let Some(token) = it2.next() {
       match token {
-        Token::Plain(t @ "(" | t @ "[" | t @ "{") => {
-          parentheses.push(t.chars().next().unwrap());
-          current_arg.push(token);
-        },
-        Token::Plain("}") => match parentheses.pop() {
-          Some('{') => current_arg.push(token),
-          Some(parenthesis) => return Err(ExpansionError::UnclosedParenthesis(parenthesis)),
-          None => return Err(ExpansionError::MissingOpenParenthesis('{')),
-        },
-        Token::Plain("]") => match parentheses.pop() {
-          Some('[') => current_arg.push(token),
-          Some(parenthesis) => return Err(ExpansionError::UnclosedParenthesis(parenthesis)),
-          None => return Err(ExpansionError::MissingOpenParenthesis('[')),
-        },
-        Token::Plain(")") => match parentheses.pop() {
-          Some('(') => current_arg.push(token),
-          Some(parenthesis) => return Err(ExpansionError::UnclosedParenthesis(parenthesis)),
-          None => {
-            args.push(mem::take(&mut current_arg));
-
-            *it = it2;
-            return Ok(args)
+        Token::Plain(t) => match t.as_ref() {
+          p @ "(" | p @ "[" | p @ "{" => {
+            parentheses.push(p.chars().next().unwrap());
+            current_arg.push(Token::Plain(t));
           },
-        },
-        Token::Plain(",") if parentheses.is_empty() => {
-          args.push(mem::take(&mut current_arg));
+          "}" => match parentheses.pop() {
+            Some('{') => current_arg.push(Token::Plain(t)),
+            Some(parenthesis) => return Err(ExpansionError::UnclosedParenthesis(parenthesis)),
+            None => return Err(ExpansionError::MissingOpenParenthesis('{')),
+          },
+          "]" => match parentheses.pop() {
+            Some('[') => current_arg.push(Token::Plain(t)),
+            Some(parenthesis) => return Err(ExpansionError::UnclosedParenthesis(parenthesis)),
+            None => return Err(ExpansionError::MissingOpenParenthesis('[')),
+          },
+          ")" => match parentheses.pop() {
+            Some('(') => current_arg.push(Token::Plain(t)),
+            Some(parenthesis) => return Err(ExpansionError::UnclosedParenthesis(parenthesis)),
+            None => {
+              args.push(mem::take(&mut current_arg));
+
+              *it = it2;
+              return Ok(args)
+            },
+          },
+          "," if parentheses.is_empty() => {
+            args.push(mem::take(&mut current_arg));
+          },
+          _ => current_arg.push(Token::Plain(t)),
         },
         token => current_arg.push(token),
       }
@@ -308,7 +311,7 @@ impl MacroSet {
 
   fn expand_arguments<'s>(
     &'s self,
-    non_replaced_names: HashSet<&'s str>,
+    non_replaced_names: HashSet<&str>,
     arg_names: &[String],
     args: &[Vec<Token<'s>>],
     tokens: &[Token<'s>],
@@ -326,7 +329,7 @@ impl MacroSet {
 
             for (i, arg) in args[(arg_names.len() - 1)..].iter().enumerate() {
               if i > 0 {
-                var_args.push(Token::Plain(","));
+                var_args.push(Token::Plain(Cow::Borrowed(",")));
               }
               var_args.extend(arg.clone());
             }
