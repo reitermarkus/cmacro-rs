@@ -5,6 +5,8 @@ use std::{
 };
 
 /// A set of macros.
+///
+/// C macros can only be fully expanded once all macros are defined.
 #[derive(Debug, Default)]
 pub struct MacroSet {
   var_macros: HashMap<String, Vec<String>>,
@@ -39,6 +41,8 @@ pub enum ExpansionError {
   NonUniqueParameter(String),
   /// `#` in function-like macro is not followed by a parameter.
   StringifyNonParameter,
+  /// Concatenation does not produce a valid pre-processing token.
+  InvalidConcat,
 }
 
 fn is_comment(s: &str) -> bool {
@@ -68,51 +72,70 @@ fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
     .collect()
 }
 
-fn detokenize(arg_names: &[String], tokens: Vec<Token<'_>>) -> Vec<String> {
+fn stringify(tokens: Vec<Token<'_>>) -> String {
+  let mut s = String::new();
+
+  let mut space_before_next = false;
+
+  for token in tokens {
+    let token = match &token {
+      Token::VarArgs => "__VA_ARGS__",
+      Token::Plain(t) => t.as_ref(),
+      Token::NonReplacable(t) => t.as_ref(),
+      Token::Stringify => "#",
+      Token::Concat => "##",
+      _ => {
+        // At the point where `stringify` is called, macro arguments are already replaced and placemarkers removed.
+        unreachable!()
+      },
+    };
+
+    if token != ")" && token != "]" && token != "}" && token != "." && token != "," && token != "(" && space_before_next
+    {
+      s.push(' ');
+    }
+
+    space_before_next = !(token == "(" || token == "[" || token == "{" || token == ".");
+
+    s.push_str(token)
+  }
+
+  format!("{s:?}")
+}
+
+fn detokenize<'t>(_arg_names: &[String], tokens: Vec<Token<'t>>) -> Vec<MacroToken<'t>> {
   tokens
     .into_iter()
     .filter_map(|t| {
       Some(match t {
-        Token::MacroArg(arg_index) => arg_names[arg_index].clone(),
-        Token::VarArgs => "__VA_ARGS__".into(),
-        Token::Plain(t) => t.to_string(),
-        Token::NonReplacable(t) => t.to_string(),
-        Token::Stringify => "#".into(),
-        Token::Concat => "##".into(),
-        Token::StringifyArg(tokens) => {
-          let mut s = String::new();
-
-          let mut space_before_next = false;
-
-          for token in detokenize(arg_names, tokens).into_iter() {
-            if token != ")" && token != "]" && token != "}" && token != "." && token != "," && token != "(" {
-              if space_before_next {
-                s.push(' ');
-              }
-            }
-
-            space_before_next = if token == "(" || token == "[" || token == "{" || token == "." { false } else { true };
-
-            s.push_str(&token)
-          }
-
-          format!("{:?}", s)
-        },
+        Token::MacroArg(arg_index) => MacroToken::Arg(arg_index),
+        Token::VarArgs => MacroToken::Token(Cow::Borrowed("__VA_ARGS__")),
+        Token::Plain(t) | Token::NonReplacable(t) => MacroToken::Token(t),
+        Token::Stringify => MacroToken::Token(Cow::Borrowed("#")),
+        Token::Concat => MacroToken::Token(Cow::Borrowed("##")),
         Token::Placemarker => return None,
       })
     })
     .collect()
 }
 
+/// A macro token.
 #[derive(Debug, Clone, PartialEq)]
-enum Token<'s> {
-  Plain(Cow<'s, str>),
+pub enum MacroToken<'t> {
+  /// A macro parameter for the argument at the given position.
+  Arg(usize),
+  /// A macro token.
+  Token(Cow<'t, str>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Token<'t> {
+  Plain(Cow<'t, str>),
   MacroArg(usize),
   VarArgs,
-  NonReplacable(Cow<'s, str>),
+  NonReplacable(Cow<'t, str>),
   Stringify,
   Concat,
-  StringifyArg(Vec<Token<'s>>),
   Placemarker,
 }
 
@@ -149,13 +172,6 @@ impl MacroSet {
 
     while let Some(token) = it.next() {
       match token {
-        Token::Stringify => {
-          if !matches!(it.peek(), Some(Token::MacroArg(_) | Token::VarArgs)) {
-            return Err(ExpansionError::StringifyNonParameter)
-          }
-
-          tokens.push(token.clone());
-        },
         Token::Plain(t) => {
           if non_replaced_names.contains(t.as_ref()) {
             tokens.push(Token::NonReplacable(t.clone()));
@@ -199,20 +215,12 @@ impl MacroSet {
       return Err(ExpansionError::NonVariadicVarArgs)
     }
 
+    let mut body = Self::expand_concat(body.to_vec())?;
+    Self::remove_placemarkers(&mut body);
+
     non_replaced_names.insert(name);
 
-    let body = Self::expand_concat(body.to_vec())?;
-
     self.expand_macro_body(non_replaced_names, &body)
-  }
-
-  // TODO: Add error for concatenating non-identifiers.
-  fn concat_tokens<'s>(lhs: Token<'s>, rhs: Token<'s>) -> Token<'s> {
-    match (lhs, rhs) {
-      (Token::Placemarker, rhs) => rhs,
-      (lhs, Token::Placemarker) => lhs,
-      (lhs, rhs) => Token::Plain(Cow::Owned(detokenize(&[], vec![lhs, rhs]).join(""))),
-    }
   }
 
   fn expand_fn_macro_body<'s, 'n>(
@@ -262,7 +270,8 @@ impl MacroSet {
       body.to_vec()
     };
 
-    let body = Self::expand_concat(body)?;
+    let mut body = Self::expand_concat(body)?;
+    Self::remove_placemarkers(&mut body);
 
     non_replaced_names.insert(name);
 
@@ -335,6 +344,12 @@ impl MacroSet {
 
     while let Some(token) = it.next() {
       match token {
+        Token::Stringify => match it.peek() {
+          Some(Token::MacroArg(_) | Token::VarArgs) => {
+            tokens.push(token.clone());
+          },
+          _ => return Err(ExpansionError::StringifyNonParameter),
+        },
         Token::MacroArg(_) | Token::VarArgs => {
           let arg = if let Token::MacroArg(arg_index) = token {
             args[arg_index].clone()
@@ -354,7 +369,7 @@ impl MacroSet {
           match tokens.last() {
             Some(Token::Stringify) => {
               tokens.pop();
-              tokens.push(Token::StringifyArg(arg.clone()));
+              tokens.push(Token::NonReplacable(Cow::Owned(stringify(arg))));
             },
             Some(Token::Concat) => {
               let arg = self.expand_macro_body(non_replaced_names.clone(), &arg)?;
@@ -393,14 +408,31 @@ impl MacroSet {
         Token::Concat => {
           // NOTE: `##` cannot be at the beginning or end, so there must be a token before and after this.
           let lhs = tokens.pop().unwrap();
-          let rhs = it.next().unwrap();
-          tokens.push(Self::concat_tokens(lhs, rhs))
+          let rhs = if it.peek() == Some(&Token::Concat) {
+            // Treat consecutive `##` as one.
+            Token::Placemarker
+          } else {
+            it.next().unwrap()
+          };
+          tokens.push(match (lhs, rhs) {
+            (Token::Placemarker, rhs) => rhs,
+            (lhs, Token::Placemarker) => lhs,
+            (Token::Stringify, Token::Stringify) => Token::NonReplacable(Cow::Borrowed("##")),
+            (Token::Plain(lhs) | Token::NonReplacable(lhs), Token::Plain(rhs) | Token::NonReplacable(rhs)) => {
+              Token::Plain(Cow::Owned(format!("{}{}", lhs, rhs)))
+            },
+            _ => return Err(ExpansionError::InvalidConcat),
+          })
         },
         token => tokens.push(token),
       }
     }
 
     Ok(tokens)
+  }
+
+  fn remove_placemarkers(tokens: &mut Vec<Token<'_>>) {
+    tokens.retain(|t| *t != Token::Placemarker);
   }
 
   /// Add a variable-like macro to the set.
@@ -418,7 +450,7 @@ impl MacroSet {
   }
 
   /// Parse a variable-like macro.
-  pub fn parse_var_macro(&self, name: &str) -> Result<Vec<String>, ExpansionError> {
+  pub fn parse_var_macro(&self, name: &str) -> Result<Vec<MacroToken<'_>>, ExpansionError> {
     let body = self.var_macros.get(name).ok_or(ExpansionError::MacroNotFound)?;
     let body = tokenize(&[], body);
     let tokens = self.expand_var_macro_body(HashSet::new(), name, &body)?;
@@ -444,7 +476,7 @@ impl MacroSet {
   }
 
   /// Parse a function-like macro.
-  pub fn parse_fn_macro(&self, name: &str) -> Result<Vec<String>, ExpansionError> {
+  pub fn parse_fn_macro(&self, name: &str) -> Result<Vec<MacroToken<'_>>, ExpansionError> {
     let (arg_names, body) = self.fn_macros.get(name).ok_or(ExpansionError::MacroNotFound)?;
     let body = tokenize(arg_names, body);
     let tokens = self.expand_fn_macro_body(HashSet::new(), name, arg_names, None, &body)?;
@@ -456,11 +488,33 @@ impl MacroSet {
 mod tests {
   use super::*;
 
+  trait ToMacroToken<'t> {
+    fn to_macro_token(self) -> MacroToken<'t>;
+  }
+
+  impl<'t> ToMacroToken<'t> for MacroToken<'t> {
+    fn to_macro_token(self) -> MacroToken<'t> {
+      self
+    }
+  }
+
+  impl<'t> ToMacroToken<'t> for &'t str {
+    fn to_macro_token(self) -> MacroToken<'t> {
+      MacroToken::Token(Cow::Borrowed(self))
+    }
+  }
+
+  macro_rules! arg {
+    ($index:expr) => {{
+      MacroToken::Arg($index)
+    }};
+  }
+
   macro_rules! tokens {
     ($($token:expr),*) => {{
       vec![
         $(
-          String::from($token)
+          $token.to_macro_token()
         ),*
       ]
     }};
@@ -480,7 +534,7 @@ mod tests {
     macro_set.add_var_macro("PLUS_VAR_VAR", &["PLUS", "(", "7", ",", "VAR", ")"]);
 
     assert_eq!(macro_set.parse_var_macro("VAR"), Ok(tokens!["2", "+", "3"]));
-    assert_eq!(macro_set.parse_fn_macro("F1"), Ok(tokens!["A", "+", "2", "+", "3", "+", "B"]));
+    assert_eq!(macro_set.parse_fn_macro("F1"), Ok(tokens![arg!(0), "+", "2", "+", "3", "+", arg!(1)]));
     assert_eq!(macro_set.parse_var_macro("PLUS_VAR"), Ok(tokens!["7", "+", "8"]));
     assert_eq!(macro_set.parse_var_macro("PLUS_PLUS_VAR"), Ok(tokens!["3", "+", "1", "+", "8"]));
     assert_eq!(macro_set.parse_var_macro("PLUS_VAR_VAR"), Ok(tokens!["7", "+", "2", "+", "3"]));
@@ -535,8 +589,8 @@ mod tests {
     macro_set.add_fn_macro("FUNC1", &["arg"], &["FUNC2", "(", "arg", ")"]);
     macro_set.add_fn_macro("FUNC2", &["arg"], &["FUNC1", "(", "arg", ")"]);
     macro_set.add_var_macro("VAR1", &["1", "+", "VAR1"]);
-    assert_eq!(macro_set.parse_fn_macro("FUNC1"), Ok(tokens!["FUNC1", "(", "arg", ")"]));
-    assert_eq!(macro_set.parse_fn_macro("FUNC2"), Ok(tokens!["FUNC2", "(", "arg", ")"]));
+    assert_eq!(macro_set.parse_fn_macro("FUNC1"), Ok(tokens!["FUNC1", "(", arg!(0), ")"]));
+    assert_eq!(macro_set.parse_fn_macro("FUNC2"), Ok(tokens!["FUNC2", "(", arg!(0), ")"]));
     assert_eq!(macro_set.parse_var_macro("VAR1"), Ok(tokens!["1", "+", "VAR1"]));
   }
 
@@ -546,7 +600,7 @@ mod tests {
 
     macro_set.add_var_macro("s", &["377"]);
     macro_set.add_fn_macro("STRINGIFY", &["s"], &["#", "s"]);
-    assert_eq!(macro_set.parse_fn_macro("STRINGIFY"), Ok(tokens!["#", "s"]));
+    assert_eq!(macro_set.parse_fn_macro("STRINGIFY"), Ok(tokens!["#", arg!(0)]));
   }
 
   #[test]
@@ -797,25 +851,22 @@ mod tests {
     let mut macro_set = MacroSet::new();
 
     macro_set.add_var_macro("OBJ_LIKE", &["/* whie space */", "(", "1", "-", "1", ")", "/* other */"]);
-    assert_eq!(macro_set.add_var_macro("OBJ_LIKE", &["(", "1", "-", "1", ")"]), false);
+    assert!(!macro_set.add_var_macro("OBJ_LIKE", &["(", "1", "-", "1", ")"]));
 
-    assert_eq!(macro_set.add_fn_macro("FUNC_LIKE", &["a"], &["(", "a", ")"]), false);
-    assert_eq!(
-      macro_set.add_fn_macro(
-        "FUNC_LIKE",
-        &["a"],
-        &["(", "/* note the white space */", "a", "/* other stuff on this line \n */", ")"]
-      ),
-      false
-    );
+    assert!(!macro_set.add_fn_macro("FUNC_LIKE", &["a"], &["(", "a", ")"]));
+    assert!(!macro_set.add_fn_macro(
+      "FUNC_LIKE",
+      &["a"],
+      &["(", "/* note the white space */", "a", "/* other stuff on this line \n */", ")"]
+    ));
 
     let mut macro_set = MacroSet::new();
 
     macro_set.add_var_macro("OBJ_LIKE", &["(", "0", ")"]);
-    assert_eq!(macro_set.add_var_macro("OBJ_LIKE", &["(", "1", "-", "1", ")"]), true);
+    assert!(macro_set.add_var_macro("OBJ_LIKE", &["(", "1", "-", "1", ")"]));
 
     macro_set.add_fn_macro("FUNC_LIKE", &["b"], &["(", "a", ")"]);
-    assert_eq!(macro_set.add_fn_macro("FUNC_LIKE", &["b"], &["(", "b", ")"]), true);
+    assert!(macro_set.add_fn_macro("FUNC_LIKE", &["b"], &["(", "b", ")"]));
   }
 
   #[test]

@@ -26,4 +26,4 @@ mod fn_macro;
 pub use fn_macro::FnMacro;
 
 mod macro_set;
-pub use macro_set::{ExpansionError, MacroSet};
+pub use macro_set::{ExpansionError, MacroSet, MacroToken};
