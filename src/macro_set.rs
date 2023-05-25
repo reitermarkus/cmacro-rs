@@ -41,6 +41,15 @@ pub enum ExpansionError {
   StringifyNonParameter,
 }
 
+fn is_comment(s: &str) -> bool {
+  (s.starts_with("/*") && s.ends_with("*/")) || s.starts_with("//")
+}
+
+fn is_whitespace(s: &str) -> bool {
+  let s = s.trim();
+  s.is_empty() || is_comment(s)
+}
+
 fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
   tokens
     .iter()
@@ -73,10 +82,17 @@ fn detokenize(arg_names: &[String], tokens: Vec<Token<'_>>) -> Vec<String> {
         Token::StringifyArg(tokens) => {
           let mut s = String::new();
 
-          for (i, token) in detokenize(arg_names, tokens).into_iter().enumerate() {
-            if i > 0 && token != "," {
-              s.push(' ');
+          let mut space_before_next = false;
+
+          for token in detokenize(arg_names, tokens).into_iter() {
+            if token != ")" && token != "]" && token != "}" && token != "." && token != "," && token != "(" {
+              if space_before_next {
+                s.push(' ');
+              }
             }
+
+            space_before_next = if token == "(" || token == "[" || token == "{" || token == "." { false } else { true };
+
             s.push_str(&token)
           }
 
@@ -222,8 +238,6 @@ impl MacroSet {
           // Allow passing an empty argument for arity 0.
           && !(arg_names.is_empty() && args.first().map(|arg| arg.is_empty()).unwrap_or(true))
         {
-          dbg!((&arg_names, &args));
-
           return Err(ExpansionError::FnMacroArgumentError {
             name: name.to_owned(),
             required: arg_names.len(),
@@ -393,8 +407,14 @@ impl MacroSet {
   ///
   /// Returns true if the macro was redefined.
   pub fn add_var_macro(&mut self, name: &str, body: &[&str]) -> bool {
-    self.fn_macros.remove(name).is_some()
-      || self.var_macros.insert(name.to_owned(), body.iter().map(|&t| t.to_owned()).collect()).is_some()
+    if let Some(old_body) = self.var_macros.insert(name.to_owned(), body.iter().map(|&t| t.to_owned()).collect()) {
+      let old_tokens = old_body.iter().filter(|t| !is_whitespace(t));
+      let new_tokens = body.iter().filter(|t| !is_whitespace(t));
+
+      !(old_tokens.zip(new_tokens).all(|(t1, t2)| t1 == t2))
+    } else {
+      self.fn_macros.remove(name).is_some()
+    }
   }
 
   /// Parse a variable-like macro.
@@ -409,14 +429,18 @@ impl MacroSet {
   ///
   /// Returns true if the macro was redefined.
   pub fn add_fn_macro(&mut self, name: &str, args: &[&str], body: &[&str]) -> bool {
-    self.var_macros.remove(name).is_some()
-      || self
-        .fn_macros
-        .insert(
-          name.to_owned(),
-          (args.iter().map(|&t| t.to_owned()).collect(), body.iter().map(|&t| t.to_owned()).collect()),
-        )
-        .is_some()
+    if let Some((old_args, old_body)) = self.fn_macros.insert(
+      name.to_owned(),
+      (args.iter().map(|&t| t.to_owned()).collect(), body.iter().map(|&t| t.to_owned()).collect()),
+    ) {
+      let old_tokens = old_body.iter().filter(|t| !is_whitespace(t));
+      let new_tokens = body.iter().filter(|t| !is_whitespace(t));
+
+      !(old_args.iter().zip(args.iter()).all(|(old_arg, arg)| old_arg == arg)
+        && old_tokens.zip(new_tokens).all(|(t1, t2)| t1 == t2))
+    } else {
+      self.var_macros.remove(name).is_some()
+    }
   }
 
   /// Parse a function-like macro.
@@ -569,7 +593,7 @@ mod tests {
   }
 
   #[test]
-  fn parse_c_std_6_10_3_3() {
+  fn parse_c_std_6_10_3_3_example() {
     let mut macro_set = MacroSet::new();
 
     macro_set.add_var_macro("hash_hash", &["#", "##", "#"]);
@@ -581,7 +605,7 @@ mod tests {
   }
 
   #[test]
-  fn parse_c_std_6_10_3_5() {
+  fn parse_c_std_6_10_3_5_example_3() {
     let mut macro_set = MacroSet::new();
 
     macro_set.add_var_macro("x", &["3"]);
@@ -646,6 +670,212 @@ mod tests {
     assert_eq!(
       macro_set.parse_var_macro("line4"),
       Ok(tokens!["char", "c", "[", "2", "]", "[", "6", "]", "=", "{", "\"hello\"", ",", "\"\"", "}", ";"])
+    );
+  }
+
+  #[test]
+  fn parse_c_std_6_10_3_5_example_4() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.add_fn_macro("str", &["s"], &["#", "s"]);
+    macro_set.add_fn_macro("xstr", &["s"], &["str", "(", "s", ")"]);
+    macro_set.add_fn_macro(
+      "debug",
+      &["s", "t"],
+      &[
+        "printf",
+        "(",
+        "\"x\"",
+        "#",
+        "s",
+        "\"= %d, x\"",
+        "#",
+        "t",
+        "\"= %s\"",
+        ",",
+        "x",
+        "##",
+        "s",
+        ",",
+        "x",
+        "##",
+        "t",
+        ")",
+      ],
+    );
+    macro_set.add_fn_macro("INCFILE", &["n"], &["vers", "##", "n"]);
+    macro_set.add_fn_macro("glue", &["a", "b"], &["a", "##", "b"]);
+    macro_set.add_fn_macro("xglue", &["a", "b"], &["glue", "(", "a", ",", "b", ")"]);
+    macro_set.add_var_macro("HIGHLOW", &["\"hello\""]);
+    macro_set.add_var_macro("LOW", &["LOW", "\", world\""]);
+
+    macro_set.add_var_macro("line1", &["debug", "(", "1", ",", "2", ")", ";"]);
+    macro_set.add_var_macro(
+      "line2",
+      &[
+        "fputs",
+        "(",
+        "str",
+        "(",
+        "strncmp",
+        "(",
+        "\"abc\0d\"",
+        ",",
+        "\"abc\"",
+        ",",
+        "'\\4'",
+        ")", // this goes away
+        "==",
+        "0",
+        ")",
+        "str",
+        "(",
+        ":",
+        "@",
+        "\\n",
+        ")",
+        ",",
+        "s",
+        ")",
+        ";",
+      ],
+    );
+    macro_set.add_var_macro("line3", &["#include", "xstr", "(", "INCFILE", "(", "2", ")", ".", "h", ")"]);
+
+    assert_eq!(
+      macro_set.parse_var_macro("line1"),
+      Ok(tokens!["printf", "(", "\"x\"", "\"1\"", "\"= %d, x\"", "\"2\"", "\"= %s\"", ",", "x1", ",", "x2", ")", ";"])
+    );
+    assert_eq!(
+      macro_set.parse_var_macro("line2"),
+      Ok(tokens![
+        "fputs",
+        "(",
+        "\"strncmp(\\\"abc\\0d\\\", \\\"abc\\\", '\\\\4') == 0\"",
+        "\": @ \\\\n\"",
+        ",",
+        "s",
+        ")",
+        ";"
+      ])
+    );
+    assert_eq!(macro_set.parse_var_macro("line3"), Ok(tokens!["#include", "\"vers2.h\""]));
+  }
+
+  #[test]
+  fn parse_c_std_6_10_3_5_example_5() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.add_fn_macro("t", &["x", "y", "z"], &["x", "##", "y", "##", "z"]);
+    macro_set.add_var_macro(
+      "line1",
+      &[
+        "int", "j", "[", "]", "=", "{", //
+        "t", "(", "1", ",", "2", ",", "3", ")", ",", //
+        "t", "(", ",", "4", ",", "5", ")", ",", //
+        "t", "(", "6", ",", ",", "7", ")", ",", //
+        "t", "(", "8", ",", "9", ",", ")", ",", //
+        "t", "(", "10", ",", ",", ")", ",", //
+        "t", "(", ",", "11", ",", ")", ",", //
+        "t", "(", ",", ",", "12", ")", ",", //
+        "t", "(", ",", ",", ")", //
+        "}", ";",
+      ],
+    );
+
+    assert_eq!(
+      macro_set.parse_var_macro("line1"),
+      Ok(tokens![
+        "int", "j", "[", "]", "=", "{", "123", ",", "45", ",", "67", ",", "89", ",", "10", ",", "11", ",", "12", ",",
+        "}", ";"
+      ])
+    );
+  }
+
+  #[test]
+  fn parse_c_std_6_10_3_5_example_6() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.add_var_macro("OBJ_LIKE", &["/* whie space */", "(", "1", "-", "1", ")", "/* other */"]);
+    assert_eq!(macro_set.add_var_macro("OBJ_LIKE", &["(", "1", "-", "1", ")"]), false);
+
+    assert_eq!(macro_set.add_fn_macro("FUNC_LIKE", &["a"], &["(", "a", ")"]), false);
+    assert_eq!(
+      macro_set.add_fn_macro(
+        "FUNC_LIKE",
+        &["a"],
+        &["(", "/* note the white space */", "a", "/* other stuff on this line \n */", ")"]
+      ),
+      false
+    );
+
+    let mut macro_set = MacroSet::new();
+
+    macro_set.add_var_macro("OBJ_LIKE", &["(", "0", ")"]);
+    assert_eq!(macro_set.add_var_macro("OBJ_LIKE", &["(", "1", "-", "1", ")"]), true);
+
+    macro_set.add_fn_macro("FUNC_LIKE", &["b"], &["(", "a", ")"]);
+    assert_eq!(macro_set.add_fn_macro("FUNC_LIKE", &["b"], &["(", "b", ")"]), true);
+  }
+
+  #[test]
+  fn parse_c_std_6_10_3_5_example_7() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.add_fn_macro("debug", &["..."], &["fprintf", "(", "stderr", ",", "__VA_ARGS__", ")"]);
+    macro_set.add_fn_macro("showlist", &["..."], &["puts", "(", "#", "__VA_ARGS__", ")"]);
+    macro_set.add_fn_macro(
+      "report",
+      &["test", "..."],
+      &["(", "(", "test", ")", "?", "puts", "(", "#", "test", ")", ":", "printf", "(", "__VA_ARGS__", ")", ")"],
+    );
+
+    macro_set.add_var_macro("line1", &["debug", "(", "\"Flag\"", ")", ";"]);
+    macro_set.add_var_macro("line2", &["debug", "(", "\"X = %d\\n\"", ",", "x", ")", ";"]);
+    macro_set.add_var_macro(
+      "line3",
+      &["showlist", "(", "The", "first", ",", "second", ",", "and", "third", "items", ".", ")", ";"],
+    );
+    macro_set.add_var_macro(
+      "line4",
+      &["report", "(", "x", ">", "y", ",", "\"x is %d but y is %d\"", ",", "x", ",", "y", ")", ";"],
+    );
+
+    assert_eq!(macro_set.parse_var_macro("line1"), Ok(tokens!["fprintf", "(", "stderr", ",", "\"Flag\"", ")", ";"]));
+    assert_eq!(
+      macro_set.parse_var_macro("line2"),
+      Ok(tokens!["fprintf", "(", "stderr", ",", "\"X = %d\\n\"", ",", "x", ")", ";"])
+    );
+    assert_eq!(
+      macro_set.parse_var_macro("line3"),
+      Ok(tokens!["puts", "(", "\"The first, second, and third items.\"", ")", ";"])
+    );
+    assert_eq!(
+      macro_set.parse_var_macro("line4"),
+      Ok(tokens![
+        "(",
+        "(",
+        "x",
+        ">",
+        "y",
+        ")",
+        "?",
+        "puts",
+        "(",
+        "\"x > y\"",
+        ")",
+        ":",
+        "printf",
+        "(",
+        "\"x is %d but y is %d\"",
+        ",",
+        "x",
+        ",",
+        "y",
+        ")",
+        ")",
+        ";"
+      ])
     );
   }
 }

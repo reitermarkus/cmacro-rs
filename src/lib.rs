@@ -12,8 +12,6 @@
 
 pub mod ast;
 pub use ast::*;
-mod expand;
-pub use expand::expand;
 mod error;
 pub use error::*;
 mod macro_body;
