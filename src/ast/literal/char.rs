@@ -195,14 +195,14 @@ mod tests {
   #[test]
   fn parse_char() {
     let (rest, id) = LitChar::parse(&[r#"'a'"#]).unwrap();
-    assert_eq!(id, LitChar::Ordinary('a' as u8));
+    assert_eq!(id, LitChar::Ordinary(b'a'));
     assert!(rest.is_empty());
 
     let (_, id) = LitChar::parse(&[r#"'\n'"#]).unwrap();
-    assert_eq!(id, LitChar::Ordinary('\n' as u8));
+    assert_eq!(id, LitChar::Ordinary(b'\n'));
 
     let (_, id) = LitChar::parse(&[r#"'\''"#]).unwrap();
-    assert_eq!(id, LitChar::Ordinary('\'' as u8));
+    assert_eq!(id, LitChar::Ordinary(b'\''));
 
     let (_, id) = LitChar::parse(&[r#"u'\uFFee'"#]).unwrap();
     assert_eq!(id, LitChar::Utf16(0xffee));
