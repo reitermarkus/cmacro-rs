@@ -142,7 +142,7 @@ impl ToTokens for BinaryOp {
 /// #define BINARY_EXPR 1 + 2
 /// #define BINARY_EXPR 7 % c
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BinaryExpr {
   /// Left-hand side expression.
   pub lhs: Expr,

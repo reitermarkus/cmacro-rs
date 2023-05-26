@@ -47,7 +47,7 @@ impl UnaryOp {
 /// #define UNARY_EXPR i++
 /// #define UNARY_EXPR !cond
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnaryExpr {
   /// Expression operator.
   pub op: UnaryOp,

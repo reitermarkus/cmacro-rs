@@ -14,7 +14,7 @@ use super::{tokens::parenthesized, *};
 use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext, UnaryOp};
 
 /// An expression.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum Expr {
   Arg { name: Identifier },
@@ -48,7 +48,7 @@ impl Expr {
   }
 
   /// Parse identifier concatenation, e.g. `arg ## 2`.
-  fn parse_concat_ident<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  pub(crate) fn parse_concat_ident<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, id) = Identifier::parse(tokens, ctx)?;
 
     let expr = match id {

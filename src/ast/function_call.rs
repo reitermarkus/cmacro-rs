@@ -11,7 +11,7 @@ use crate::{CodegenContext, LocalContext, MacroArgType};
 /// ```c
 /// #define FUNC f(1, 2, 3)
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionCall {
   /// The function name identifier.
   pub(crate) name: Box<Expr>,

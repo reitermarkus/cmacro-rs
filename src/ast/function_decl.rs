@@ -22,7 +22,7 @@ use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext};
 pub struct FunctionDecl {
   ret_ty: Type,
   name: Identifier,
-  args: Vec<(Type, Identifier)>,
+  args: Vec<(Type, Expr)>,
 }
 
 impl FunctionDecl {
@@ -33,7 +33,7 @@ impl FunctionDecl {
       |tokens| Identifier::parse(tokens, ctx),
       parenthesized(separated_list0(
         pair(meta, token(",")),
-        pair(|tokens| Type::parse(tokens, ctx), |tokens| Identifier::parse(tokens, ctx)),
+        pair(|tokens| Type::parse(tokens, ctx), |tokens| Expr::parse_concat_ident(tokens, ctx)),
       )),
     ))(tokens)?;
 
@@ -61,7 +61,7 @@ impl FunctionDecl {
     }
 
     // A declaration has no type.
-    Ok(Some(Type::BuiltIn(BuiltInType::Void)))
+    Ok(None)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {

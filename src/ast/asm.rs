@@ -66,7 +66,7 @@ impl ToTokens for RegConstraint {
 ///     : "r" (src) \
 ///   );
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Asm {
   template: Vec<String>,
   outputs: Vec<(Dir, RegConstraint, Expr)>,
