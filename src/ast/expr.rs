@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use nom::{
   branch::alt,
-  combinator::{all_consuming, map, map_res, value},
+  combinator::{map, map_res, value},
   multi::{fold_many0, separated_list0},
   sequence::{delimited, pair, preceded, terminated, tuple},
   IResult,
@@ -430,11 +430,12 @@ impl Expr {
           }
         }
 
+        // Remove redundant casts from string literals, e.g. `(char*)"adsf"`.
         if matches!(
-          (&**expr, &ty), (Expr::Literal(Lit::String(_)), Type::Ptr { ty, .. })
+          (&**expr, &ty), (Expr::Literal(Lit::String(LitString::Ordinary(_))), Type::Ptr { ty, .. })
           if matches!(**ty, Type::BuiltIn(BuiltInType::Char))
         ) {
-          *self = *expr.clone();
+          *self = (**expr).clone();
           return self.finish(ctx)
         }
 
@@ -442,7 +443,7 @@ impl Expr {
         Ok(Some(ty.clone()))
       },
       Self::Arg { ref mut name } => {
-        let ty = name.finish(ctx)?;
+        name.finish(ctx)?;
 
         if let Identifier::Literal(name) = name {
           if let Some(arg_ty) = ctx.arg_type_mut(name.as_str()) {
@@ -455,7 +456,7 @@ impl Expr {
         Ok(None)
       },
       Self::Variable { ref mut name } => {
-        let ty = name.finish(ctx)?;
+        name.finish(ctx)?;
 
         match name {
           Identifier::Literal(name) => {
@@ -466,7 +467,7 @@ impl Expr {
               "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
               "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
               "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
-              name => Ok(None),
+              _ => Ok(None),
             }
           },
           Identifier::Concat(_) => Ok(None),
@@ -476,7 +477,7 @@ impl Expr {
         let ty = call.finish(ctx)?;
 
         match *call.name {
-          Self::Variable { name: Identifier::Literal(ref id) } if ctx.function(id.as_str()).is_some() => return Ok(ty),
+          Self::Variable { name: Identifier::Literal(ref id) } if ctx.function(id.as_str()).is_some() => Ok(ty),
           _ => {
             // Type should only be set if calling an actual function, not a function macro.
             Ok(ty)
@@ -519,7 +520,7 @@ impl Expr {
       Self::ConcatIdent(ref mut ids) => {
         let mut new_ids = vec![];
 
-        for mut id in ids.drain(..) {
+        for id in ids.drain(..) {
           match id {
             Self::Arg { name: Identifier::Literal(id) } => {
               if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {

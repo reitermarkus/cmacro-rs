@@ -16,7 +16,7 @@ use super::{
   tokens::{meta, take_one, token},
   Type,
 };
-use crate::{CodegenContext, Expr, Lit, LitFloat, LitInt, LocalContext, MacroArgType, ParseContext};
+use crate::{CodegenContext, LocalContext, ParseContext};
 
 pub(crate) fn identifier_lit<I>(tokens: &[I]) -> IResult<&[I], LitIdent>
 where
@@ -176,11 +176,11 @@ impl Identifier {
     )(tokens)
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<C>(&mut self, _ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
   where
     C: CodegenContext,
   {
-    if let Self::Concat(ref mut ids) = self {
+    if let Self::Concat(ref mut _ids) = self {
       unreachable!()
     }
 
@@ -211,7 +211,7 @@ impl Identifier {
           quote! { #name }
         }
       },
-      Self::Concat(ids) => unreachable!(),
+      Self::Concat(_ids) => unreachable!(),
     }
   }
 }

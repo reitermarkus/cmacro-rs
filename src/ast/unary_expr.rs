@@ -130,7 +130,7 @@ impl UnaryExpr {
 #[cfg(test)]
 mod tests {
   use super::{
-    super::{assert_eq_tokens, id, lit, var},
+    super::{assert_eq_tokens, lit, var},
     *,
   };
 
