@@ -39,10 +39,10 @@ pub(crate) struct LocalContext<'g, C> {
   pub(crate) root_name: String,
   pub(crate) names: HashSet<String>,
   pub(crate) arg_types: HashMap<String, MacroArgType>,
-  pub(crate) arg_values: HashMap<String, &'g Expr>,
   pub(crate) export_as_macro: bool,
   pub(crate) global_context: &'g C,
   pub(crate) generate_cstr: bool,
+  pub(crate) is_variable_macro: bool,
 }
 
 impl<'g, C> LocalContext<'g, C>
@@ -59,17 +59,11 @@ where
       root_name,
       names,
       arg_types: Default::default(),
-      arg_values: Default::default(),
       export_as_macro: false,
       global_context: cx,
       generate_cstr: true,
+      is_variable_macro: false,
     }
-  }
-
-  pub fn new_with_args(root_name: &str, arg_values: HashMap<String, &'g Expr>, cx: &'g C) -> Self {
-    let mut ctx = Self::new(root_name, cx);
-    ctx.arg_values = arg_values;
-    ctx
   }
 }
 
@@ -90,7 +84,7 @@ impl<'g, C> LocalContext<'g, C> {
   where
     C: context::CodegenContext,
   {
-    self.variable_macro(&self.root_name).is_some()
+    self.is_variable_macro
   }
 }
 
@@ -98,52 +92,22 @@ impl<C> LocalContext<'_, C>
 where
   C: CodegenContext,
 {
-  pub fn arg_value(&self, name: &str) -> Option<&Expr> {
-    self.arg_values.get(name).copied()
-  }
-
   pub fn eval_variable(&mut self, name: &str) -> Result<(Expr, Option<Type>), crate::CodegenError> {
     if self.names.contains(name) {
       return Err(crate::CodegenError::RecursiveDefinition(name.to_owned()))
     }
 
-    let mut names = self.names.clone();
-    names.insert(name.to_owned());
+    let mut ctx = Self::new(&self.root_name, self.global_context);
+    ctx.names.insert(name.to_owned());
+    ctx.names.extend(self.names.iter().cloned());
 
-    let mut ctx = Self {
-      root_name: self.root_name.clone(),
-      names,
-      arg_types: Default::default(),
-      arg_values: Default::default(),
-      export_as_macro: false,
-      global_context: self.global_context,
-      generate_cstr: true,
-    };
-
-    match self.variable_macro_value(name)? {
-      Some(expr) => {
-        let mut expr = expr.clone();
-        let ty = expr.finish(&mut ctx)?;
-        self.export_as_macro |= ctx.export_as_macro;
-
-        Ok((expr, ty))
-      },
-      None if ctx.is_variable_macro() => Err(crate::CodegenError::UnknownVariable(name.to_owned())),
-      None => {
-        self.export_as_macro = true;
-
-        Ok((Expr::Variable { name: Identifier::Literal(LitIdent { id: name.to_owned(), macro_arg: false }) }, None))
-      },
-    }
-  }
-
-  pub fn variable_macro_value(&self, name: &str) -> Result<Option<&Expr>, crate::CodegenError> {
-    if let Some(var_macro) = self.variable_macro(name) {
-      // Cannot generate non-expression variable-like macros.
-      return var_macro.value().map(Some).ok_or(crate::CodegenError::NonExpressionVarMacro)
+    if ctx.is_variable_macro() {
+      return Err(crate::CodegenError::UnknownVariable(name.to_owned()))
     }
 
-    Ok(None)
+    self.export_as_macro = true;
+
+    Ok((Expr::Variable { name: Identifier::Literal(LitIdent { id: name.to_owned(), macro_arg: false }) }, None))
   }
 }
 
@@ -173,14 +137,6 @@ where
 
   fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
     self.global_context.function(name)
-  }
-
-  fn function_macro(&self, name: &str) -> Option<&FnMacro> {
-    self.global_context.function_macro(name)
-  }
-
-  fn variable_macro(&self, name: &str) -> Option<&VarMacro> {
-    self.global_context.variable_macro(name)
   }
 }
 
@@ -238,18 +194,6 @@ pub trait CodegenContext {
   fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
     None
   }
-
-  /// Get the parsed function-like macro with the given `name`.
-  #[allow(unused_variables)]
-  fn function_macro(&self, name: &str) -> Option<&FnMacro> {
-    None
-  }
-
-  /// Get the parsed variable-like macro with the given `name`.
-  #[allow(unused_variables)]
-  fn variable_macro(&self, name: &str) -> Option<&VarMacro> {
-    None
-  }
 }
 
 impl<T> CodegenContext for &T
@@ -278,14 +222,6 @@ where
 
   fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
     T::function(self, name)
-  }
-
-  fn function_macro(&self, name: &str) -> Option<&FnMacro> {
-    T::function_macro(self, name)
-  }
-
-  fn variable_macro(&self, name: &str) -> Option<&VarMacro> {
-    T::variable_macro(self, name)
   }
 }
 

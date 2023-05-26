@@ -1,19 +1,17 @@
-use std::{
-  fmt::Debug,
-};
+use std::fmt::Debug;
 
 use nom::{
   branch::alt,
   combinator::{all_consuming, map, map_res, value},
   multi::{fold_many0, separated_list0},
   sequence::{delimited, pair, preceded, terminated, tuple},
-   IResult,
+  IResult,
 };
 use proc_macro2::{Literal, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext, MacroArgType, MacroBody, ParseContext, UnaryOp};
+use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext, UnaryOp};
 
 /// An expression.
 #[derive(Debug, Clone, PartialEq)]
@@ -411,43 +409,19 @@ impl Expr {
                 } else {
                   return Ok(ty)
                 }
-              } else if let Some(arg_value) = ctx.arg_value(name.as_str()) {
-                *self = arg_value.clone();
-
-                // We are inside a function call evaluation, so the type cannot be evaluated yet.
-                return Ok(None)
               }
 
               return Ok(None)
             }
 
-            // Expand variable-like macro.
-            match ctx.eval_variable(name.as_str()) {
-              Ok((expr, ty)) => {
-                *self = expr;
-                Ok(ty)
-              },
-              Err(err) => {
-                // Built-in macros.
-                return match name.as_str() {
-                  "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
-                  "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
-                  "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
-                  "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
-                  "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
-                  name => {
-                    let tokens = [name];
-                    let parse_literal = |tokens| all_consuming(Lit::parse)(tokens);
-
-                    if let Ok((_, literal)) = parse_literal(tokens.as_slice()) {
-                      *self = Self::Literal(literal);
-                      return self.finish(ctx)
-                    }
-
-                    Err(err)
-                  },
-                }
-              },
+            // Built-in macros.
+            return match name.as_str() {
+              "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
+              "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
+              "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
+              "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
+              "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
+              name => Ok(None),
             }
           },
           Identifier::Concat(_) => Ok(None),
@@ -457,19 +431,8 @@ impl Expr {
         let ty = call.finish(ctx)?;
 
         if let Identifier::Literal(id) = &call.name {
-          if !id.macro_arg {
-            if ctx.function(id.as_str()).is_some() {
-              return Ok(ty)
-            } else if let Some(fn_macro) = ctx.function_macro(id.as_str()) {
-              let fn_macro = fn_macro.clone();
-              match fn_macro.call(&ctx.root_name, &ctx.names, &call.args, ctx)? {
-                MacroBody::Statement(_) => return Err(crate::CodegenError::UnsupportedExpression),
-                MacroBody::Expr(expr) => {
-                  *self = expr;
-                  return self.finish(ctx)
-                },
-              }
-            }
+          if !id.macro_arg && ctx.function(id.as_str()).is_some() {
+            return Ok(ty)
           }
         }
 
@@ -491,24 +454,6 @@ impl Expr {
           if id.macro_arg {
             if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
               *arg_type = MacroArgType::Ident;
-            }
-
-            if let Some(expr) = ctx.arg_value(id.as_str()) {
-              match expr {
-                Self::Variable { name } => {
-                  *field = name.clone();
-                  return self.finish(ctx)
-                },
-                _ => return Err(crate::CodegenError::UnsupportedExpression),
-              }
-            }
-          } else if let Some(expr) = ctx.variable_macro_value(id.as_str())? {
-            match expr {
-              Self::Variable { name } => {
-                *field = name.clone();
-                return self.finish(ctx)
-              },
-              _ => return Err(crate::CodegenError::UnsupportedExpression),
             }
           }
         }

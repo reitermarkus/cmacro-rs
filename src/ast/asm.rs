@@ -1,15 +1,12 @@
-use std::{
-  collections::BTreeSet,
-  fmt::Debug,
-  str,
-};
+use std::{collections::BTreeSet, fmt::Debug, str};
 
 use nom::{
   branch::alt,
   character::complete::{alpha1, char, digit1, none_of},
   combinator::{all_consuming, map, map_opt, opt, value},
   multi::{fold_many0, fold_many1, separated_list0},
-  sequence::{delimited, pair, preceded, tuple}, IResult,
+  sequence::{delimited, pair, preceded, tuple},
+  IResult,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};

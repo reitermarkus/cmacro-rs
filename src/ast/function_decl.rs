@@ -1,12 +1,11 @@
-use std::{
-  fmt::Debug,
-};
+use std::fmt::Debug;
 
 use nom::{
   branch::permutation,
   combinator::opt,
   multi::separated_list0,
-  sequence::{pair, tuple}, IResult,
+  sequence::{pair, tuple},
+  IResult,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};

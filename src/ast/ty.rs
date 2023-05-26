@@ -4,7 +4,8 @@ use nom::{
   branch::{alt, permutation},
   combinator::{map, opt},
   multi::fold_many0,
-  sequence::{delimited, pair, preceded, terminated}, Compare, IResult, InputLength, InputTake, Slice,
+  sequence::{delimited, pair, preceded, terminated},
+  Compare, IResult, InputLength, InputTake, Slice,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
@@ -278,13 +279,6 @@ impl Type {
 
         if let Identifier::Literal(id) = name {
           let id = id.as_str();
-
-          let expr = if let Some(expr) = ctx.arg_value(id) { Some(expr) } else { ctx.variable_macro_value(id)? };
-
-          if let Some(Expr::Variable { name }) = expr {
-            *self = Self::Identifier { name: name.clone(), is_struct: false };
-            return self.finish(ctx)
-          }
 
           if let Some(ty) = ctx.resolve_ty(id) {
             *self = Self::from_resolved_type(&ty);

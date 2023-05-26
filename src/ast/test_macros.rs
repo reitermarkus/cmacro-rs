@@ -62,10 +62,10 @@ macro_rules! assert_eq_tokens {
       root_name: Default::default(),
       names: Default::default(),
       arg_types: Default::default(),
-      arg_values: Default::default(),
       export_as_macro: false,
       global_context: &(),
       generate_cstr: true,
+      is_variable_macro: true,
     };
 
     let tokens = $expr.to_token_stream(&mut ctx);

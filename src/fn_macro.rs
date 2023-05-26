@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Debug, str};
+use std::{fmt::Debug, str};
 
 use nom::{
   branch::alt,
@@ -10,7 +10,7 @@ use nom::{
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
-use crate::{identifier_lit, meta, token, CodegenContext, Expr, LocalContext, MacroArgType, MacroBody, ParseContext};
+use crate::{identifier_lit, meta, token, CodegenContext, LocalContext, MacroArgType, MacroBody, ParseContext};
 
 /// A function-like macro.
 ///
@@ -138,31 +138,6 @@ impl FnMacro {
     let (_, body) = MacroBody::parse(body, &ctx).map_err(|_| crate::ParserError::InvalidMacroBody)?;
 
     Ok(Self { name: name.id, args, body })
-  }
-
-  pub(crate) fn call<C>(
-    mut self,
-    root_name: &str,
-    names: &HashSet<String>,
-    args: &[Expr],
-    ctx: &LocalContext<C>,
-  ) -> Result<MacroBody, crate::CodegenError>
-  where
-    C: CodegenContext,
-  {
-    if ctx.names.contains(&self.name) {
-      return Err(crate::CodegenError::RecursiveDefinition(self.name))
-    }
-
-    let mut names = names.clone();
-    names.insert(self.name.clone());
-
-    let arg_values = self.args.into_iter().zip(args.iter()).collect();
-    let mut ctx = LocalContext::new_with_args(root_name, arg_values, ctx.global_context);
-
-    self.body.finish(&mut ctx)?;
-
-    Ok(self.body)
   }
 
   /// Infer the type of this function macro and generate corresponding Rust code.

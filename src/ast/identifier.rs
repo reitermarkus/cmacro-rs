@@ -198,56 +198,6 @@ impl Identifier {
             continue
           }
 
-          if let Some(arg_value) = ctx.arg_value(id.as_str()) {
-            match arg_value {
-              Expr::Literal(Lit::Int(LitInt { value, suffix })) => {
-                let last_id = last_id.get_or_insert_with(String::new);
-
-                last_id.push_str(&value.to_string());
-                if let Some(suffix) = suffix.and_then(|s| s.suffix()) {
-                  last_id.push_str(suffix);
-                }
-              },
-              Expr::Literal(Lit::Float(LitFloat::Float(value))) => {
-                let last_id = last_id.get_or_insert_with(String::new);
-                last_id.push_str(&format!("{}f", value));
-              },
-              Expr::Literal(Lit::Float(LitFloat::Double(value))) => {
-                let last_id = last_id.get_or_insert_with(String::new);
-                last_id.push_str(&value.to_string());
-              },
-              Expr::Literal(Lit::Float(LitFloat::LongDouble(value))) => {
-                let last_id = last_id.get_or_insert_with(String::new);
-                last_id.push_str(&format!("{}l", value));
-              },
-              Expr::Variable { name: Identifier::Literal(id) } => {
-                if id.macro_arg {
-                  if let Some(last_id) = last_id.take() {
-                    new_ids.push(LitIdent { id: last_id, macro_arg: false });
-                  }
-
-                  new_ids.push(id.clone())
-                } else if let Some(ref mut last_id) = last_id {
-                  last_id.push_str(id.as_str())
-                } else {
-                  last_id = Some(id.as_str().to_owned());
-                }
-              },
-              Expr::Variable { name: Identifier::Concat(ids) } => {
-                if let Some(last_id) = last_id.take() {
-                  new_ids.push(LitIdent { id: last_id, macro_arg: false });
-                }
-
-                for id in ids {
-                  new_ids.push(id.clone());
-                }
-              },
-              _ => return Err(crate::CodegenError::UnsupportedExpression),
-            }
-
-            continue
-          }
-
           if let Some(last_id) = last_id.take() {
             new_ids.push(LitIdent { id: last_id, macro_arg: false });
           }

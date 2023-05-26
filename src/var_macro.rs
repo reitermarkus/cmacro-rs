@@ -51,6 +51,7 @@ impl VarMacro {
     C: CodegenContext,
   {
     let mut ctx = LocalContext::new(&self.name, &cx);
+    ctx.is_variable_macro = true;
 
     ctx.generate_cstr = ctx
       .rust_target()
