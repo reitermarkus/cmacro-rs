@@ -22,7 +22,7 @@ pub enum Expr {
   FunctionCall(FunctionCall),
   Cast { expr: Box<Self>, ty: Type },
   Literal(Lit),
-  FieldAccess { expr: Box<Self>, field: Identifier },
+  FieldAccess { expr: Box<Self>, field: Box<Self> },
   ArrayAccess { expr: Box<Self>, index: Box<Self> },
   Stringify(Stringify),
   Concat(Vec<Self>),
@@ -46,17 +46,18 @@ impl Expr {
     }
   }
 
-  fn parse_concat<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
-    let parse_var = map(
-      |tokens| Identifier::parse(tokens, ctx),
-      |id| {
-        if let Identifier::Literal(LitIdent { macro_arg: true, .. }) = id {
-          return Self::Arg { name: id }
-        }
+  fn parse_ident<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+    let (tokens, id) = Identifier::parse(tokens, ctx)?;
 
-        Self::Variable { name: id }
-      },
-    );
+    if let Identifier::Literal(LitIdent { macro_arg: true, .. }) = id {
+      return Ok((tokens, Self::Arg { name: id }))
+    }
+
+    Ok((tokens, Self::Variable { name: id }))
+  }
+
+  fn parse_concat<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+    let parse_var = |tokens| Self::parse_ident(tokens, ctx);
     let parse_string = alt((
       map(LitString::parse, |s| Self::Literal(Lit::String(s))),
       map(|tokens| Stringify::parse(tokens, ctx), Self::Stringify),
@@ -126,7 +127,7 @@ impl Expr {
 
     enum Access {
       Fn(Vec<Expr>),
-      Field { field: Identifier, deref: bool },
+      Field { field: Box<Expr>, deref: bool },
       Array { index: Box<Expr> },
       UnaryOp(UnaryOp),
     }
@@ -140,15 +141,15 @@ impl Expr {
               parenthesized(separated_list0(tuple((meta, token(","), meta)), |tokens| Self::parse(tokens, ctx))),
               Access::Fn,
             ),
-            map(preceded(terminated(token("."), meta), |tokens| Identifier::parse(tokens, ctx)), |field| {
-              Access::Field { field, deref: false }
+            map(preceded(terminated(token("."), meta), |tokens| Self::parse_ident(tokens, ctx)), |field| {
+              Access::Field { field: Box::new(field), deref: false }
             }),
             map(
               delimited(terminated(token("["), meta), |tokens| Self::parse(tokens, ctx), preceded(meta, token("]"))),
               |index| Access::Array { index: Box::new(index) },
             ),
-            map(preceded(terminated(token("->"), meta), |tokens| Identifier::parse(tokens, ctx)), |field| {
-              Access::Field { field, deref: true }
+            map(preceded(terminated(token("->"), meta), |tokens| Self::parse_ident(tokens, ctx)), |field| {
+              Access::Field { field: Box::new(field), deref: true }
             }),
             map(alt((value(UnaryOp::PostInc, token("++")), value(UnaryOp::PostDec, token("--")))), |op| {
               Access::UnaryOp(op)
@@ -165,8 +166,8 @@ impl Expr {
               // Postfix `++`/`--` cannot be chained.
               (expr, Access::UnaryOp(op)) if !was_unary_op => Self::Unary(Box::new(UnaryExpr { expr, op })),
               // TODO: Support calling expressions as functions.
-              (Self::Arg { name } | Self::Variable { name }, Access::Fn(args)) => {
-                Self::FunctionCall(FunctionCall { name, args })
+              (name @ Self::Arg { .. } | name @ Self::Variable { .. }, Access::Fn(args)) => {
+                Self::FunctionCall(FunctionCall { name: Box::new(name), args })
               },
               // Field access cannot be chained after postfix `++`/`--`.
               (acc, Access::Field { field, deref }) if !was_unary_op || deref => {
@@ -447,14 +448,13 @@ impl Expr {
       Self::FunctionCall(call) => {
         let ty = call.finish(ctx)?;
 
-        if let Identifier::Literal(id) = &call.name {
-          if !id.macro_arg && ctx.function(id.as_str()).is_some() {
-            return Ok(ty)
-          }
+        match *call.name {
+          Self::Variable { name: Identifier::Literal(ref id) } if ctx.function(id.as_str()).is_some() => return Ok(ty),
+          _ => {
+            // Type should only be set if calling an actual function, not a function macro.
+            Ok(ty)
+          },
         }
-
-        // Type should only be set if calling an actual function, not a function macro.
-        Ok(ty)
       },
       // Convert character literals to casts.
       Self::Literal(lit) if matches!(lit, Lit::Char(..)) => {
@@ -467,7 +467,7 @@ impl Expr {
         expr.finish(ctx)?;
         field.finish(ctx)?;
 
-        if let Identifier::Literal(id) = &field {
+        if let Self::Arg { name: Identifier::Literal(ref id) } = **field {
           if id.macro_arg {
             if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
               *arg_type = MacroArgType::Ident;
@@ -914,7 +914,7 @@ mod tests {
   #[test]
   fn parse_field_access() {
     let (_, expr) = Expr::parse(&["a", ".", "b"], &CTX).unwrap();
-    assert_eq!(expr, Expr::FieldAccess { expr: Box::new(var!(a)), field: id!(b) });
+    assert_eq!(expr, Expr::FieldAccess { expr: Box::new(var!(a)), field: Box::new(var!(b)) });
   }
 
   #[test]
@@ -924,7 +924,7 @@ mod tests {
       expr,
       Expr::FieldAccess {
         expr: Box::new(Expr::Unary(Box::new(UnaryExpr { op: UnaryOp::Deref, expr: var!(a) }))),
-        field: id!(b)
+        field: Box::new(var!(b))
       }
     );
   }
@@ -963,7 +963,15 @@ mod tests {
   #[test]
   fn parse_function_call() {
     let (_, expr) = Expr::parse(&["my_function", "(", "arg1", ",", "arg2", ")"], &CTX).unwrap();
-    assert_eq!(expr, Expr::FunctionCall(FunctionCall { name: id!(my_function), args: vec![var!(arg1), var!(arg2)] }));
+    assert_eq!(
+      expr,
+      Expr::FunctionCall(FunctionCall {
+        name: Box::new(Expr::Variable {
+          name: Identifier::Literal(LitIdent { id: "my_function".into(), macro_arg: false })
+        }),
+        args: vec![var!(arg1), var!(arg2)]
+      })
+    );
   }
 
   #[test]

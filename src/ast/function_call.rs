@@ -14,7 +14,7 @@ use crate::{CodegenContext, LocalContext, MacroArgType};
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionCall {
   /// The function name identifier.
-  pub(crate) name: Identifier,
+  pub(crate) name: Box<Expr>,
   /// The function arguments.
   pub(crate) args: Vec<Expr>,
 }
@@ -32,7 +32,7 @@ impl FunctionCall {
 
     let mut ty = None;
 
-    if let Identifier::Literal(ref function_name) = self.name {
+    if let Expr::Variable { name: Identifier::Literal(ref function_name) } = *self.name {
       if let Some((known_args, known_ret_ty)) = ctx.function(function_name.as_str()) {
         // Cannot call external functions in `const` context.
         if ctx.is_variable_macro() {
