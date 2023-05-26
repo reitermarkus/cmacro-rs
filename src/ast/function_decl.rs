@@ -21,7 +21,7 @@ use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionDecl {
   ret_ty: Type,
-  name: Identifier,
+  name: Expr,
   args: Vec<(Type, Expr)>,
 }
 
@@ -30,7 +30,7 @@ impl FunctionDecl {
   pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, ((_, ret_ty), name, args)) = tuple((
       permutation((opt(token("static")), |tokens| Type::parse(tokens, ctx))),
-      |tokens| Identifier::parse(tokens, ctx),
+      |tokens| Expr::parse_concat_ident(tokens, ctx),
       parenthesized(separated_list0(
         pair(meta, token(",")),
         pair(|tokens| Type::parse(tokens, ctx), |tokens| Expr::parse_concat_ident(tokens, ctx)),
@@ -47,11 +47,9 @@ impl FunctionDecl {
     self.ret_ty.finish(ctx)?;
     self.name.finish(ctx)?;
 
-    if let Identifier::Literal(id) = &self.name {
-      if id.macro_arg {
-        if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
-          *arg_type = MacroArgType::Ident;
-        }
+    if let Expr::Arg { name: Identifier::Literal(id) } = &self.name {
+      if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
+        *arg_type = MacroArgType::Ident;
       }
     }
 
