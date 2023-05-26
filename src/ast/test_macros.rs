@@ -57,8 +57,8 @@ pub(crate) use lit;
 macro_rules! ty {
   (*mut $($ty:tt)*) => { Type::Ptr { ty: Box::new($crate::ast::ty!($($ty)*)), mutable: true } };
   (*const $($ty:tt)*) => { Type::Ptr { ty: Box::new($crate::ast::ty!($($ty)*)), mutable: false } };
-  (struct $ty:ident) => { Type::Identifier { name: Identifier::Literal(stringify!($ty).into()), is_struct: true } };
-  ($ty:ident) => { Type::Identifier { name: Identifier::Literal(stringify!($ty).into()), is_struct: false } };
+  (struct $ty:ident) => { Type::Identifier { name: Box::new($crate::ast::var!($ty)), is_struct: true } };
+  ($ty:ident) => { Type::Identifier { name: Box::new($crate::ast::var!($ty)), is_struct: false } };
   ($ty:path) => { Type::BuiltIn($ty) };
 }
 pub(crate) use ty;

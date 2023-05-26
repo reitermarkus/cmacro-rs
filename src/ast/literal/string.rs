@@ -12,7 +12,7 @@ use nom::{
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::{BuiltInType, CodegenContext, LocalContext, Type};
+use crate::{BuiltInType, CodegenContext, Expr, LocalContext, Type};
 
 use super::{escaped_char, take_one, Identifier, LitIdent};
 
@@ -305,7 +305,9 @@ impl LitString {
       Self::Utf32(_) => Type::BuiltIn(BuiltInType::Char32T),
       Self::Wide(_) => {
         let mut ty = Type::Identifier {
-          name: Identifier::Literal(LitIdent { id: "wchar_t".to_owned(), macro_arg: false }),
+          name: Box::new(Expr::Variable {
+            name: Identifier::Literal(LitIdent { id: "wchar_t".to_owned(), macro_arg: false }),
+          }),
           is_struct: false,
         };
         ty.finish(ctx)?;

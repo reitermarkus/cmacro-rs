@@ -139,7 +139,10 @@ mod tests {
     let expr1 = UnaryExpr {
       op: UnaryOp::Deref,
       expr: Expr::Cast {
-        ty: Type::Ptr { ty: Box::new(Type::Identifier { name: id!(MyType), is_struct: false }), mutable: true },
+        ty: Type::Ptr {
+          ty: Box::new(Type::Identifier { name: Box::new(var!(MyType)), is_struct: false }),
+          mutable: true,
+        },
         expr: Box::new(lit!(1)),
       },
     };

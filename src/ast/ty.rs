@@ -190,10 +190,10 @@ fn ty<'i, 't>(input: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t 
     map(
       delimited(
         const_qualifier,
-        pair(opt(keyword("struct")), |tokens| Identifier::parse(tokens, ctx)),
+        pair(opt(keyword("struct")), |tokens| Expr::parse_concat_ident(tokens, ctx)),
         const_qualifier,
       ),
-      |(s, id)| Type::Identifier { name: id, is_struct: s.is_some() },
+      |(s, id)| Type::Identifier { name: Box::new(id), is_struct: s.is_some() },
     ),
   ))(input)
 }
@@ -209,7 +209,7 @@ pub enum Type {
   BuiltIn(BuiltInType),
   /// A type identifier.
   #[allow(missing_docs)]
-  Identifier { name: Identifier, is_struct: bool },
+  Identifier { name: Box<Expr>, is_struct: bool },
   /// A type path.
   #[allow(missing_docs)]
   Path { leading_colon: bool, segments: Vec<Identifier> },
@@ -262,7 +262,7 @@ impl Type {
       "unsigned long long" => Type::BuiltIn(BuiltInType::ULongLong),
       "void" => Type::BuiltIn(BuiltInType::Void),
       ty => Type::Identifier {
-        name: Identifier::Literal(LitIdent { id: ty.to_owned(), macro_arg: false }),
+        name: Box::new(Expr::Variable { name: Identifier::Literal(LitIdent { id: ty.to_owned(), macro_arg: false }) }),
         is_struct: false,
       },
     }
@@ -277,10 +277,8 @@ impl Type {
       Self::Identifier { name, .. } => {
         name.finish(ctx)?;
 
-        if let Identifier::Literal(id) = name {
-          let id = id.as_str();
-
-          if let Some(ty) = ctx.resolve_ty(id) {
+        if let Expr::Arg { name: Identifier::Literal(ref id) } = **name {
+          if let Some(ty) = ctx.resolve_ty(id.as_str()) {
             *self = Self::from_resolved_type(&ty);
           }
         }
@@ -344,7 +342,7 @@ impl TryFrom<syn::Type> for Type {
       },
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
       syn::Type::Verbatim(ty) => Ok(Self::Identifier {
-        name: Identifier::Literal(LitIdent { id: ty.to_string(), macro_arg: false }),
+        name: Box::new(Expr::Variable { name: Identifier::Literal(LitIdent { id: ty.to_string(), macro_arg: false }) }),
         is_struct: false,
       }),
       syn::Type::Path(path_ty) => Ok(Self::Path {

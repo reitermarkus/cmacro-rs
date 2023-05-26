@@ -16,7 +16,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{escaped_char, take_one, token};
-use crate::{BuiltInType, CodegenContext, Identifier, LitIdent, LocalContext, Type};
+use crate::{BuiltInType, CodegenContext, Expr, Identifier, LitIdent, LocalContext, Type};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LitCharPrefix {
@@ -133,7 +133,9 @@ impl LitChar {
       LitChar::Utf32(_) => Some(Type::BuiltIn(BuiltInType::Char32T)),
       LitChar::Wide(_) => {
         let mut ty = Type::Identifier {
-          name: Identifier::Literal(LitIdent { id: "wchar_t".to_owned(), macro_arg: false }),
+          name: Box::new(Expr::Variable {
+            name: Identifier::Literal(LitIdent { id: "wchar_t".to_owned(), macro_arg: false }),
+          }),
           is_struct: false,
         };
         ty.finish(ctx)?;
