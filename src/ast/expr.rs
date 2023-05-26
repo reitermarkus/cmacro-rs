@@ -52,25 +52,33 @@ impl Expr {
     tokens: &'i [&'t str],
     ctx: &ParseContext<'_>,
   ) -> IResult<&'i [&'t str], Self> {
-    let (tokens, id) = Identifier::parse(tokens, ctx)?;
+    let (tokens, id) = LitIdent::parse(tokens, ctx)?;
 
-    let expr = match id {
-      Identifier::Literal(LitIdent { macro_arg: true, .. }) => Self::Arg { name: id },
-      Identifier::Literal(LitIdent { macro_arg: false, .. }) => Self::Variable { name: id },
-      Identifier::Concat(ids) => {
-        let ids = ids
-          .into_iter()
-          .map(|id| match id {
-            LitIdent { macro_arg: true, .. } => Self::Arg { name: Identifier::Literal(id) },
-            LitIdent { macro_arg: false, .. } => Self::Variable { name: Identifier::Literal(id) },
-          })
-          .collect();
-
-        Self::ConcatIdent(ids)
-      },
+    let id = if id.macro_arg {
+      Self::Arg { name: Identifier::Literal(id) }
+    } else {
+      Self::Variable { name: Identifier::Literal(id) }
     };
 
-    Ok((tokens, expr))
+    fold_many0(
+      preceded(delimited(meta::<&'t str>, token::<&'t str>("##"), meta::<&'t str>), |tokens| {
+        let (tokens, id) = LitIdent::parse_concat(tokens, ctx)?;
+        let id = if id.macro_arg {
+          Self::Arg { name: Identifier::Literal(id) }
+        } else {
+          Self::Variable { name: Identifier::Literal(id) }
+        };
+        Ok((tokens, id))
+      }),
+      move || id.clone(),
+      |acc, item| match acc {
+        Self::ConcatIdent(mut ids) => {
+          ids.push(item);
+          Self::ConcatIdent(ids)
+        },
+        expr => Self::ConcatIdent(vec![expr, item]),
+      },
+    )(tokens)
   }
 
   /// Parse string concatenation, e.g. `arg "333"`.

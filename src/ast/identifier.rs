@@ -157,9 +157,13 @@ pub enum Identifier {
 }
 
 impl Identifier {
+  pub(crate) fn parse_literal<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+    map(|tokens| LitIdent::parse(tokens, ctx), Self::Literal)(tokens)
+  }
+
   /// Parse an identifier.
   pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
-    let (tokens, id) = map(|tokens| LitIdent::parse(tokens, ctx), Self::Literal)(tokens)?;
+    let (tokens, id) = Self::parse_literal(tokens, ctx)?;
 
     fold_many0(
       preceded(delimited(meta::<&'t str>, token::<&'t str>("##"), meta::<&'t str>), |tokens| {
