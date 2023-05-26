@@ -875,10 +875,10 @@ impl Expr {
           .iter()
           .map(|e| match e {
             Self::Stringify(s) => {
-              let id = s.id.to_token_stream(ctx);
+              let id = Ident::new(s.id.as_str(), Span::call_site());
               let trait_prefix = trait_prefix.clone();
 
-              quote! { #(#trait_prefix::)*stringify!(#id) }
+              quote! { #(#trait_prefix::)*stringify!($#id) }
             },
             e => e.to_token_stream(ctx),
           })
@@ -936,7 +936,7 @@ mod tests {
   fn parse_stringify() {
     let ctx = ParseContext::fn_macro("EXPR", &["a"]);
     let (_, expr) = Expr::parse(&["#", "$a"], &ctx).unwrap();
-    assert_eq!(expr, Expr::Stringify(Stringify { id: id!(@a) }));
+    assert_eq!(expr, Expr::Stringify(Stringify { id: lit_id!(@a) }));
   }
 
   #[test]
@@ -950,7 +950,7 @@ mod tests {
       expr,
       Expr::ConcatString(vec![
         Expr::Literal(Lit::String(LitString::Ordinary("def".into()))),
-        Expr::Stringify(Stringify { id: id!(@a) }),
+        Expr::Stringify(Stringify { id: lit_id!(@a) }),
       ])
     );
   }
