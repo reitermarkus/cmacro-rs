@@ -20,7 +20,7 @@ pub(crate) use id;
 
 macro_rules! arg {
   ($name:ident) => {
-    $crate::ast::Expr::Arg { name: $crate::ast::id!(@ $name) }
+    $crate::ast::Expr::Arg { name: $crate::ast::lit_id!(@ $name) }
   };
 }
 pub(crate) use arg;

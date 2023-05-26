@@ -47,8 +47,8 @@ impl FunctionDecl {
     self.ret_ty.finish(ctx)?;
     self.name.finish(ctx)?;
 
-    if let Expr::Arg { name: Identifier::Literal(id) } = &self.name {
-      if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
+    if let Expr::Arg { name } = &self.name {
+      if let Some(arg_type) = ctx.arg_type_mut(name.as_str()) {
         *arg_type = MacroArgType::Ident;
       }
     }

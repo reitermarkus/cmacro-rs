@@ -7,7 +7,7 @@ use nom::{
   sequence::{delimited, pair, preceded, terminated, tuple},
   IResult,
 };
-use proc_macro2::{Literal, TokenStream};
+use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
@@ -17,7 +17,7 @@ use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext, UnaryOp};
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum Expr {
-  Arg { name: Identifier },
+  Arg { name: LitIdent },
   Variable { name: Identifier },
   FunctionCall(FunctionCall),
   Cast { expr: Box<Self>, ty: Type },
@@ -54,20 +54,12 @@ impl Expr {
   ) -> IResult<&'i [&'t str], Self> {
     let (tokens, id) = LitIdent::parse(tokens, ctx)?;
 
-    let id = if id.macro_arg {
-      Self::Arg { name: Identifier::Literal(id) }
-    } else {
-      Self::Variable { name: Identifier::Literal(id) }
-    };
+    let id = if id.macro_arg { Self::Arg { name: id } } else { Self::Variable { name: Identifier::Literal(id) } };
 
     fold_many0(
       preceded(delimited(meta::<&'t str>, token::<&'t str>("##"), meta::<&'t str>), |tokens| {
         let (tokens, id) = LitIdent::parse_concat(tokens, ctx)?;
-        let id = if id.macro_arg {
-          Self::Arg { name: Identifier::Literal(id) }
-        } else {
-          Self::Variable { name: Identifier::Literal(id) }
-        };
+        let id = if id.macro_arg { Self::Arg { name: id } } else { Self::Variable { name: Identifier::Literal(id) } };
         Ok((tokens, id))
       }),
       move || id.clone(),
@@ -451,13 +443,9 @@ impl Expr {
         Ok(Some(ty.clone()))
       },
       Self::Arg { ref mut name } => {
-        name.finish(ctx)?;
-
-        if let Identifier::Literal(name) = name {
-          if let Some(arg_ty) = ctx.arg_type_mut(name.as_str()) {
-            if let MacroArgType::Known(arg_ty) = arg_ty {
-              return Ok(Some(arg_ty.clone()))
-            }
+        if let Some(arg_ty) = ctx.arg_type_mut(name.as_str()) {
+          if let MacroArgType::Known(arg_ty) = arg_ty {
+            return Ok(Some(arg_ty.clone()))
           }
         }
 
@@ -503,11 +491,9 @@ impl Expr {
         expr.finish(ctx)?;
         field.finish(ctx)?;
 
-        if let Self::Arg { name: Identifier::Literal(ref id) } = **field {
-          if id.macro_arg {
-            if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
-              *arg_type = MacroArgType::Ident;
-            }
+        if let Self::Arg { ref name } = **field {
+          if let Some(arg_type) = ctx.arg_type_mut(name.as_str()) {
+            *arg_type = MacroArgType::Ident;
           }
         }
 
@@ -530,12 +516,12 @@ impl Expr {
 
         for id in ids.drain(..) {
           match id {
-            Self::Arg { name: Identifier::Literal(id) } => {
-              if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
+            Self::Arg { name } => {
+              if let Some(arg_type) = ctx.arg_type_mut(name.as_str()) {
                 *arg_type = MacroArgType::Ident;
               }
 
-              new_ids.push(Self::Arg { name: Identifier::Literal(id) });
+              new_ids.push(Self::Arg { name });
             },
             Self::Variable { name: Identifier::Literal(id) } => {
               if let Some(Self::Variable { name: Identifier::Literal(last_id) }) = new_ids.last_mut() {
@@ -823,7 +809,18 @@ impl Expr {
           }
         },
       }),
-      Self::Arg { ref name } => name.to_tokens(ctx, tokens),
+      Self::Arg { ref name } => tokens.append_all(match name.as_str() {
+        "__VA_ARGS__" => quote! { $($__VA_ARGS__),* },
+        name => {
+          let name = Ident::new(name, Span::call_site());
+
+          if ctx.export_as_macro {
+            quote! { $#name }
+          } else {
+            quote! { #name }
+          }
+        },
+      }),
       Self::Variable { ref name } => {
         if let Identifier::Literal(name) = name {
           let prefix = ctx.ffi_prefix().into_iter();

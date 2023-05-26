@@ -277,7 +277,7 @@ impl Type {
       Self::Identifier { name, .. } => {
         name.finish(ctx)?;
 
-        if let Expr::Arg { name: Identifier::Literal(ref id) } = **name {
+        if let Expr::Arg { name: ref id } = **name {
           if let Some(ty) = ctx.resolve_ty(id.as_str()) {
             *self = Self::from_resolved_type(&ty);
           }
