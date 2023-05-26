@@ -27,10 +27,10 @@ pub(crate) use arg;
 
 macro_rules! var {
   (@ $name:ident) => {
-    $crate::ast::Expr::Variable { name: $crate::ast::id!(@ $name) }
+    $crate::ast::Expr::Variable { name: $crate::ast::lit_id!(@ $name) }
   };
   ($name:ident) => {
-    $crate::ast::Expr::Variable { name: $crate::ast::id!($name) }
+    $crate::ast::Expr::Variable { name: $crate::ast::lit_id!($name) }
   };
 }
 pub(crate) use var;

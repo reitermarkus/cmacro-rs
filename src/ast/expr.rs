@@ -18,7 +18,7 @@ use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext, UnaryOp};
 #[allow(missing_docs)]
 pub enum Expr {
   Arg { name: LitIdent },
-  Variable { name: Identifier },
+  Variable { name: LitIdent },
   FunctionCall(FunctionCall),
   Cast { expr: Box<Self>, ty: Type },
   Literal(Lit),
@@ -54,12 +54,12 @@ impl Expr {
   ) -> IResult<&'i [&'t str], Self> {
     let (tokens, id) = LitIdent::parse(tokens, ctx)?;
 
-    let id = if id.macro_arg { Self::Arg { name: id } } else { Self::Variable { name: Identifier::Literal(id) } };
+    let id = if id.macro_arg { Self::Arg { name: id } } else { Self::Variable { name: id } };
 
     fold_many0(
       preceded(delimited(meta::<&'t str>, token::<&'t str>("##"), meta::<&'t str>), |tokens| {
         let (tokens, id) = LitIdent::parse_concat(tokens, ctx)?;
-        let id = if id.macro_arg { Self::Arg { name: id } } else { Self::Variable { name: Identifier::Literal(id) } };
+        let id = if id.macro_arg { Self::Arg { name: id } } else { Self::Variable { name: id } };
         Ok((tokens, id))
       }),
       move || id.clone(),
@@ -112,14 +112,14 @@ impl Expr {
     // `__asm ( ... )` or `__asm volatile ( ... )`
     fn is_asm(expr: &Expr) -> bool {
       match expr {
-        Expr::Variable { name: Identifier::Literal(ref id) } => matches!(id.as_str(), "__asm__" | "__asm" | "asm"),
+        Expr::Variable { name } => matches!(name.as_str(), "__asm__" | "__asm" | "asm"),
         Expr::ConcatString(exprs) => match exprs.as_slice() {
           [first, second] => {
             is_asm(first)
               && matches!(
                 second,
-                Expr::Variable { name: Identifier::Literal(ref id) }
-                if matches!(id.as_str(), "volatile" | "inline" | "goto")
+                Expr::Variable { name }
+                if matches!(name.as_str(), "volatile" | "inline" | "goto")
               )
           },
           _ => false,
@@ -404,9 +404,9 @@ impl Expr {
               // Arguments cannot be resolved as a type.
               true
             },
-            Self::Variable { name: Identifier::Literal(ref id) } => {
+            Self::Variable { ref name } => {
               // Cannot resolve type.
-              ctx.resolve_ty(id.as_str()).is_none()
+              ctx.resolve_ty(name.as_str()).is_none()
             },
             _ => true,
           };
@@ -452,28 +452,21 @@ impl Expr {
         Ok(None)
       },
       Self::Variable { ref mut name } => {
-        name.finish(ctx)?;
-
-        match name {
-          Identifier::Literal(name) => {
-            // Built-in macros.
-            return match name.as_str() {
-              "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
-              "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
-              "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
-              "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
-              "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
-              _ => Ok(None),
-            }
-          },
-          Identifier::Concat(_) => Ok(None),
+        // Built-in macros.
+        match name.as_str() {
+          "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
+          "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
+          "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
+          "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
+          "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
+          _ => Ok(None),
         }
       },
       Self::FunctionCall(call) => {
         let ty = call.finish(ctx)?;
 
         match *call.name {
-          Self::Variable { name: Identifier::Literal(ref id) } if ctx.function(id.as_str()).is_some() => Ok(ty),
+          Self::Variable { ref name } if ctx.function(name.as_str()).is_some() => Ok(ty),
           _ => {
             // Type should only be set if calling an actual function, not a function macro.
             Ok(ty)
@@ -523,11 +516,11 @@ impl Expr {
 
               new_ids.push(Self::Arg { name });
             },
-            Self::Variable { name: Identifier::Literal(id) } => {
-              if let Some(Self::Variable { name: Identifier::Literal(last_id) }) = new_ids.last_mut() {
-                last_id.id.push_str(&id.id)
+            Self::Variable { name } => {
+              if let Some(Self::Variable { name: last_id }) = new_ids.last_mut() {
+                last_id.id.push_str(&name.id)
               } else {
-                new_ids.push(Self::Variable { name: Identifier::Literal(id) });
+                new_ids.push(Self::Variable { name });
               }
             },
             _ => {
@@ -822,20 +815,19 @@ impl Expr {
         },
       }),
       Self::Variable { ref name } => {
-        if let Identifier::Literal(name) = name {
-          let prefix = ctx.ffi_prefix().into_iter();
+        let prefix = ctx.ffi_prefix().into_iter();
 
-          match name.as_str() {
-            "__SCHAR_MAX__" => return tokens.append_all(quote! { #(#prefix::)*c_schar::MAX }),
-            "__SHRT_MAX__" => return tokens.append_all(quote! { #(#prefix::)*c_short::MAX }),
-            "__INT_MAX__" => return tokens.append_all(quote! { #(#prefix::)*c_int::MAX }),
-            "__LONG_MAX__" => return tokens.append_all(quote! { #(#prefix::)*c_long::MAX }),
-            "__LONG_LONG_MAX__" => return tokens.append_all(quote! { #(#prefix::)*c_longlong::MAX }),
-            _ => (),
-          }
+        match name.as_str() {
+          "__SCHAR_MAX__" => tokens.append_all(quote! { #(#prefix::)*c_schar::MAX }),
+          "__SHRT_MAX__" => tokens.append_all(quote! { #(#prefix::)*c_short::MAX }),
+          "__INT_MAX__" => tokens.append_all(quote! { #(#prefix::)*c_int::MAX }),
+          "__LONG_MAX__" => tokens.append_all(quote! { #(#prefix::)*c_long::MAX }),
+          "__LONG_LONG_MAX__" => tokens.append_all(quote! { #(#prefix::)*c_longlong::MAX }),
+          name => {
+            let name = Ident::new(name, Span::call_site());
+            tokens.append_all(quote! { #name })
+          },
         }
-
-        name.to_tokens(ctx, tokens)
       },
       Self::FunctionCall(ref call) => {
         call.to_tokens(ctx, tokens);
@@ -979,10 +971,7 @@ mod tests {
     let (_, id) = Expr::parse(&["$abc", "##", "123"], &ctx).unwrap();
     assert_eq!(
       id,
-      Expr::ConcatIdent(vec![
-        arg!(abc),
-        Expr::Variable { name: Identifier::Literal(LitIdent { id: "123".into(), macro_arg: false }) }
-      ])
+      Expr::ConcatIdent(vec![arg!(abc), Expr::Variable { name: LitIdent { id: "123".into(), macro_arg: false } }])
     );
 
     let (_, id) = Expr::parse(&["__INT", "##", "_MAX__"], &CTX).unwrap();
@@ -1043,12 +1032,7 @@ mod tests {
     let (_, expr) = Expr::parse(&["my_function", "(", "arg1", ",", "arg2", ")"], &CTX).unwrap();
     assert_eq!(
       expr,
-      Expr::FunctionCall(FunctionCall {
-        name: Box::new(Expr::Variable {
-          name: Identifier::Literal(LitIdent { id: "my_function".into(), macro_arg: false })
-        }),
-        args: vec![var!(arg1), var!(arg2)]
-      })
+      Expr::FunctionCall(FunctionCall { name: Box::new(var!(my_function)), args: vec![var!(arg1), var!(arg2)] })
     );
   }
 

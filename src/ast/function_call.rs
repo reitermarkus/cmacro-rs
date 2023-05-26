@@ -32,8 +32,8 @@ impl FunctionCall {
 
     let mut ty = None;
 
-    if let Expr::Variable { name: Identifier::Literal(ref function_name) } = *self.name {
-      if let Some((known_args, known_ret_ty)) = ctx.function(function_name.as_str()) {
+    if let Expr::Variable { ref name } = *self.name {
+      if let Some((known_args, known_ret_ty)) = ctx.function(name.as_str()) {
         // Cannot call external functions in `const` context.
         if ctx.is_variable_macro() {
           return Err(crate::CodegenError::UnsupportedExpression)
@@ -47,7 +47,7 @@ impl FunctionCall {
           for (arg, known_arg_type) in self.args.iter_mut().zip(known_args.iter()) {
             // If the current argument to this function is a macro argument,
             // we can infer the type of the macro argument.
-            if let Expr::Variable { name: Identifier::Literal(ref name) } = arg {
+            if let Expr::Variable { name } = arg {
               if let Some(arg_type) = ctx.arg_type_mut(name.as_str()) {
                 if *arg_type == MacroArgType::Unknown {
                   if let Ok(ty) = syn::parse_str::<syn::Type>(known_arg_type) {

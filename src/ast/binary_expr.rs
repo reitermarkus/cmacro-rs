@@ -166,8 +166,8 @@ impl BinaryExpr {
     C: CodegenContext,
   {
     let max_ty_cast = |expr: &Expr| {
-      if let Expr::Variable { name: Identifier::Literal(id) } = expr {
-        return Some(Type::BuiltIn(match id.as_str() {
+      if let Expr::Variable { name } = expr {
+        return Some(Type::BuiltIn(match name.as_str() {
           "__SCHAR_MAX__" => BuiltInType::UChar,
           "__SHRT_MAX__" => BuiltInType::UShort,
           "__INT_MAX__" => BuiltInType::UInt,

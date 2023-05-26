@@ -133,9 +133,7 @@ impl LitChar {
       LitChar::Utf32(_) => Some(Type::BuiltIn(BuiltInType::Char32T)),
       LitChar::Wide(_) => {
         let mut ty = Type::Identifier {
-          name: Box::new(Expr::Variable {
-            name: Identifier::Literal(LitIdent { id: "wchar_t".to_owned(), macro_arg: false }),
-          }),
+          name: Box::new(Expr::Variable { name: LitIdent { id: "wchar_t".to_owned(), macro_arg: false } }),
           is_struct: false,
         };
         ty.finish(ctx)?;

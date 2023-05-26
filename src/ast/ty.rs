@@ -262,7 +262,7 @@ impl Type {
       "unsigned long long" => Type::BuiltIn(BuiltInType::ULongLong),
       "void" => Type::BuiltIn(BuiltInType::Void),
       ty => Type::Identifier {
-        name: Box::new(Expr::Variable { name: Identifier::Literal(LitIdent { id: ty.to_owned(), macro_arg: false }) }),
+        name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_owned(), macro_arg: false } }),
         is_struct: false,
       },
     }
@@ -342,7 +342,7 @@ impl TryFrom<syn::Type> for Type {
       },
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
       syn::Type::Verbatim(ty) => Ok(Self::Identifier {
-        name: Box::new(Expr::Variable { name: Identifier::Literal(LitIdent { id: ty.to_string(), macro_arg: false }) }),
+        name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_string(), macro_arg: false } }),
         is_struct: false,
       }),
       syn::Type::Path(path_ty) => Ok(Self::Path {
