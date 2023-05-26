@@ -1,17 +1,11 @@
-use std::{
-  collections::HashSet,
-  fmt::Debug,
-  ops::{RangeFrom, RangeTo},
-  str,
-};
+use std::{collections::HashSet, fmt::Debug, str};
 
 use nom::{
   branch::alt,
   combinator::{all_consuming, map, opt},
   multi::fold_many0,
   sequence::{preceded, terminated, tuple},
-  AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
-  ParseTo, Slice,
+  IResult,
 };
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
@@ -107,18 +101,7 @@ pub struct FnMacro {
 }
 
 impl FnMacro {
-  fn parse_args<I>(input: &[I]) -> IResult<&[I], Vec<String>>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter
-      + Slice<RangeFrom<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + Clone,
-    <I as InputIter>::Item: AsChar,
-  {
+  fn parse_args<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Vec<String>> {
     all_consuming(terminated(
       alt((
         map(preceded(meta, token("...")), |var_arg| vec![var_arg.to_owned()]),
@@ -146,24 +129,7 @@ impl FnMacro {
   }
 
   /// Parse a function-like macro from a name, arguments and body tokens.
-  pub fn parse<I, C>(name: I, args: &[I], body: &[I]) -> Result<Self, crate::ParserError>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  pub fn parse(name: &str, args: &[&str], body: &[&str]) -> Result<Self, crate::ParserError> {
     let (_, name) = identifier_lit(&[name]).map_err(|_| crate::ParserError::InvalidMacroName)?;
     let (_, args) = Self::parse_args(args).map_err(|_| crate::ParserError::InvalidMacroArgs)?;
 

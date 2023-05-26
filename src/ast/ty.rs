@@ -1,11 +1,10 @@
-use std::{fmt::Debug, ops::RangeFrom, str::FromStr};
+use std::{fmt::Debug, str::FromStr};
 
 use nom::{
   branch::{alt, permutation},
   combinator::{map, opt},
   multi::fold_many0,
-  sequence::{delimited, pair, preceded, terminated},
-  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
+  sequence::{delimited, pair, preceded, terminated}, Compare, IResult, InputLength, InputTake, Slice,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
@@ -111,10 +110,7 @@ impl BuiltInType {
   }
 }
 
-fn int_ty<I>(input: &[I]) -> IResult<&[I], BuiltInType>
-where
-  I: Debug + InputTake + InputLength + Slice<std::ops::RangeFrom<usize>> + Compare<&'static str> + Clone,
-{
+fn int_ty<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], BuiltInType> {
   fn int_signedness<I>(input: &[I]) -> IResult<&[I], &'static str>
   where
     I: Debug + InputTake + InputLength + Slice<std::ops::RangeFrom<usize>> + Compare<&'static str> + Clone,
@@ -166,18 +162,7 @@ where
   ))(input)
 }
 
-fn ty<'i, I>(input: &'i [I], ctx: &ParseContext<'_>) -> IResult<&'i [I], Type>
-where
-  I: Debug
-    + InputTake
-    + InputLength
-    + InputIter
-    + Slice<RangeFrom<usize>>
-    + Compare<&'static str>
-    + FindSubstring<&'static str>
-    + Clone,
-  <I as InputIter>::Item: AsChar,
-{
+fn ty<'i, 't>(input: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Type> {
   alt((
     // [const] (float | [long] double | bool | void)
     map(
@@ -212,10 +197,7 @@ where
   ))(input)
 }
 
-fn const_qualifier<I>(input: &[I]) -> IResult<&[I], bool>
-where
-  I: Debug + InputTake + InputLength + Slice<std::ops::RangeFrom<usize>> + Compare<&'static str> + Clone,
-{
+fn const_qualifier<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], bool> {
   fold_many0(keyword("const"), || false, |_, _| true)(input)
 }
 
@@ -237,18 +219,7 @@ pub enum Type {
 
 impl Type {
   /// Parse a type.
-  pub(crate) fn parse<'i, I>(tokens: &'i [I], ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter
-      + Slice<RangeFrom<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + Clone,
-    <I as InputIter>::Item: AsChar,
-  {
+  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, ty) = delimited(const_qualifier, |tokens| ty(tokens, ctx), const_qualifier)(tokens)?;
 
     fold_many0(

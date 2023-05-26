@@ -1,6 +1,5 @@
 use std::{
   fmt::Debug,
-  ops::{RangeFrom, RangeTo},
 };
 
 use nom::{
@@ -8,8 +7,7 @@ use nom::{
   combinator::{eof, map, opt, value},
   multi::many0,
   sequence::{delimited, pair, preceded, terminated, tuple},
-  AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
-  ParseTo, Slice,
+  AsChar, IResult,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
@@ -43,24 +41,7 @@ pub enum Statement {
 }
 
 impl Statement {
-  fn parse_single<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_single<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let condition = |input| parenthesized(|tokens| Expr::parse(tokens, ctx))(input);
     let block = |input| {
       map(
@@ -102,24 +83,7 @@ impl Statement {
   }
 
   /// Parse a statement.
-  pub(crate) fn parse<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     map(many0(delimited(meta, |tokens| Self::parse_single(tokens, ctx), meta)), |mut stmts| {
       if stmts.len() == 1 {
         stmts.remove(0)

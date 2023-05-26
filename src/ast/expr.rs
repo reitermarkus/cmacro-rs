@@ -1,6 +1,5 @@
 use std::{
   fmt::Debug,
-  ops::{RangeFrom, RangeTo},
 };
 
 use nom::{
@@ -8,8 +7,7 @@ use nom::{
   combinator::{all_consuming, map, map_res, value},
   multi::{fold_many0, separated_list0},
   sequence::{delimited, pair, preceded, terminated, tuple},
-  AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
-  ParseTo, Slice,
+   IResult,
 };
 use proc_macro2::{Literal, TokenStream};
 use quote::{quote, TokenStreamExt};
@@ -49,20 +47,7 @@ impl Expr {
     }
   }
 
-  fn parse_concat<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_concat<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let parse_var = map(|tokens| Identifier::parse(tokens, ctx), |id| Self::Variable { name: id });
     let parse_string = alt((
       map(LitString::parse, |s| Self::Literal(Lit::String(s))),
@@ -85,24 +70,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_factor<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_factor<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     alt((
       map(LitChar::parse, |c| Self::Literal(Lit::Char(c))),
       |tokens| Self::parse_concat(tokens, ctx),
@@ -111,24 +79,7 @@ impl Expr {
     ))(tokens)
   }
 
-  fn parse_term_prec1<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec1<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, factor) = Self::parse_factor(tokens, ctx)?;
 
     // `__asm ( ... )` or `__asm volatile ( ... )`
@@ -220,24 +171,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec2<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec2<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     alt((
       map(
         pair(parenthesized(|tokens| Type::parse(tokens, ctx)), |tokens| Self::parse_term_prec2(tokens, ctx)),
@@ -266,24 +200,7 @@ impl Expr {
     ))(tokens)
   }
 
-  fn parse_term_prec3<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec3<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec2(tokens, ctx)?;
 
     fold_many0(
@@ -300,24 +217,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec4<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec4<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec3(tokens, ctx)?;
 
     fold_many0(
@@ -330,24 +230,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec5<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec5<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec4(tokens, ctx)?;
 
     fold_many0(
@@ -360,24 +243,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec6<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec6<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec5(tokens, ctx)?;
 
     fold_many0(
@@ -399,24 +265,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec7<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec7<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec6(tokens, ctx)?;
 
     fold_many0(
@@ -429,24 +278,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec8<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec8<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec7(tokens, ctx)?;
 
     fold_many0(
@@ -456,24 +288,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec9<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec9<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec8(tokens, ctx)?;
 
     fold_many0(
@@ -483,24 +298,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec10<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec10<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec9(tokens, ctx)?;
 
     fold_many0(
@@ -510,24 +308,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec13<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec13<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec10(tokens, ctx)?;
 
     // Parse ternary.
@@ -541,24 +322,7 @@ impl Expr {
     Ok((tokens, term))
   }
 
-  fn parse_term_prec14<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  fn parse_term_prec14<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, term) = Self::parse_term_prec13(tokens, ctx)?;
 
     fold_many0(
@@ -588,24 +352,7 @@ impl Expr {
   }
 
   /// Parse an expression.
-  pub(crate) fn parse<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     Self::parse_term_prec14(tokens, ctx)
   }
 

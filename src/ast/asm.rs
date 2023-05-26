@@ -1,7 +1,6 @@
 use std::{
   collections::BTreeSet,
   fmt::Debug,
-  ops::{RangeFrom, RangeTo},
   str,
 };
 
@@ -10,9 +9,7 @@ use nom::{
   character::complete::{alpha1, char, digit1, none_of},
   combinator::{all_consuming, map, map_opt, opt, value},
   multi::{fold_many0, fold_many1, separated_list0},
-  sequence::{delimited, pair, preceded, tuple},
-  AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
-  ParseTo, Slice,
+  sequence::{delimited, pair, preceded, tuple}, IResult,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
@@ -145,24 +142,7 @@ impl Asm {
     all_consuming(Self::parse_reg_constraint)(input)
   }
 
-  pub(crate) fn parse<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, (template, outputs, inputs, clobbers)) = parenthesized(tuple((
       delimited(
         meta,

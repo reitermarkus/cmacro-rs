@@ -1,13 +1,5 @@
-use std::{
-  fmt::Debug,
-  ops::{RangeFrom, RangeTo},
-  str,
-};
+use std::{fmt::Debug, str};
 
-use nom::{
-  AsChar, Compare, FindSubstring, FindToken, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, ParseTo,
-  Slice,
-};
 use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
 use semver::{Version, VersionReq};
@@ -40,24 +32,7 @@ pub struct VarMacro {
 
 impl VarMacro {
   /// Parse a variable-like macro from a name and value tokens.
-  pub fn parse<I, C>(name: I, value: &[I]) -> Result<Self, crate::ParserError>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  pub fn parse(name: &str, value: &[&str]) -> Result<Self, crate::ParserError> {
     let name =
       if let Ok((_, name)) = identifier_lit(&[name]) { name } else { return Err(crate::ParserError::InvalidMacroName) };
 

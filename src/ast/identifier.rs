@@ -6,7 +6,7 @@ use nom::{
   combinator::{all_consuming, map, map_opt, map_parser},
   multi::{fold_many0, fold_many1},
   sequence::{delimited, preceded},
-  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
+  AsChar, IResult, InputIter, InputLength, Slice,
 };
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
@@ -122,34 +122,12 @@ impl LitIdent {
 
 impl LitIdent {
   /// Parse an identifier.
-  pub(crate) fn parse<'i, I, C>(tokens: &'i [I], _ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputIter<Item = C>
-      + InputTake
-      + InputLength
-      + Compare<&'static str>
-      + Slice<std::ops::RangeFrom<usize>>
-      + FindSubstring<&'static str>
-      + Clone,
-    C: AsChar,
-  {
+  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], _ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     identifier_lit(tokens)
   }
 
   /// Parse an identifier.
-  pub(crate) fn parse_concat<'i, I, C>(tokens: &'i [I], _ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputIter<Item = C>
-      + InputTake
-      + InputLength
-      + Compare<&'static str>
-      + Slice<std::ops::RangeFrom<usize>>
-      + FindSubstring<&'static str>
-      + Clone,
-    C: AsChar,
-  {
+  pub(crate) fn parse_concat<'i, 't>(tokens: &'i [&'t str], _ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     concat_identifier(tokens)
   }
 }
@@ -180,22 +158,13 @@ pub enum Identifier {
 
 impl Identifier {
   /// Parse an identifier.
-  pub(crate) fn parse<'i, I, C>(tokens: &'i [I], ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputIter<Item = C>
-      + InputTake
-      + InputLength
-      + Compare<&'static str>
-      + Slice<std::ops::RangeFrom<usize>>
-      + FindSubstring<&'static str>
-      + Clone,
-    C: AsChar,
-  {
+  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, id) = map(|tokens| LitIdent::parse(tokens, ctx), Self::Literal)(tokens)?;
 
     fold_many0(
-      preceded(delimited(meta::<I>, token::<I>("##"), meta::<I>), |tokens| LitIdent::parse_concat(tokens, ctx)),
+      preceded(delimited(meta::<&'t str>, token::<&'t str>("##"), meta::<&'t str>), |tokens| {
+        LitIdent::parse_concat(tokens, ctx)
+      }),
       move || id.clone(),
       |acc, item| match acc {
         Self::Literal(id) => Self::Concat(vec![id, item]),
@@ -351,9 +320,6 @@ mod tests {
     assert_eq!(id, "asdf".into());
 
     let (_, id) = LitIdent::parse(&["Δx"], &CTX).unwrap();
-    assert_eq!(id, "Δx".into());
-
-    let (_, id) = LitIdent::parse(&["Δx".as_bytes()], &CTX).unwrap();
     assert_eq!(id, "Δx".into());
 
     let (_, id) = LitIdent::parse(&["_123"], &CTX).unwrap();

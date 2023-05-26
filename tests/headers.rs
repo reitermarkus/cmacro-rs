@@ -10,7 +10,7 @@ use yansi::{
   Style,
 };
 
-use cmacro::{CodegenContext, FnMacro, MacroSet, VarMacro, ExpansionError};
+use cmacro::{CodegenContext, ExpansionError, FnMacro, MacroSet, VarMacro};
 
 fn location_in_scope(r: &SourceRange) -> bool {
   let start = r.get_start();
@@ -157,10 +157,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             })
             .collect::<Vec<_>>();
 
-          let mut fn_macro = FnMacro::parse(name.as_str(), &arg_names, &body).unwrap();
-
-          if let Ok(tokens) = fn_macro.generate(&context) {
-            f.append_all(tokens);
+          match FnMacro::parse(name.as_str(), &arg_names, &body) {
+            Ok(mut fn_macro) => {
+              if let Ok(tokens) = fn_macro.generate(&context) {
+                f.append_all(tokens);
+              }
+            },
+            Err(err) => eprintln!("Error parsing function-like macro {name}: {err}"),
           }
         },
         Err(ExpansionError::MacroNotFound) => (),
@@ -177,13 +180,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             })
             .collect::<Vec<_>>();
 
-          let mut var_macro = VarMacro::parse(name.as_str(), &body).unwrap();
-          if let Ok((value, ty)) = var_macro.generate(&context) {
-            let name = Ident::new(name, Span::call_site());
-            let ty = ty.unwrap_or(quote! { _ });
-            f.append_all(quote! {
-              pub const #name: #ty = #value;
-            })
+          match VarMacro::parse(name.as_str(), &body) {
+            Ok(mut var_macro) => {
+              if let Ok((value, ty)) = var_macro.generate(&context) {
+                let name = Ident::new(name, Span::call_site());
+                let ty = ty.unwrap_or(quote! { _ });
+                f.append_all(quote! {
+                  pub const #name: #ty = #value;
+                })
+              }
+            },
+            Err(err) => eprintln!("Error parsing variable-like macro {name}: {err}"),
           }
         },
         Err(ExpansionError::MacroNotFound) => (),

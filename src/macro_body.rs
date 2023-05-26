@@ -1,13 +1,9 @@
-use std::{
-  fmt::Debug,
-  ops::{RangeFrom, RangeTo},
-};
+use std::fmt::Debug;
 
 use nom::{
   branch::alt,
   combinator::{all_consuming, map},
-  AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
-  ParseTo, Slice,
+  IResult,
 };
 
 use crate::{
@@ -41,24 +37,7 @@ pub enum MacroBody {
 }
 
 impl MacroBody {
-  pub(crate) fn parse<'i, 'p, I, C>(tokens: &'i [I], ctx: &'p ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + ParseTo<f64>
-      + ParseTo<f32>
-      + Offset
-      + Clone,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, _) = meta(tokens)?;
 
     if tokens.is_empty() {
