@@ -25,7 +25,7 @@ pub enum Expr {
   FieldAccess { expr: Box<Self>, field: Box<Self> },
   ArrayAccess { expr: Box<Self>, index: Box<Self> },
   Stringify(Stringify),
-  Concat(Vec<Self>),
+  ConcatString(Vec<Self>),
   Unary(Box<UnaryExpr>),
   Binary(Box<BinaryExpr>),
   Ternary(Box<Self>, Box<Self>, Box<Self>),
@@ -37,7 +37,7 @@ impl Expr {
     match self {
       Self::Asm(_) | Self::Literal(_) | Self::Arg { .. } | Self::Variable { .. } => (0, None),
       Self::FunctionCall(_) | Self::FieldAccess { .. } => (1, Some(true)),
-      Self::Cast { .. } | Self::Stringify(_) | Self::Concat(_) => (3, Some(true)),
+      Self::Cast { .. } | Self::Stringify(_) | Self::ConcatString(_) => (3, Some(true)),
       Self::Ternary(..) => (0, None),
       // While C array syntax is left associative, Rust precedence is the same as a dereference.
       Self::ArrayAccess { .. } => UnaryOp::Deref.precedence(),
@@ -46,7 +46,8 @@ impl Expr {
     }
   }
 
-  fn parse_ident<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  /// Parse identifier concatenation, e.g. `arg ## 2`.
+  fn parse_concat_ident<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, id) = Identifier::parse(tokens, ctx)?;
 
     if let Identifier::Literal(LitIdent { macro_arg: true, .. }) = id {
@@ -56,8 +57,9 @@ impl Expr {
     Ok((tokens, Self::Variable { name: id }))
   }
 
-  fn parse_concat<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
-    let parse_var = |tokens| Self::parse_ident(tokens, ctx);
+  /// Parse string concatenation, e.g. `arg "333"`.
+  fn parse_concat_string<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+    let parse_var = |tokens| Self::parse_concat_ident(tokens, ctx);
     let parse_string = alt((
       map(LitString::parse, |s| Self::Literal(Lit::String(s))),
       map(|tokens| Stringify::parse(tokens, ctx), Self::Stringify),
@@ -70,11 +72,11 @@ impl Expr {
       preceded(meta, parse_part),
       move || s.clone(),
       |mut acc, expr| match acc {
-        Self::Concat(ref mut args) => {
+        Self::ConcatString(ref mut args) => {
           args.push(expr);
           acc
         },
-        acc => Self::Concat(vec![acc, expr]),
+        acc => Self::ConcatString(vec![acc, expr]),
       },
     )(tokens)
   }
@@ -82,7 +84,7 @@ impl Expr {
   fn parse_factor<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     alt((
       map(LitChar::parse, |c| Self::Literal(Lit::Char(c))),
-      |tokens| Self::parse_concat(tokens, ctx),
+      |tokens| Self::parse_concat_string(tokens, ctx),
       map(Lit::parse, Self::Literal),
       parenthesized(|tokens| Self::parse(tokens, ctx)),
     ))(tokens)
@@ -95,7 +97,7 @@ impl Expr {
     fn is_asm(expr: &Expr) -> bool {
       match expr {
         Expr::Variable { name: Identifier::Literal(ref id) } => matches!(id.as_str(), "__asm__" | "__asm" | "asm"),
-        Expr::Concat(exprs) => match exprs.as_slice() {
+        Expr::ConcatString(exprs) => match exprs.as_slice() {
           [first, second] => {
             is_asm(first)
               && matches!(
@@ -141,14 +143,14 @@ impl Expr {
               parenthesized(separated_list0(tuple((meta, token(","), meta)), |tokens| Self::parse(tokens, ctx))),
               Access::Fn,
             ),
-            map(preceded(terminated(token("."), meta), |tokens| Self::parse_ident(tokens, ctx)), |field| {
+            map(preceded(terminated(token("."), meta), |tokens| Self::parse_concat_ident(tokens, ctx)), |field| {
               Access::Field { field: Box::new(field), deref: false }
             }),
             map(
               delimited(terminated(token("["), meta), |tokens| Self::parse(tokens, ctx), preceded(meta, token("]"))),
               |index| Access::Array { index: Box::new(index) },
             ),
-            map(preceded(terminated(token("->"), meta), |tokens| Self::parse_ident(tokens, ctx)), |field| {
+            map(preceded(terminated(token("->"), meta), |tokens| Self::parse_concat_ident(tokens, ctx)), |field| {
               Access::Field { field: Box::new(field), deref: true }
             }),
             map(alt((value(UnaryOp::PostInc, token("++")), value(UnaryOp::PostDec, token("--")))), |op| {
@@ -489,7 +491,7 @@ impl Expr {
         }
       },
       Self::Stringify(stringify) => stringify.finish(ctx),
-      Self::Concat(names) => {
+      Self::ConcatString(names) => {
         let mut new_names = vec![];
         let mut current_name: Option<Vec<u8>> = None;
 
@@ -525,7 +527,7 @@ impl Expr {
           *self = new_names.remove(0);
           self.finish(ctx)
         } else {
-          *self = Self::Concat(new_names);
+          *self = Self::ConcatString(new_names);
           Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
         }
       },
@@ -798,7 +800,7 @@ impl Expr {
       Self::Stringify(stringify) => {
         stringify.to_tokens(ctx, tokens);
       },
-      Self::Concat(ref names) => {
+      Self::ConcatString(ref names) => {
         let ffi_prefix = ctx.ffi_prefix().into_iter();
         let trait_prefix = ctx.trait_prefix().into_iter();
 
@@ -879,7 +881,7 @@ mod tests {
     let (_, expr) = Expr::parse(&[r#""def""#, "#", "$a"], &ctx).unwrap();
     assert_eq!(
       expr,
-      Expr::Concat(vec![
+      Expr::ConcatString(vec![
         Expr::Literal(Lit::String(LitString::Ordinary("def".into()))),
         Expr::Stringify(Stringify { id: id!(@a) }),
       ])
