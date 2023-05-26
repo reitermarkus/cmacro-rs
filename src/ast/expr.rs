@@ -17,6 +17,7 @@ use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext, UnaryOp};
 #[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub enum Expr {
+  Arg { name: Identifier },
   Variable { name: Identifier },
   FunctionCall(FunctionCall),
   Cast { expr: Box<Self>, ty: Type },
@@ -34,7 +35,7 @@ pub enum Expr {
 impl Expr {
   pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
     match self {
-      Self::Asm(_) | Self::Literal(_) | Self::Variable { .. } => (0, None),
+      Self::Asm(_) | Self::Literal(_) | Self::Arg { .. } | Self::Variable { .. } => (0, None),
       Self::FunctionCall(_) | Self::FieldAccess { .. } => (1, Some(true)),
       Self::Cast { .. } | Self::Stringify(_) | Self::Concat(_) => (3, Some(true)),
       Self::Ternary(..) => (0, None),
@@ -46,7 +47,16 @@ impl Expr {
   }
 
   fn parse_concat<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
-    let parse_var = map(|tokens| Identifier::parse(tokens, ctx), |id| Self::Variable { name: id });
+    let parse_var = map(
+      |tokens| Identifier::parse(tokens, ctx),
+      |id| {
+        if let Identifier::Literal(LitIdent { macro_arg: true, .. }) = id {
+          return Self::Arg { name: id }
+        }
+
+        Self::Variable { name: id }
+      },
+    );
     let parse_string = alt((
       map(LitString::parse, |s| Self::Literal(Lit::String(s))),
       map(|tokens| Stringify::parse(tokens, ctx), Self::Stringify),
@@ -105,7 +115,11 @@ impl Expr {
           return Ok((tokens, Self::Asm(asm)))
         }
       },
-      Self::Variable { .. } | Self::FunctionCall(..) | Self::FieldAccess { .. } | Self::ArrayAccess { .. } => (),
+      Self::Arg { .. }
+      | Self::Variable { .. }
+      | Self::FunctionCall(..)
+      | Self::FieldAccess { .. }
+      | Self::ArrayAccess { .. } => (),
       Self::Unary(ref op) if matches!(&**op, UnaryExpr { op: UnaryOp::AddrOf, .. }) => (),
       _ => return Ok((tokens, factor)),
     }
@@ -151,7 +165,9 @@ impl Expr {
               // Postfix `++`/`--` cannot be chained.
               (expr, Access::UnaryOp(op)) if !was_unary_op => Self::Unary(Box::new(UnaryExpr { expr, op })),
               // TODO: Support calling expressions as functions.
-              (Self::Variable { name }, Access::Fn(args)) => Self::FunctionCall(FunctionCall { name, args }),
+              (Self::Arg { name } | Self::Variable { name }, Access::Fn(args)) => {
+                Self::FunctionCall(FunctionCall { name, args })
+              },
               // Field access cannot be chained after postfix `++`/`--`.
               (acc, Access::Field { field, deref }) if !was_unary_op || deref => {
                 let acc = if deref { Self::Unary(Box::new(UnaryExpr { op: UnaryOp::Deref, expr: acc })) } else { acc };
@@ -397,23 +413,24 @@ impl Expr {
         ty.finish(ctx)?;
         Ok(Some(ty.clone()))
       },
+      Self::Arg { ref mut name } => {
+        let ty = name.finish(ctx)?;
+
+        if let Identifier::Literal(name) = name {
+          if let Some(arg_ty) = ctx.arg_type_mut(name.as_str()) {
+            if let MacroArgType::Known(arg_ty) = arg_ty {
+              return Ok(Some(arg_ty.clone()))
+            }
+          }
+        }
+
+        Ok(None)
+      },
       Self::Variable { ref mut name } => {
         let ty = name.finish(ctx)?;
 
         match name {
           Identifier::Literal(name) => {
-            if name.macro_arg {
-              if let Some(arg_ty) = ctx.arg_type_mut(name.as_str()) {
-                if let MacroArgType::Known(arg_ty) = arg_ty {
-                  return Ok(Some(arg_ty.clone()))
-                } else {
-                  return Ok(ty)
-                }
-              }
-
-              return Ok(None)
-            }
-
             // Built-in macros.
             return match name.as_str() {
               "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
@@ -731,6 +748,7 @@ impl Expr {
           }
         },
       }),
+      Self::Arg { ref name } => name.to_tokens(ctx, tokens),
       Self::Variable { ref name } => {
         if let Identifier::Literal(name) = name {
           let prefix = ctx.ffi_prefix().into_iter();
