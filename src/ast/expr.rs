@@ -1156,7 +1156,7 @@ mod tests {
   #[test]
   fn parse_stringify() {
     let ctx = ParseContext::fn_macro("EXPR", &["a"]);
-    let (_, expr) = Expr::parse(&["#", "a"], &ctx).unwrap();
+    let (_, expr) = Expr::parse(&["#", "$a"], &ctx).unwrap();
     assert_eq!(expr, Expr::Stringify(Stringify { id: id!(@a) }));
   }
 
@@ -1166,7 +1166,7 @@ mod tests {
     assert_eq!(expr, Expr::Literal(Lit::String(LitString::Ordinary("abcdef".into()))));
 
     let ctx = ParseContext::fn_macro("EXPR", &["a"]);
-    let (_, expr) = Expr::parse(&[r#""def""#, "#", "a"], &ctx).unwrap();
+    let (_, expr) = Expr::parse(&[r#""def""#, "#", "$a"], &ctx).unwrap();
     assert_eq!(
       expr,
       Expr::Concat(vec![
@@ -1180,16 +1180,16 @@ mod tests {
   fn parse_concat_ident() {
     let ctx = ParseContext::fn_macro("IDENTIFIER", &["abc"]);
 
-    let (_, id) = Expr::parse(&["abc", "##", "def"], &ctx).unwrap();
-    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(@abc), lit_id!(def)]) });
+    let (_, id) = Expr::parse(&["$abc", "##", "def"], &ctx).unwrap();
+    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(@ abc), lit_id!(def)]) });
 
-    let (_, id) = Expr::parse(&["abc", "##", "def", "##", "ghi"], &ctx).unwrap();
+    let (_, id) = Expr::parse(&["$abc", "##", "def", "##", "ghi"], &ctx).unwrap();
     assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(@ abc), lit_id!(def), lit_id!(ghi)]) });
 
-    let (_, id) = Expr::parse(&["abc", "##", "_def"], &ctx).unwrap();
+    let (_, id) = Expr::parse(&["$abc", "##", "_def"], &ctx).unwrap();
     assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(@ abc), lit_id!(_def)]) });
 
-    let (_, id) = Expr::parse(&["abc", "##", "123"], &ctx).unwrap();
+    let (_, id) = Expr::parse(&["$abc", "##", "123"], &ctx).unwrap();
     assert_eq!(
       id,
       Expr::Variable {

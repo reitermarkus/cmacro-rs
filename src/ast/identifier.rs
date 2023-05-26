@@ -18,7 +18,7 @@ use super::{
 };
 use crate::{CodegenContext, Expr, Lit, LitFloat, LitInt, LocalContext, MacroArgType, ParseContext};
 
-pub(crate) fn identifier<I>(tokens: &[I]) -> IResult<&[I], String>
+pub(crate) fn identifier_lit<I>(tokens: &[I]) -> IResult<&[I], LitIdent>
 where
   I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
   <I as InputIter>::Item: AsChar,
@@ -41,9 +41,19 @@ where
           if let Some(s) = s.and_then(|s| String::from_utf8(s).ok()) { s } else { c.into_iter().collect::<String>() };
 
         let mut chars = s.chars();
-        let start = chars.next()?;
+
+        let mut start = chars.next()?;
+        let mut macro_arg = false;
+        let mut offset = 0;
+
+        if start == '$' {
+          start = chars.next()?;
+          offset = 1;
+          macro_arg = true;
+        }
+
         if (unicode_ident::is_xid_start(start) || start == '_') && chars.all(unicode_ident::is_xid_continue) {
-          Some(s)
+          Some(LitIdent { id: s[offset..].to_owned(), macro_arg })
         } else {
           None
         }
@@ -53,7 +63,7 @@ where
   })(tokens)
 }
 
-fn concat_identifier<I>(tokens: &[I]) -> IResult<&[I], String>
+fn concat_identifier<I>(tokens: &[I]) -> IResult<&[I], LitIdent>
 where
   I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
   <I as InputIter>::Item: AsChar,
@@ -74,8 +84,19 @@ where
           if let Some(s) = s.and_then(|s| String::from_utf8(s).ok()) { s } else { c.into_iter().collect::<String>() };
 
         let mut chars = s.chars();
+
+        let mut start = chars.next()?;
+        let mut macro_arg = false;
+        let mut offset = 0;
+
+        if start == '$' {
+          start = chars.next()?;
+          offset = 1;
+          macro_arg = true;
+        }
+
         if chars.all(unicode_ident::is_xid_continue) {
-          Some(s)
+          Some(LitIdent { id: s[offset..].to_owned(), macro_arg })
         } else {
           None
         }
@@ -101,7 +122,7 @@ impl LitIdent {
 
 impl LitIdent {
   /// Parse an identifier.
-  pub(crate) fn parse<'i, I, C>(tokens: &'i [I], ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
+  pub(crate) fn parse<'i, I, C>(tokens: &'i [I], _ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputIter<Item = C>
@@ -113,21 +134,11 @@ impl LitIdent {
       + Clone,
     C: AsChar,
   {
-    map(identifier, |id| Self::map_raw(id, ctx))(tokens)
-  }
-
-  fn map_raw(raw_id: String, ctx: &ParseContext<'_>) -> Self {
-    let mut macro_arg = ctx.args.contains(&raw_id.as_str());
-
-    if raw_id == "__VA_ARGS__" {
-      macro_arg |= ctx.args.contains(&"...")
-    }
-
-    LitIdent { id: raw_id, macro_arg }
+    identifier_lit(tokens)
   }
 
   /// Parse an identifier.
-  pub(crate) fn parse_concat<'i, I, C>(tokens: &'i [I], ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
+  pub(crate) fn parse_concat<'i, I, C>(tokens: &'i [I], _ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputIter<Item = C>
@@ -139,7 +150,7 @@ impl LitIdent {
       + Clone,
     C: AsChar,
   {
-    map(concat_identifier, |id| Self::map_raw(id, ctx))(tokens)
+    concat_identifier(tokens)
   }
 }
 

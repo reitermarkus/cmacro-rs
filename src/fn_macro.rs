@@ -16,7 +16,7 @@ use nom::{
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
-use crate::{identifier, meta, token, CodegenContext, Expr, LocalContext, MacroArgType, MacroBody, ParseContext};
+use crate::{identifier_lit, meta, token, CodegenContext, Expr, LocalContext, MacroArgType, MacroBody, ParseContext};
 
 /// A function-like macro.
 ///
@@ -34,7 +34,7 @@ use crate::{identifier, meta, token, CodegenContext, Expr, LocalContext, MacroAr
 /// // #define FUNC(a, b, c) a + b * c
 /// let name = "FUNC";
 /// let args = ["a", "b", "c"];
-/// let value = ["a", "+", "b", "*", "c"];
+/// let value = ["$a", "+", "$b", "*", "$c"];
 ///
 /// let mut fn_macro = FnMacro::parse(name, &args, &value)?;
 /// let output = fn_macro.generate(())?;
@@ -82,7 +82,7 @@ use crate::{identifier, meta, token, CodegenContext, Expr, LocalContext, MacroAr
 /// // #define FUNC(a, b, c) a + b * c
 /// let name = "FUNC";
 /// let args = ["a", "b", "c"];
-/// let value = ["a", "+", "b", "*", "c"];
+/// let value = ["$a", "+", "$b", "*", "$c"];
 ///
 /// let mut fn_macro = FnMacro::parse(name, &args, &value)?;
 /// let output = fn_macro.generate(Context)?;
@@ -124,8 +124,8 @@ impl FnMacro {
         map(preceded(meta, token("...")), |var_arg| vec![var_arg.to_owned()]),
         map(
           tuple((
-            fold_many0(preceded(meta, identifier), Vec::new, |mut acc, arg| {
-              acc.push(arg);
+            fold_many0(preceded(meta, identifier_lit), Vec::new, |mut acc, arg| {
+              acc.push(arg.id);
               acc
             }),
             preceded(meta, opt(map(token("..."), |var_arg| var_arg.to_owned()))),
@@ -164,14 +164,14 @@ impl FnMacro {
     C: AsChar + Copy,
     &'static str: FindToken<<I as InputIter>::Item>,
   {
-    let (_, name) = identifier(&[name]).map_err(|_| crate::ParserError::InvalidMacroName)?;
+    let (_, name) = identifier_lit(&[name]).map_err(|_| crate::ParserError::InvalidMacroName)?;
     let (_, args) = Self::parse_args(args).map_err(|_| crate::ParserError::InvalidMacroArgs)?;
 
     let ctx_args = args.iter().map(|a| a.as_str()).collect::<Vec<_>>();
-    let ctx = ParseContext::fn_macro(&name, &ctx_args);
+    let ctx = ParseContext::fn_macro(&name.id, &ctx_args);
     let (_, body) = MacroBody::parse(body, &ctx).map_err(|_| crate::ParserError::InvalidMacroBody)?;
 
-    Ok(Self { name, args, body })
+    Ok(Self { name: name.id, args, body })
   }
 
   pub(crate) fn call<C>(

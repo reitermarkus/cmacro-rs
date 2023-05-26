@@ -103,13 +103,13 @@ fn stringify(tokens: Vec<Token<'_>>) -> String {
   format!("{s:?}")
 }
 
-fn detokenize(tokens: Vec<Token<'_>>) -> Vec<MacroToken<'_>> {
+fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroToken<'t>> {
   tokens
     .into_iter()
     .filter_map(|t| {
       Some(match t {
         Token::MacroArg(arg_index) => MacroToken::Arg(arg_index),
-        Token::VarArgs => MacroToken::Token(Cow::Borrowed("__VA_ARGS__")),
+        Token::VarArgs => MacroToken::Arg(arg_names.len() - 1),
         Token::Plain(t) | Token::NonReplacable(t) => MacroToken::Token(t),
         Token::Stringify => MacroToken::Token(Cow::Borrowed("#")),
         Token::Concat => MacroToken::Token(Cow::Borrowed("##")),
@@ -482,7 +482,7 @@ impl MacroSet {
     let body = self.var_macros.get(name).ok_or(ExpansionError::MacroNotFound)?;
     let body = tokenize(&[], body);
     let tokens = self.expand_var_macro_body(HashSet::new(), name, &body)?;
-    Ok(detokenize(tokens))
+    Ok(detokenize(&[], tokens))
   }
 
   pub fn fn_macro_args<'s>(&'s self, name: &str) -> Option<&'s [String]> {
@@ -494,7 +494,7 @@ impl MacroSet {
     let (arg_names, body) = self.fn_macros.get(name).ok_or(ExpansionError::MacroNotFound)?;
     let body = tokenize(arg_names, body);
     let tokens = self.expand_fn_macro_body(HashSet::new(), name, arg_names, None, &body)?;
-    Ok(detokenize(tokens))
+    Ok(detokenize(arg_names, tokens))
   }
 }
 

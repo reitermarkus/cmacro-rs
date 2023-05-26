@@ -10,7 +10,7 @@ use yansi::{
   Style,
 };
 
-use cmacro::{CodegenContext, FnMacro, VarMacro};
+use cmacro::{CodegenContext, FnMacro, MacroSet, VarMacro, ExpansionError};
 
 fn location_in_scope(r: &SourceRange) -> bool {
   let start = r.get_start();
@@ -101,25 +101,18 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     print!("test {} ... ", header_name);
 
-    #[derive(Debug, Clone, Default)]
+    #[derive(Debug, Default)]
     struct Context {
       pub macros: Vec<String>,
       pub functions: HashMap<String, (Vec<String>, String)>,
       pub fn_macros: HashMap<String, FnMacro>,
       pub var_macros: HashMap<String, VarMacro>,
+      pub macro_set: MacroSet,
     }
 
     impl CodegenContext for Context {
       fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
         self.functions.get(name).cloned()
-      }
-
-      fn function_macro(&self, name: &str) -> Option<&FnMacro> {
-        self.fn_macros.get(name)
-      }
-
-      fn variable_macro(&self, name: &str) -> Option<&VarMacro> {
-        self.var_macros.get(name)
       }
     }
 
@@ -134,23 +127,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
       },
       EntityKind::MacroDefinition => {
         if let Some(args) = args {
-          match FnMacro::parse(name, args, value) {
-            Ok(fn_macro) => {
-              context.fn_macros.insert(name.to_owned(), fn_macro);
-            },
-            Err(err) => {
-              eprintln!("Failed to parse macro {}({}): {}", name, format!("({})", args.join(", ")), err);
-            },
-          }
+          context.macro_set.define_fn_macro(name, args, value);
         } else {
-          match VarMacro::parse(name, value) {
-            Ok(var_macro) => {
-              context.var_macros.insert(name.to_owned(), var_macro);
-            },
-            Err(err) => {
-              eprintln!("Failed to parse macro {}: {}", name, err)
-            },
-          }
+          context.macro_set.define_var_macro(name, value);
         }
 
         context.macros.push(name.to_owned());
@@ -161,22 +140,54 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let mut f = TokenStream::new();
 
     for name in &context.macros {
-      if let Some(fn_macro) = context.function_macro(name) {
-        let mut fn_macro = fn_macro.clone();
-        if let Ok(tokens) = fn_macro.generate(&context) {
-          f.append_all(tokens);
-        }
+      match context.macro_set.expand_fn_macro(name) {
+        Ok(fn_macro) => {
+          let arg_names = context.macro_set.fn_macro_args(name).unwrap();
+          let arg_names2 = arg_names
+            .iter()
+            .map(|s| if s == "..." { "$__VA_ARGS__".to_owned() } else { format!("${s}") })
+            .collect::<Vec<_>>();
+          let arg_names2 = arg_names2.iter().map(|s| s.as_ref()).collect::<Vec<_>>();
+          let arg_names = arg_names.iter().map(|s| s.as_ref()).collect::<Vec<_>>();
+          let body = fn_macro
+            .iter()
+            .map(|t| match t {
+              cmacro::MacroToken::Arg(i) => arg_names2[*i],
+              cmacro::MacroToken::Token(s) => s.as_ref(),
+            })
+            .collect::<Vec<_>>();
+
+          let mut fn_macro = FnMacro::parse(name.as_str(), &arg_names, &body).unwrap();
+
+          if let Ok(tokens) = fn_macro.generate(&context) {
+            f.append_all(tokens);
+          }
+        },
+        Err(ExpansionError::MacroNotFound) => (),
+        Err(err) => eprintln!("Error for {name}: {err:?}"),
       }
 
-      if let Some(var_macro) = context.variable_macro(name) {
-        let mut var_macro = var_macro.clone();
-        if let Ok((value, ty)) = var_macro.generate(&context) {
-          let name = Ident::new(name, Span::call_site());
-          let ty = ty.unwrap_or(quote! { _ });
-          f.append_all(quote! {
-            pub const #name: #ty = #value;
-          })
-        }
+      match context.macro_set.expand_var_macro(name) {
+        Ok(var_macro) => {
+          let body = var_macro
+            .iter()
+            .map(|t| match t {
+              cmacro::MacroToken::Arg(_) => unreachable!(),
+              cmacro::MacroToken::Token(s) => s.as_ref(),
+            })
+            .collect::<Vec<_>>();
+
+          let mut var_macro = VarMacro::parse(name.as_str(), &body).unwrap();
+          if let Ok((value, ty)) = var_macro.generate(&context) {
+            let name = Ident::new(name, Span::call_site());
+            let ty = ty.unwrap_or(quote! { _ });
+            f.append_all(quote! {
+              pub const #name: #ty = #value;
+            })
+          }
+        },
+        Err(ExpansionError::MacroNotFound) => (),
+        Err(err) => eprintln!("Error for {name}: {err:?}"),
       }
     }
 

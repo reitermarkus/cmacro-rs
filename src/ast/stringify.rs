@@ -1,7 +1,7 @@
 use std::{fmt::Debug, ops::RangeFrom};
 
 use nom::{
-  combinator::map_opt,
+  combinator::map,
   sequence::{preceded, terminated},
   AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
 };
@@ -9,9 +9,9 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{
-  identifier::identifier,
+  identifier::identifier_lit,
   tokens::{meta, token},
-  BuiltInType, Identifier, LitIdent, Type,
+  BuiltInType, Identifier, Type,
 };
 use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext};
 
@@ -27,7 +27,7 @@ pub struct Stringify {
 
 impl Stringify {
   /// Parse a stringification expression.
-  pub(crate) fn parse<'i, I>(tokens: &'i [I], ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
+  pub(crate) fn parse<'i, I>(tokens: &'i [I], _ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
   where
     I: Debug
       + InputTake
@@ -39,13 +39,7 @@ impl Stringify {
       + Clone,
     <I as InputIter>::Item: AsChar,
   {
-    map_opt(preceded(terminated(token("#"), meta), identifier), |id| {
-      if ctx.args.contains(&id.as_str()) {
-        Some(Self { id: Identifier::Literal(LitIdent { id, macro_arg: true }) })
-      } else {
-        None
-      }
-    })(tokens)
+    map(preceded(terminated(token("#"), meta), identifier_lit), |id| Self { id: Identifier::Literal(id) })(tokens)
   }
 
   pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
@@ -100,7 +94,7 @@ mod tests {
 
   #[test]
   fn parse_stringify() {
-    let (_, ty) = Stringify::parse(&["#", "var"], &CTX).unwrap();
+    let (_, ty) = Stringify::parse(&["#", "$var"], &CTX).unwrap();
     assert_eq!(ty, Stringify { id: id!(@var) });
   }
 }

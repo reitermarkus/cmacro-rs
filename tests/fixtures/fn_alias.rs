@@ -7,6 +7,8 @@ macro_rules! __cmacro__A {
 }
 pub use __cmacro__A as A;
 
+pub const B: _ = A;
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cmacro__C {

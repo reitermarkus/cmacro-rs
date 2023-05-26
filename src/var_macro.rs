@@ -12,7 +12,7 @@ use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
 use semver::{Version, VersionReq};
 
-use crate::{ast::Lit, identifier, CodegenContext, Expr, LocalContext, MacroBody, ParseContext};
+use crate::{ast::Lit, identifier_lit, CodegenContext, Expr, LocalContext, MacroBody, ParseContext};
 
 /// A variable-like macro.
 ///
@@ -59,15 +59,15 @@ impl VarMacro {
     &'static str: FindToken<<I as InputIter>::Item>,
   {
     let name =
-      if let Ok((_, name)) = identifier(&[name]) { name } else { return Err(crate::ParserError::InvalidMacroName) };
+      if let Ok((_, name)) = identifier_lit(&[name]) { name } else { return Err(crate::ParserError::InvalidMacroName) };
 
-    let ctx = ParseContext::var_macro(&name);
+    let ctx = ParseContext::var_macro(&name.id);
     let body = match MacroBody::parse(value, &ctx) {
       Ok((_, body)) => body,
       Err(_) => return Err(crate::ParserError::InvalidMacroBody),
     };
 
-    Ok(Self { name, body })
+    Ok(Self { name: name.id, body })
   }
 
   /// Evaluate the value and type of this macro and generate corresponding Rust code.
