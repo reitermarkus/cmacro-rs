@@ -25,6 +25,7 @@ pub enum Expr {
   FieldAccess { expr: Box<Self>, field: Box<Self> },
   ArrayAccess { expr: Box<Self>, index: Box<Self> },
   Stringify(Stringify),
+  ConcatIdent(Vec<Self>),
   ConcatString(Vec<Self>),
   Unary(Box<UnaryExpr>),
   Binary(Box<BinaryExpr>),
@@ -35,7 +36,7 @@ pub enum Expr {
 impl Expr {
   pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
     match self {
-      Self::Asm(_) | Self::Literal(_) | Self::Arg { .. } | Self::Variable { .. } => (0, None),
+      Self::Asm(_) | Self::Literal(_) | Self::Arg { .. } | Self::Variable { .. } | Self::ConcatIdent(_) => (0, None),
       Self::FunctionCall(_) | Self::FieldAccess { .. } => (1, Some(true)),
       Self::Cast { .. } | Self::Stringify(_) | Self::ConcatString(_) => (3, Some(true)),
       Self::Ternary(..) => (0, None),
@@ -50,11 +51,23 @@ impl Expr {
   fn parse_concat_ident<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, id) = Identifier::parse(tokens, ctx)?;
 
-    if let Identifier::Literal(LitIdent { macro_arg: true, .. }) = id {
-      return Ok((tokens, Self::Arg { name: id }))
-    }
+    let expr = match id {
+      Identifier::Literal(LitIdent { macro_arg: true, .. }) => Self::Arg { name: id },
+      Identifier::Literal(LitIdent { macro_arg: false, .. }) => Self::Variable { name: id },
+      Identifier::Concat(ids) => {
+        let ids = ids
+          .into_iter()
+          .map(|id| match id {
+            LitIdent { macro_arg: true, .. } => Self::Arg { name: Identifier::Literal(id) },
+            LitIdent { macro_arg: false, .. } => Self::Variable { name: Identifier::Literal(id) },
+          })
+          .collect();
 
-    Ok((tokens, Self::Variable { name: id }))
+        Self::ConcatIdent(ids)
+      },
+    };
+
+    Ok((tokens, expr))
   }
 
   /// Parse string concatenation, e.g. `arg "333"`.
@@ -491,6 +504,45 @@ impl Expr {
         }
       },
       Self::Stringify(stringify) => stringify.finish(ctx),
+      Self::ConcatIdent(ref mut ids) => {
+        let mut new_ids = vec![];
+
+        for mut id in ids.drain(..) {
+          match id {
+            Self::Arg { name: Identifier::Literal(id) } => {
+              if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
+                *arg_type = MacroArgType::Ident;
+              }
+
+              new_ids.push(Self::Arg { name: Identifier::Literal(id) });
+            },
+            Self::Variable { name: Identifier::Literal(id) } => {
+              if let Some(Self::Variable { name: Identifier::Literal(last_id) }) = new_ids.last_mut() {
+                last_id.id.push_str(&id.id)
+              } else {
+                new_ids.push(Self::Variable { name: Identifier::Literal(id) });
+              }
+            },
+            _ => {
+              // This should be unreachable, since only `Arg` and `Variable` are ever added to `ConcatIdent`.
+              return Err(crate::CodegenError::UnsupportedExpression)
+            },
+          }
+        }
+
+        if new_ids.len() == 1 {
+          *self = new_ids.remove(0);
+          self.finish(ctx)
+        } else {
+          *ids = new_ids;
+
+          for id in ids.iter_mut() {
+            id.finish(ctx)?;
+          }
+
+          Ok(None)
+        }
+      },
       Self::ConcatString(names) => {
         let mut new_names = vec![];
         let mut current_name: Option<Vec<u8>> = None;
@@ -800,6 +852,11 @@ impl Expr {
       Self::Stringify(stringify) => {
         stringify.to_tokens(ctx, tokens);
       },
+      Self::ConcatIdent(ids) => {
+        let trait_prefix = ctx.trait_prefix().into_iter();
+        let ids = ids.iter().map(|id| id.to_token_stream(ctx));
+        tokens.append_all(quote! { #(#trait_prefix::)*concat_idents!(#(#ids),*) })
+      },
       Self::ConcatString(ref names) => {
         let ffi_prefix = ctx.ffi_prefix().into_iter();
         let trait_prefix = ctx.trait_prefix().into_iter();
@@ -893,24 +950,25 @@ mod tests {
     let ctx = ParseContext::fn_macro("IDENTIFIER", &["abc"]);
 
     let (_, id) = Expr::parse(&["$abc", "##", "def"], &ctx).unwrap();
-    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(@ abc), lit_id!(def)]) });
+    assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), var!(def)]));
 
     let (_, id) = Expr::parse(&["$abc", "##", "def", "##", "ghi"], &ctx).unwrap();
-    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(@ abc), lit_id!(def), lit_id!(ghi)]) });
+    assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), var!(def), var!(ghi)]));
 
     let (_, id) = Expr::parse(&["$abc", "##", "_def"], &ctx).unwrap();
-    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(@ abc), lit_id!(_def)]) });
+    assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), var!(_def)]));
 
     let (_, id) = Expr::parse(&["$abc", "##", "123"], &ctx).unwrap();
     assert_eq!(
       id,
-      Expr::Variable {
-        name: Identifier::Concat(vec![lit_id!(@ abc), LitIdent { id: "123".into(), macro_arg: false },])
-      }
+      Expr::ConcatIdent(vec![
+        arg!(abc),
+        Expr::Variable { name: Identifier::Literal(LitIdent { id: "123".into(), macro_arg: false }) }
+      ])
     );
 
     let (_, id) = Expr::parse(&["__INT", "##", "_MAX__"], &CTX).unwrap();
-    assert_eq!(id, Expr::Variable { name: Identifier::Concat(vec![lit_id!(__INT), lit_id!(_MAX__)]) });
+    assert_eq!(id, Expr::ConcatIdent(vec![var!(__INT), var!(_MAX__)]));
   }
 
   #[test]

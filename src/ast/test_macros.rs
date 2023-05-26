@@ -18,6 +18,13 @@ macro_rules! id {
 }
 pub(crate) use id;
 
+macro_rules! arg {
+  ($name:ident) => {
+    $crate::ast::Expr::Arg { name: $crate::ast::id!(@ $name) }
+  };
+}
+pub(crate) use arg;
+
 macro_rules! var {
   (@ $name:ident) => {
     $crate::ast::Expr::Variable { name: $crate::ast::id!(@ $name) }

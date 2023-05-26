@@ -181,45 +181,7 @@ impl Identifier {
     C: CodegenContext,
   {
     if let Self::Concat(ref mut ids) = self {
-      let mut new_ids = vec![];
-
-      let mut last_id: Option<String> = None;
-
-      for id in ids.drain(..) {
-        if id.macro_arg {
-          if let Some(arg_type) = ctx.arg_type_mut(id.as_str()) {
-            *arg_type = MacroArgType::Ident;
-
-            if let Some(last_id) = last_id.take() {
-              new_ids.push(LitIdent { id: last_id, macro_arg: false });
-            }
-
-            new_ids.push(id);
-            continue
-          }
-
-          if let Some(last_id) = last_id.take() {
-            new_ids.push(LitIdent { id: last_id, macro_arg: false });
-          }
-
-          new_ids.push(id);
-
-          continue
-        }
-
-        let last_id = last_id.get_or_insert_with(String::new);
-        last_id.push_str(id.as_str());
-      }
-
-      if let Some(last_id) = last_id.take() {
-        new_ids.push(LitIdent { id: last_id, macro_arg: false });
-      }
-
-      if new_ids.len() == 1 {
-        *self = Self::Literal(new_ids.remove(0));
-      } else {
-        *ids = new_ids;
-      }
+      unreachable!()
     }
 
     // An identifier does not have a type.
@@ -249,11 +211,7 @@ impl Identifier {
           quote! { #name }
         }
       },
-      Self::Concat(ids) => {
-        let trait_prefix = ctx.trait_prefix().into_iter();
-        let ids = ids.iter().map(|id| Self::Literal(id.to_owned()).to_token_stream(ctx));
-        quote! { #(#trait_prefix::)*concat_idents!(#(#ids),*) }
-      },
+      Self::Concat(ids) => unreachable!(),
     }
   }
 }
