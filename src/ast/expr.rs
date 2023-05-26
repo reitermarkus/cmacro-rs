@@ -48,7 +48,10 @@ impl Expr {
   }
 
   /// Parse identifier concatenation, e.g. `arg ## 2`.
-  pub(crate) fn parse_concat_ident<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  pub(crate) fn parse_concat_ident<'i, 't>(
+    tokens: &'i [&'t str],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [&'t str], Self> {
     let (tokens, id) = Identifier::parse(tokens, ctx)?;
 
     let expr = match id {

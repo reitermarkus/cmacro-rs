@@ -217,7 +217,7 @@ mod tests {
       stmt,
       Statement::Block(vec![Statement::Decl(Decl {
         ty: ty!(BuiltInType::Int),
-        name: id!(a),
+        name: var!(a),
         rhs: lit!(0),
         is_static: false
       })])

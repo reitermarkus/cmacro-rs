@@ -16,7 +16,7 @@ use crate::{CodegenContext, LocalContext, ParseContext};
 #[allow(missing_docs)]
 pub struct Decl {
   pub ty: Type,
-  pub name: Identifier,
+  pub name: Expr,
   pub rhs: Expr,
   pub is_static: bool,
 }
@@ -26,7 +26,7 @@ impl Decl {
   pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     let (tokens, ((static_storage, ty), name, _, rhs)) = tuple((
       permutation((opt(token("static")), |tokens| Type::parse(tokens, ctx))),
-      |tokens| Identifier::parse(tokens, ctx),
+      |tokens| Expr::parse_concat_ident(tokens, ctx),
       token("="),
       |tokens| Expr::parse(tokens, ctx),
     ))(tokens)?;
@@ -42,7 +42,7 @@ impl Decl {
     self.name.finish(ctx)?;
     self.rhs.finish(ctx)?;
 
-    Ok(Some(Type::BuiltIn(BuiltInType::Void)))
+    Ok(None)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
@@ -77,7 +77,7 @@ mod tests {
       id,
       Decl {
         ty: Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Int)), mutable: true },
-        name: Identifier::Literal("abc".into()),
+        name: var!(abc),
         rhs: Expr::Literal(Lit::Int(LitInt { value: 123, suffix: None })),
         is_static: false,
       }
