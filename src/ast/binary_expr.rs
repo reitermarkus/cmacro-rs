@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 
-use super::{BuiltInType, Identifier, Lit, LitFloat, LitInt, Type};
+use super::{BuiltInType, Lit, LitFloat, LitInt, Type};
 use crate::{CodegenContext, Expr, LocalContext};
 
 /// A binary expression operator.

@@ -138,88 +138,6 @@ impl From<&str> for LitIdent {
   }
 }
 
-/// An identifier.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Identifier {
-  /// A literal identifier.
-  ///
-  /// ```c
-  /// #define ID asdf
-  /// ```
-  Literal(LitIdent),
-  /// A concatenated identifier.
-  ///
-  /// ```c
-  /// #define ID abc ## def
-  /// #define ID abc ## 123
-  /// ```
-  Concat(Vec<LitIdent>),
-}
-
-impl Identifier {
-  pub(crate) fn parse_literal<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
-    map(|tokens| LitIdent::parse(tokens, ctx), Self::Literal)(tokens)
-  }
-
-  /// Parse an identifier.
-  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
-    let (tokens, id) = Self::parse_literal(tokens, ctx)?;
-
-    fold_many0(
-      preceded(delimited(meta::<&'t str>, token::<&'t str>("##"), meta::<&'t str>), |tokens| {
-        LitIdent::parse_concat(tokens, ctx)
-      }),
-      move || id.clone(),
-      |acc, item| match acc {
-        Self::Literal(id) => Self::Concat(vec![id, item]),
-        Self::Concat(mut ids) => {
-          ids.push(item);
-          Self::Concat(ids)
-        },
-      },
-    )(tokens)
-  }
-
-  pub(crate) fn finish<C>(&mut self, _ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
-  where
-    C: CodegenContext,
-  {
-    if let Self::Concat(ref mut _ids) = self {
-      unreachable!()
-    }
-
-    // An identifier does not have a type.
-    Ok(None)
-  }
-
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
-    tokens.append_all(self.to_token_stream(ctx))
-  }
-
-  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
-    match self {
-      Self::Literal(ref id) => {
-        if id.as_str().is_empty() {
-          return quote! {}
-        }
-
-        if id.as_str() == "__VA_ARGS__" {
-          return quote! { $($__VA_ARGS__),* }
-        }
-
-        let name = Ident::new(id.as_str(), Span::call_site());
-
-        if ctx.export_as_macro && id.macro_arg {
-          quote! { $#name }
-        } else {
-          quote! { #name }
-        }
-      },
-      Self::Concat(_ids) => unreachable!(),
-    }
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -243,10 +161,10 @@ mod tests {
 
   #[test]
   fn parse_wrong() {
-    let res = Identifier::parse(&["123def"], &CTX);
+    let res = LitIdent::parse(&["123def"], &CTX);
     assert!(res.is_err());
 
-    let res = Identifier::parse(&["123", "##", "def"], &CTX);
+    let res = LitIdent::parse(&["123", "##", "def"], &CTX);
     assert!(res.is_err());
   }
 }

@@ -21,7 +21,7 @@ use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
 
 use super::tokens::{meta, take_one, token};
-use crate::{CodegenContext, Identifier, LitIdent, LocalContext, Type};
+use crate::{CodegenContext, LitIdent, LocalContext, Type};
 
 mod char;
 pub use self::char::LitChar;

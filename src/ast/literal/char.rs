@@ -16,7 +16,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{escaped_char, take_one, token};
-use crate::{BuiltInType, CodegenContext, Expr, Identifier, LitIdent, LocalContext, Type};
+use crate::{BuiltInType, CodegenContext, Expr, LitIdent, LocalContext, Type};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LitCharPrefix {

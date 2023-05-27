@@ -8,16 +8,6 @@ macro_rules! lit_id {
 }
 pub(crate) use lit_id;
 
-macro_rules! id {
-  (@ $name:ident) => {
-    $crate::ast::Identifier::Literal($crate::ast::lit_id!(@ $name))
-  };
-  ($name:ident) => {
-    $crate::ast::Identifier::Literal($crate::ast::lit_id!($name))
-  };
-}
-pub(crate) use id;
-
 macro_rules! arg {
   ($name:ident) => {
     $crate::ast::Expr::Arg { name: $crate::ast::lit_id!(@ $name) }

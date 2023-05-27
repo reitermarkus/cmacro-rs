@@ -14,7 +14,7 @@ use quote::quote;
 
 use crate::{BuiltInType, CodegenContext, Expr, LocalContext, Type};
 
-use super::{escaped_char, take_one, Identifier, LitIdent};
+use super::{escaped_char, take_one, LitIdent};
 
 /// A string literal.
 #[derive(Debug, Clone, PartialEq, Eq)]

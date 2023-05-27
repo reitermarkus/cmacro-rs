@@ -7,7 +7,7 @@ use nom::{
   sequence::{delimited, pair, preceded, terminated},
   Compare, IResult, InputLength, InputTake, Slice,
 };
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens, TokenStreamExt};
 
 use super::*;
@@ -212,7 +212,7 @@ pub enum Type {
   Identifier { name: Box<Expr>, is_struct: bool },
   /// A type path.
   #[allow(missing_docs)]
-  Path { leading_colon: bool, segments: Vec<Identifier> },
+  Path { leading_colon: bool, segments: Vec<LitIdent> },
   /// A pointer type.
   #[allow(missing_docs)]
   Ptr { ty: Box<Self>, mutable: bool },
@@ -295,8 +295,8 @@ impl Type {
       Self::BuiltIn(ty) => ty.to_tokens(ctx, tokens),
       Self::Identifier { name, .. } => name.to_tokens(ctx, tokens),
       Self::Path { segments, leading_colon } => {
-        let leading_colon = if *leading_colon { Some(quote! {  :: }) } else { None };
-        let ids = segments.iter().map(|id| id.to_token_stream(ctx));
+        let leading_colon = if *leading_colon { Some(quote! { :: }) } else { None };
+        let ids = segments.iter().map(|id| Ident::new(id.as_str(), Span::call_site()));
         tokens.append_all(quote! { #leading_colon #(#ids)::* })
       },
       Self::Ptr { ty, mutable } => {
@@ -351,7 +351,7 @@ impl TryFrom<syn::Type> for Type {
           .path
           .segments
           .iter()
-          .map(|s| Identifier::Literal(LitIdent { id: s.ident.to_string(), macro_arg: false }))
+          .map(|s| LitIdent { id: s.ident.to_string(), macro_arg: false })
           .collect(),
       }),
       ty => Err(crate::CodegenError::UnsupportedType(ty.into_token_stream().to_string())),
