@@ -10,7 +10,7 @@ use quote::{quote, TokenStreamExt};
 
 use super::{
   identifier::identifier_lit,
-  tokens::{meta, token},
+  tokens::{macro_arg, meta, token},
   BuiltInType, LitIdent, Type,
 };
 use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken, ParseContext};
@@ -22,7 +22,7 @@ use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken, ParseContext
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stringify {
-  pub(crate) id: LitIdent,
+  pub(crate) index: usize,
 }
 
 impl Stringify {
@@ -31,23 +31,19 @@ impl Stringify {
     tokens: &'i [MacroToken<'t>],
     _ctx: &ParseContext<'_>,
   ) -> IResult<&'i [MacroToken<'t>], Self> {
-    map(preceded(terminated(token("#"), meta), identifier_lit), |id| Self { id })(tokens)
+    map(preceded(terminated(token("#"), meta), macro_arg), |index| Self { index })(tokens)
   }
 
   pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
   where
     C: CodegenContext,
   {
-    if let Some(arg_ty) = ctx.arg_type_mut(self.id.as_str()) {
-      if *arg_ty != MacroArgType::Ident {
-        *arg_ty = MacroArgType::Expr;
-      }
-
-      return Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
+    let arg_ty = ctx.arg_type_mut(self.index);
+    if *arg_ty != MacroArgType::Ident {
+      *arg_ty = MacroArgType::Expr;
     }
 
-    // Only macro arguments can be stringified.
-    Err(crate::CodegenError::UnsupportedExpression)
+    return Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
@@ -55,7 +51,7 @@ impl Stringify {
   }
 
   pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
-    let id = Ident::new(self.id.as_str(), Span::call_site());
+    let id = Ident::new(ctx.arg_name(self.index), Span::call_site());
 
     let ffi_prefix = ctx.ffi_prefix().into_iter();
     let trait_prefix = ctx.trait_prefix().into_iter();
@@ -78,13 +74,13 @@ impl Stringify {
 mod tests {
   use super::*;
 
-  use crate::macro_set::tokens;
+  use crate::macro_set::{arg as macro_arg, tokens};
 
   const CTX: ParseContext = ParseContext::fn_macro("STRINGIFY", &["var"]);
 
   #[test]
   fn parse_stringify() {
-    let (_, ty) = Stringify::parse(tokens!["#", "$var"], &CTX).unwrap();
-    assert_eq!(ty, Stringify { id: LitIdent { id: "var".into() } });
+    let (_, ty) = Stringify::parse(tokens!["#", macro_arg!(0)], &CTX).unwrap();
+    assert_eq!(ty, Stringify { index: 0 });
   }
 }

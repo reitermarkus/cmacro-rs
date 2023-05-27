@@ -9,46 +9,8 @@ use nom::{
   IResult,
 };
 
-use super::{
-  literal::universal_char,
-  tokens::{macro_token},
-};
+use super::{literal::universal_char, tokens::macro_token};
 use crate::{MacroToken, ParseContext};
-
-pub(crate) fn identifier_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
-  map_parser(macro_token, |token: Cow<'t, str>| {
-    let (_, id) = map_opt(
-      all_consuming(|token| {
-        fold_many1(
-          alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
-          String::new,
-          |mut acc, c| {
-            acc.push(c);
-            acc
-          },
-        )(token)
-      }),
-      |s| {
-        let mut chars = s.chars();
-
-        let mut start = chars.next()?;
-
-        if start == '$' {
-          start = chars.next()?;
-
-          if (unicode_ident::is_xid_start(start) || start == '_') && chars.all(unicode_ident::is_xid_continue) {
-            return Some(LitIdent { id: s[1..].to_owned() })
-          }
-        }
-
-        None
-      },
-    )(token.as_ref())
-    .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
-
-    Ok((Cow::Borrowed(""), id))
-  })(tokens)
-}
 
 pub(crate) fn is_identifier(s: &str) -> bool {
   let mut chars = s.chars();
@@ -78,53 +40,14 @@ pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'
         let mut chars = s.chars();
 
         let mut start = chars.next()?;
-        let mut macro_arg = false;
-        let mut offset = 0;
-
-        if start == '$' {
-          start = chars.next()?;
-          offset = 1;
-          macro_arg = true;
-        }
 
         if (unicode_ident::is_xid_start(start) || start == '_') && chars.all(unicode_ident::is_xid_continue) {
-          Some(LitIdent { id: s[offset..].to_owned() })
+          Some(LitIdent { id: s })
         } else {
           None
         }
       },
     )(token.as_ref())
-    .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
-
-    Ok((Cow::Borrowed(""), id))
-  })(tokens)
-}
-
-pub(crate) fn concat_identifier_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
-  map_parser(macro_token, |token: Cow<'t, str>| {
-    let (_, id) = all_consuming(map_opt(
-      fold_many1(
-        alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
-        String::new,
-        |mut acc, c| {
-          acc.push(c);
-          acc
-        },
-      ),
-      |s| {
-        let mut chars = s.chars();
-
-        let start = chars.next()?;
-
-        if start == '$' && chars.all(unicode_ident::is_xid_continue) {
-          return Some(LitIdent { id: s[1..].to_owned() })
-        }
-
-        {
-          None
-        }
-      },
-    ))(token.as_ref())
     .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
 
     Ok((Cow::Borrowed(""), id))

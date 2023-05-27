@@ -47,12 +47,11 @@ impl FunctionCall {
           for (arg, known_arg_type) in self.args.iter_mut().zip(known_args.iter()) {
             // If the current argument to this function is a macro argument,
             // we can infer the type of the macro argument.
-            if let Expr::Variable { name } = arg {
-              if let Some(arg_type) = ctx.arg_type_mut(name.as_str()) {
-                if *arg_type == MacroArgType::Unknown {
-                  if let Ok(ty) = syn::parse_str::<syn::Type>(known_arg_type) {
-                    *arg_type = MacroArgType::Known(Type::try_from(ty)?);
-                  }
+            if let Expr::Arg { index } = arg {
+              let arg_type = ctx.arg_type_mut(*index);
+              if *arg_type == MacroArgType::Unknown {
+                if let Ok(ty) = syn::parse_str::<syn::Type>(known_arg_type) {
+                  *arg_type = MacroArgType::Known(Type::try_from(ty)?);
                 }
               }
             }
@@ -90,7 +89,7 @@ impl FunctionCall {
         let arg = arg.to_token_stream(ctx);
         quote! { #arg }
       },
-      arg @ Expr::Arg { name } if name.as_str() == "__VA_ARGS__" => {
+      arg @ Expr::Arg { index } if ctx.arg_name(*index) == "..." => {
         let arg = arg.to_token_stream(ctx);
         quote! { #arg }
       },

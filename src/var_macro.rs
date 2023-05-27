@@ -4,9 +4,7 @@ use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
 use semver::{Version, VersionReq};
 
-use crate::{
-  ast::Lit, is_identifier, CodegenContext, Expr, LocalContext, MacroBody, MacroToken, ParseContext,
-};
+use crate::{ast::Lit, is_identifier, CodegenContext, Expr, LocalContext, MacroBody, MacroToken, ParseContext};
 
 /// A variable-like macro.
 ///

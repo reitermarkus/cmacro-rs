@@ -11,13 +11,13 @@ use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken, ParseContext, UnaryOp};
+use crate::{ast::tokens::macro_arg, CodegenContext, LocalContext, MacroArgType, MacroToken, ParseContext, UnaryOp};
 
 /// An expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum Expr {
-  Arg { name: LitIdent },
+  Arg { index: usize },
   Variable { name: LitIdent },
   FunctionCall(FunctionCall),
   Cast { expr: Box<Self>, ty: Type },
@@ -53,7 +53,7 @@ impl Expr {
     ctx: &ParseContext<'_>,
   ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, id) = alt((
-      map(identifier_arg, |id| Self::Arg { name: id }),
+      map(macro_arg, |index| Self::Arg { index }),
       map(|tokens| LitIdent::parse(tokens, ctx), |id| Self::Variable { name: id }),
     ))(tokens)?;
 
@@ -61,7 +61,7 @@ impl Expr {
       preceded(
         delimited(meta, token("##"), meta),
         alt((
-          map(concat_identifier_arg, |id| Self::Arg { name: id }),
+          map(macro_arg, |index| Self::Arg { index }),
           map(|tokens| LitIdent::parse_concat(tokens, ctx), |id| Self::Variable { name: id }),
         )),
       ),
@@ -487,11 +487,9 @@ impl Expr {
         ty.finish(ctx)?;
         Ok(Some(ty.clone()))
       },
-      Self::Arg { ref mut name } => {
-        if let Some(arg_ty) = ctx.arg_type_mut(name.as_str()) {
-          if let MacroArgType::Known(arg_ty) = arg_ty {
-            return Ok(Some(arg_ty.clone()))
-          }
+      Self::Arg { index } => {
+        if let MacroArgType::Known(arg_ty) = ctx.arg_type_mut(*index) {
+          return Ok(Some(arg_ty.clone()))
         }
 
         Ok(None)
@@ -529,10 +527,8 @@ impl Expr {
         expr.finish(ctx)?;
         field.finish(ctx)?;
 
-        if let Self::Arg { ref name } = **field {
-          if let Some(arg_type) = ctx.arg_type_mut(name.as_str()) {
-            *arg_type = MacroArgType::Ident;
-          }
+        if let Self::Arg { index } = **field {
+          *ctx.arg_type_mut(index) = MacroArgType::Ident;
         }
 
         Ok(None)
@@ -554,12 +550,9 @@ impl Expr {
 
         for id in ids.drain(..) {
           match id {
-            Self::Arg { name } => {
-              if let Some(arg_type) = ctx.arg_type_mut(name.as_str()) {
-                *arg_type = MacroArgType::Ident;
-              }
-
-              new_ids.push(Self::Arg { name });
+            Self::Arg { index } => {
+              *ctx.arg_type_mut(index) = MacroArgType::Ident;
+              new_ids.push(Self::Arg { index });
             },
             Self::Variable { name } => {
               if let Some(Self::Variable { name: last_id }) = new_ids.last_mut() {
@@ -847,8 +840,8 @@ impl Expr {
           }
         },
       }),
-      Self::Arg { ref name } => tokens.append_all(match name.as_str() {
-        "__VA_ARGS__" => quote! { $($__VA_ARGS__),* },
+      Self::Arg { index } => tokens.append_all(match ctx.arg_name(*index) {
+        "..." => quote! { $($__VA_ARGS__),* },
         name => {
           let name = Ident::new(name, Span::call_site());
 
@@ -920,7 +913,7 @@ impl Expr {
           .iter()
           .map(|e| match e {
             Self::Stringify(s) => {
-              let id = Ident::new(s.id.as_str(), Span::call_site());
+              let id = Ident::new(ctx.arg_name(s.index), Span::call_site());
               let trait_prefix = trait_prefix.clone();
 
               quote! { #(#trait_prefix::)*stringify!($#id) }
@@ -966,7 +959,7 @@ impl Expr {
 mod tests {
   use super::*;
 
-  use crate::macro_set::tokens;
+  use crate::macro_set::{arg as macro_arg, tokens};
 
   const CTX: ParseContext = ParseContext::var_macro("EXPR");
 
@@ -982,8 +975,8 @@ mod tests {
   #[test]
   fn parse_stringify() {
     let ctx = ParseContext::fn_macro("EXPR", &["a"]);
-    let (_, expr) = Expr::parse(tokens!["#", "$a"], &ctx).unwrap();
-    assert_eq!(expr, Expr::Stringify(Stringify { id: lit_id!(@a) }));
+    let (_, expr) = Expr::parse(tokens!["#", macro_arg!(0)], &ctx).unwrap();
+    assert_eq!(expr, Expr::Stringify(Stringify { index: 0 }));
   }
 
   #[test]
@@ -992,12 +985,12 @@ mod tests {
     assert_eq!(expr, Expr::Literal(Lit::String(LitString::Ordinary("abcdef".into()))));
 
     let ctx = ParseContext::fn_macro("EXPR", &["a"]);
-    let (_, expr) = Expr::parse(tokens![r#""def""#, "#", "$a"], &ctx).unwrap();
+    let (_, expr) = Expr::parse(tokens![r#""def""#, "#", macro_arg!(0)], &ctx).unwrap();
     assert_eq!(
       expr,
       Expr::ConcatString(vec![
         Expr::Literal(Lit::String(LitString::Ordinary("def".into()))),
-        Expr::Stringify(Stringify { id: lit_id!(@a) }),
+        Expr::Stringify(Stringify { index: 0 }),
       ])
     );
   }
@@ -1006,17 +999,17 @@ mod tests {
   fn parse_concat_ident() {
     let ctx = ParseContext::fn_macro("IDENTIFIER", &["abc"]);
 
-    let (_, id) = Expr::parse(tokens!["$abc", "##", "def"], &ctx).unwrap();
-    assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), var!(def)]));
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "def"], &ctx).unwrap();
+    assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(def)]));
 
-    let (_, id) = Expr::parse(tokens!["$abc", "##", "def", "##", "ghi"], &ctx).unwrap();
-    assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), var!(def), var!(ghi)]));
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "def", "##", "ghi"], &ctx).unwrap();
+    assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(def), var!(ghi)]));
 
-    let (_, id) = Expr::parse(tokens!["$abc", "##", "_def"], &ctx).unwrap();
-    assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), var!(_def)]));
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "_def"], &ctx).unwrap();
+    assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(_def)]));
 
-    let (_, id) = Expr::parse(tokens!["$abc", "##", "123"], &ctx).unwrap();
-    assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), Expr::Variable { name: LitIdent { id: "123".into() } }]));
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "123"], &ctx).unwrap();
+    assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), Expr::Variable { name: LitIdent { id: "123".into() } }]));
 
     let (_, id) = Expr::parse(tokens!["__INT", "##", "_MAX__"], &CTX).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![var!(__INT), var!(_MAX__)]));

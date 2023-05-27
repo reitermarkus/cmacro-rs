@@ -38,7 +38,8 @@ impl<'m> ParseContext<'m> {
 pub(crate) struct LocalContext<'g, C> {
   pub(crate) root_name: String,
   pub(crate) names: HashSet<String>,
-  pub(crate) arg_types: HashMap<String, MacroArgType>,
+  pub(crate) arg_names: Vec<String>,
+  pub(crate) arg_types: Vec<MacroArgType>,
   pub(crate) export_as_macro: bool,
   pub(crate) global_context: &'g C,
   pub(crate) generate_cstr: bool,
@@ -58,6 +59,7 @@ where
     Self {
       root_name,
       names,
+      arg_names: Default::default(),
       arg_types: Default::default(),
       export_as_macro: false,
       global_context: cx,
@@ -69,15 +71,19 @@ where
 
 impl<'g, C> LocalContext<'g, C> {
   pub fn is_variadic(&self) -> bool {
-    self.arg_types.contains_key("...")
+    self.arg_names.last().map(|s| s.as_str()) == Some("...")
   }
 
-  pub fn arg_type(&self, name: &str) -> Option<&MacroArgType> {
-    self.arg_types.get(name)
+  pub fn arg_name(&self, index: usize) -> &str {
+    &self.arg_names[index]
   }
 
-  pub fn arg_type_mut(&mut self, name: &str) -> Option<&mut MacroArgType> {
-    self.arg_types.get_mut(name)
+  pub fn arg_type(&self, index: usize) -> &MacroArgType {
+    &self.arg_types[index]
+  }
+
+  pub fn arg_type_mut(&mut self, index: usize) -> &mut MacroArgType {
+    &mut self.arg_types[index]
   }
 
   pub fn is_variable_macro(&self) -> bool

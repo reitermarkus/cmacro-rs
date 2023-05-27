@@ -9,8 +9,8 @@ macro_rules! lit_id {
 pub(crate) use lit_id;
 
 macro_rules! arg {
-  ($name:ident) => {
-    $crate::ast::Expr::Arg { name: $crate::ast::lit_id!(@ $name) }
+  ($index:expr) => {
+    $crate::ast::Expr::Arg { index: $index }
   };
 }
 pub(crate) use arg;
@@ -58,6 +58,7 @@ macro_rules! assert_eq_tokens {
     let mut ctx = LocalContext {
       root_name: Default::default(),
       names: Default::default(),
+      arg_names: Default::default(),
       arg_types: Default::default(),
       export_as_macro: false,
       global_context: &(),

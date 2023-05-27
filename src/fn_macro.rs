@@ -161,18 +161,19 @@ impl FnMacro {
           MacroArgType::Unknown
         };
 
-        Ok((arg.to_owned(), ty))
+        Ok(ty)
       })
       .collect::<Result<_, _>>()?;
 
     let mut ctx = LocalContext::new(&self.name, &cx);
+    ctx.arg_names = self.args.clone();
     ctx.arg_types = arg_types;
     let ret_ty = self.body.finish(&mut ctx)?;
 
     ctx.export_as_macro = ctx.export_as_macro
       || ctx.function(&self.name).is_some()
       || ctx.is_variadic()
-      || !ctx.arg_types.iter().all(|(_, ty)| matches!(*ty, MacroArgType::Known(_)))
+      || !ctx.arg_types.iter().all(|ty| matches!(*ty, MacroArgType::Known(_)))
       || ret_ty.is_none();
 
     let name = Ident::new(&self.name, Span::call_site());
@@ -187,12 +188,13 @@ impl FnMacro {
       let args = self
         .args
         .iter()
-        .map(|arg| {
+        .enumerate()
+        .map(|(index, arg)| {
           if arg == "..." {
             quote! { $($__VA_ARGS__:expr),* }
           } else {
             let id = Ident::new(arg, Span::call_site());
-            let ty = ctx.arg_type(arg).unwrap();
+            let ty = ctx.arg_type(index);
 
             if matches!(ty, MacroArgType::Ident) {
               quote! { $#id:ident }
@@ -219,9 +221,10 @@ impl FnMacro {
       let func_args = self
         .args
         .iter()
-        .map(|arg| {
-          if let Some(MacroArgType::Known(ty)) = ctx.arg_types.remove(arg) {
-            let id = Ident::new(arg, Span::call_site());
+        .enumerate()
+        .map(|(index, name)| {
+          if let MacroArgType::Known(ty) = ctx.arg_type(index).clone() {
+            let id = Ident::new(name, Span::call_site());
             let ty = ty.to_token_stream(&mut ctx);
             quote! { #id: #ty }
           } else {

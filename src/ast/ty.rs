@@ -4,7 +4,8 @@ use nom::{
   branch::{alt, permutation},
   combinator::{map, opt},
   multi::fold_many0,
-  sequence::{delimited, pair, preceded, terminated}, IResult,
+  sequence::{delimited, pair, preceded, terminated},
+  IResult,
 };
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens, TokenStreamExt};
@@ -272,7 +273,7 @@ impl Type {
       Self::Identifier { name, .. } => {
         name.finish(ctx)?;
 
-        if let Expr::Arg { name: ref id } = **name {
+        if let Expr::Variable { name: ref id } = **name {
           if let Some(ty) = ctx.resolve_ty(id.as_str()) {
             *self = Self::from_resolved_type(&ty);
           }

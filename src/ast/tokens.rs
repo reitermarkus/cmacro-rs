@@ -4,7 +4,8 @@ use nom::{
   bytes::complete::{tag, take_until},
   combinator::{all_consuming, map_opt, map_parser, opt, value},
   multi::many0,
-  sequence::{delimited, pair, preceded}, IResult, Parser,
+  sequence::{delimited, pair, preceded},
+  IResult, Parser,
 };
 
 use crate::MacroToken;

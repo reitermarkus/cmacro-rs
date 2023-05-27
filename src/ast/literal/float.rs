@@ -10,8 +10,8 @@ use nom::{
   character::complete::{char, digit1},
   combinator::{all_consuming, cond, map, opt, recognize},
   sequence::{delimited, pair, preceded, tuple},
-  AsChar, Compare, CompareResult, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition,
-  Offset, ParseTo, Slice,
+  AsChar, Compare, CompareResult, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, ParseTo,
+  Slice,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};

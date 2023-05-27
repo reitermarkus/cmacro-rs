@@ -1,8 +1,4 @@
-use std::{
-  fmt::Debug,
-  ops::{RangeFrom},
-  str,
-};
+use std::{fmt::Debug, ops::RangeFrom, str};
 
 use nom::{
   branch::alt,
@@ -18,7 +14,6 @@ use nom::{
 };
 use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
-
 
 use crate::{CodegenContext, LocalContext, MacroToken, Type};
 

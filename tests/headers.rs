@@ -143,22 +143,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
       match context.macro_set.expand_fn_macro(name) {
         Ok(fn_macro) => {
           let arg_names = context.macro_set.fn_macro_args(name).unwrap();
-          let arg_names2 = arg_names
-            .iter()
-            .map(|s| if s == "..." { "$__VA_ARGS__".to_owned() } else { format!("${s}") })
-            .collect::<Vec<_>>();
-          let arg_names2 = arg_names2.iter().map(|s| s.as_ref()).collect::<Vec<_>>();
           let arg_names =
             arg_names.iter().map(|s| cmacro::MacroToken::Token(Cow::Borrowed(s.as_ref()))).collect::<Vec<_>>();
-          let body = fn_macro
-            .into_iter()
-            .map(|t| match t {
-              cmacro::MacroToken::Arg(i) => cmacro::MacroToken::Token(Cow::Borrowed(arg_names2[i])),
-              cmacro::MacroToken::Token(s) => cmacro::MacroToken::Token(s),
-            })
-            .collect::<Vec<_>>();
 
-          match FnMacro::parse(name.as_str(), &arg_names, &body) {
+          match FnMacro::parse(name.as_str(), &arg_names, &fn_macro) {
             Ok(mut fn_macro) => {
               if let Ok(tokens) = fn_macro.generate(&context) {
                 f.append_all(tokens);
@@ -172,27 +160,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
       }
 
       match context.macro_set.expand_var_macro(name) {
-        Ok(var_macro) => {
-          let body = var_macro
-            .into_iter()
-            .map(|t| match t {
-              cmacro::MacroToken::Arg(_) => unreachable!(),
-              cmacro::MacroToken::Token(s) => cmacro::MacroToken::Token(s),
-            })
-            .collect::<Vec<_>>();
-
-          match VarMacro::parse(name.as_str(), &body) {
-            Ok(mut var_macro) => {
-              if let Ok((value, ty)) = var_macro.generate(&context) {
-                let name = Ident::new(name, Span::call_site());
-                let ty = ty.unwrap_or(quote! { _ });
-                f.append_all(quote! {
-                  pub const #name: #ty = #value;
-                })
-              }
-            },
-            Err(err) => eprintln!("Error parsing variable-like macro {name}: {err}"),
-          }
+        Ok(var_macro) => match VarMacro::parse(name.as_str(), &var_macro) {
+          Ok(mut var_macro) => {
+            if let Ok((value, ty)) = var_macro.generate(&context) {
+              let name = Ident::new(name, Span::call_site());
+              let ty = ty.unwrap_or(quote! { _ });
+              f.append_all(quote! {
+                pub const #name: #ty = #value;
+              })
+            }
+          },
+          Err(err) => eprintln!("Error parsing variable-like macro {name}: {err}"),
         },
         Err(ExpansionError::MacroNotFound) => (),
         Err(err) => eprintln!("Error for {name}: {err:?}"),

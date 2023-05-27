@@ -519,7 +519,7 @@ macro_rules! arg {
     MacroToken::Arg($index)
   }};
 }
-
+pub(crate) use arg;
 
 macro_rules! tokens {
   ($($token:expr),*) => {{
@@ -545,7 +545,6 @@ macro_rules! token_vec {
     ]
   }};
 }
-
 
 #[cfg(test)]
 mod tests {
