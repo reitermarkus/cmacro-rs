@@ -4,17 +4,16 @@ use nom::{
   branch::alt,
   character::complete::{anychar, char},
   combinator::{all_consuming, map_opt, map_parser},
-  multi::{fold_many1},
-  sequence::{preceded}, IResult,
+  multi::fold_many1,
+  sequence::preceded,
+  IResult,
 };
-
-
 
 use super::{
   literal::universal_char,
   tokens::{take_one},
 };
-use crate::{ParseContext};
+use crate::ParseContext;
 
 pub(crate) fn identifier_arg<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], LitIdent> {
   map_parser(take_one, |token| {
