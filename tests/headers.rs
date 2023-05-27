@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, env, fs, process::exit};
+use std::{collections::HashMap, env, fs, process::exit};
 
 use clang::{source::SourceRange, Clang, EntityKind, EntityVisitResult, Index};
 use glob::glob;
@@ -139,11 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     for name in &context.macros {
       match context.macro_set.expand_fn_macro(name) {
-        Ok(fn_macro) => {
-          let arg_names = context.macro_set.fn_macro_args(name).unwrap();
-          let arg_names =
-            arg_names.iter().map(|s| cmacro::MacroToken::Token(Cow::Borrowed(s.as_ref()))).collect::<Vec<_>>();
-
+        Ok((arg_names, fn_macro)) => {
           match FnMacro::parse(name.as_str(), &arg_names, &fn_macro) {
             Ok(mut fn_macro) => {
               if let Ok(tokens) = fn_macro.generate(&context) {
