@@ -1,7 +1,7 @@
 use std::{
   borrow::Cow,
   collections::{HashMap, HashSet},
-  mem,
+  fmt, mem,
 };
 
 /// A set of macros.
@@ -37,12 +37,35 @@ pub enum ExpansionError {
   ConcatEnd,
   /// `__VA_ARGS__` used in non-variadic macro.
   NonVariadicVarArgs,
-  /// Function-like macro parameter is not unique.
-  NonUniqueParameter(String),
-  /// `#` in function-like macro is not followed by a parameter.
-  StringifyNonParameter,
+  /// Function-like macro argument is not unique.
+  NonUniqueArgument(String),
+  /// `#` in function-like macro is not followed by an argument.
+  StringifyNonArgument,
   /// Concatenation does not produce a valid pre-processing token.
   InvalidConcat,
+}
+
+impl fmt::Display for ExpansionError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Self::MacroNotFound => "macro not found".fmt(f),
+      Self::MissingOpenParenthesis(c) => {
+        write!(f, "missing open parenthesis for {c}")
+      },
+      Self::UnclosedParenthesis(c) => {
+        write!(f, "missing closing parenthesis for {c}")
+      },
+      Self::FnMacroArgumentError { name, required, given } => {
+        write!(f, "macro {name} requires {required} arguments, {given} given")
+      },
+      Self::ConcatBegin => "macro starts with ##".fmt(f),
+      Self::ConcatEnd => "macro ends with ##".fmt(f),
+      Self::NonVariadicVarArgs => "`__VA_ARGS__` found in non-variadic macro".fmt(f),
+      Self::NonUniqueArgument(arg) => write!(f, "macro argument {arg} is not unique"),
+      Self::StringifyNonArgument => "`#` is not followed by a macro parameter".fmt(f),
+      Self::InvalidConcat => "concatenation does not produce a valid pre-processing token".fmt(f),
+    }
+  }
 }
 
 fn is_comment(s: &str) -> bool {
@@ -261,7 +284,7 @@ impl MacroSet {
       .enumerate()
       .find(|(i, arg_name)| arg_names.iter().skip(i + 1).any(|arg_name2| *arg_name == arg_name2))
     {
-      return Err(ExpansionError::NonUniqueParameter(duplicate_parameter.clone()))
+      return Err(ExpansionError::NonUniqueArgument(duplicate_parameter.clone()))
     }
 
     let body = if let Some(args) = args {
@@ -348,7 +371,7 @@ impl MacroSet {
           Some(Token::MacroArg(_) | Token::VarArgs) => {
             tokens.push(token.clone());
           },
-          _ => return Err(ExpansionError::StringifyNonParameter),
+          _ => return Err(ExpansionError::StringifyNonArgument),
         },
         Token::MacroArg(_) | Token::VarArgs => {
           let arg = if let Token::MacroArg(arg_index) = token {
@@ -422,9 +445,38 @@ impl MacroSet {
             (lhs, Token::Placemarker) => lhs,
             (Token::Stringify, Token::Stringify) => Token::NonReplacable(Cow::Borrowed("##")),
             (Token::Plain(lhs) | Token::NonReplacable(lhs), Token::Plain(rhs) | Token::NonReplacable(rhs)) => {
-              Token::Plain(Cow::Owned(format!("{}{}", lhs, rhs)))
+              let lhs_is_string_or_char_prefix = match lhs.as_ref() {
+                "u8" => true,
+                "u" => true,
+                "U" => true,
+                "L" => true,
+                lhs => {
+                  // Cannot concatenate anything with a string or character literal.
+                  if lhs.ends_with('"') || lhs.ends_with('\'') {
+                    return Err(ExpansionError::InvalidConcat)
+                  } else {
+                    false
+                  }
+                },
+              };
+
+              if rhs.ends_with('"') || rhs.ends_with('\'') {
+                let rhs_is_unprefixed_string_or_char = rhs.starts_with('"') || rhs.starts_with('\'');
+
+                // Can only concatenate a string or character literal with a
+                // string or character prefix if it isn't already prefixed.
+                if lhs_is_string_or_char_prefix && rhs_is_unprefixed_string_or_char {
+                  Token::NonReplacable(Cow::Owned(format!("{lhs}{rhs}")))
+                } else {
+                  return Err(ExpansionError::InvalidConcat)
+                }
+              } else {
+                Token::Plain(Cow::Owned(format!("{lhs}{rhs}")))
+              }
             },
-            _ => return Err(ExpansionError::InvalidConcat),
+            (Token::MacroArg(_) | Token::VarArgs, _) | (_, Token::MacroArg(_) | Token::VarArgs) => unreachable!(),
+            (Token::Concat, _) | (_, Token::Concat) => unreachable!(),
+            (Token::Stringify, _) | (_, Token::Stringify) => unreachable!(),
           })
         },
         token => tokens.push(token),
@@ -688,6 +740,25 @@ mod tests {
     macro_set.define_var_macro("AB", &["\"Hello\""]);
     macro_set.define_fn_macro("CONCAT_STRING", &["A", "B"], &["A", "##", "B", "C"]);
     assert_eq!(macro_set.expand_fn_macro("CONCAT_STRING"), Ok(token_vec![arg!(0), "##", arg!(1), "\", world!\""]));
+  }
+
+  #[test]
+  fn parse_concat_string_prefix() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.define_var_macro("A", &["u8", "##", "\"abc\""]);
+    macro_set.define_var_macro("B", &["u8", "\"abc\""]);
+    macro_set.define_fn_macro("PREFIX", &["prefix"], &["prefix", "##", "\"abc\""]);
+    macro_set.define_var_macro("C", &["PREFIX", "(", "u8", ")"]);
+    macro_set.define_fn_macro("PREFIX_STRINGIFY", &["prefix"], &["prefix", "##", "#", "prefix"]);
+    macro_set.define_var_macro("D", &["PREFIX_STRINGIFY", "(", "u8", ")"]);
+    macro_set.define_fn_macro("PREFIX_HASH", &["prefix"], &["prefix", "##", "#"]);
+    macro_set.define_var_macro("E", &["PREFIX_HASH", "(", "u8", ")"]);
+    assert_eq!(macro_set.expand_var_macro("A"), Ok(token_vec!["u8\"abc\""]));
+    assert_eq!(macro_set.expand_var_macro("B"), Ok(token_vec!["u8", "\"abc\""]));
+    assert_eq!(macro_set.expand_var_macro("C"), Ok(token_vec!["u8\"abc\""]));
+    assert_eq!(macro_set.expand_var_macro("D"), Ok(token_vec!["u8\"u8\""]));
+    assert_eq!(macro_set.expand_var_macro("E"), Err(ExpansionError::StringifyNonArgument));
   }
 
   #[test]
