@@ -40,8 +40,10 @@ impl FunctionCall {
     if let Expr::Variable { ref name } = *self.name {
       if let Some((known_args, known_ret_ty)) = ctx.function(name.as_str()) {
         if known_args.len() == self.args.len() {
+          let ffi_prefix = ctx.ffi_prefix();
+
           if let Ok(y) = syn::parse_str::<syn::Type>(&known_ret_ty) {
-            ty = Some(Type::try_from(y)?);
+            ty = Some(Type::from_rust_ty(y, ffi_prefix.as_ref())?);
           }
 
           for (arg, known_arg_type) in self.args.iter_mut().zip(known_args.iter()) {
@@ -51,7 +53,7 @@ impl FunctionCall {
               let arg_type = ctx.arg_type_mut(*index);
               if *arg_type == MacroArgType::Unknown {
                 if let Ok(ty) = syn::parse_str::<syn::Type>(known_arg_type) {
-                  *arg_type = MacroArgType::Known(Type::try_from(ty)?);
+                  *arg_type = MacroArgType::Known(Type::from_rust_ty(ty, ffi_prefix.as_ref())?);
                 }
               }
             }

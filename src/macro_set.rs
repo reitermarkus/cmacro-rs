@@ -755,6 +755,19 @@ mod tests {
   }
 
   #[test]
+  fn parse_wrong_arity() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.define_fn_macro("func", ["x"], ["func", "(", "x", ",", "3", ")"]);
+    macro_set.define_fn_macro("wrapper_func", ["x"], ["func", "(", "x", ",", "3", ")"]);
+
+    assert_eq!(
+      macro_set.expand_fn_macro("wrapper_func"),
+      Err(ExpansionError::FnMacroArgumentError { name: "func".into(), required: 1, given: 2 })
+    );
+  }
+
+  #[test]
   fn parse_concat() {
     let mut macro_set = MacroSet::new();
 

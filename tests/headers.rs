@@ -45,7 +45,23 @@ fn file_visit_macros<F: FnMut(EntityKind, String, Option<Vec<String>>, Vec<Strin
         let return_type = tokens.next().unwrap();
         let name = tokens.next().unwrap();
         tokens.next();
-        let args = tokens.take_while(|token| token != ")").collect::<Vec<_>>();
+
+        let mut args = vec![];
+
+        let mut it = tokens.take_while(|token| token != ")");
+        while let Some(token) = it.next() {
+          if token == "," {
+            args.push(it.next().unwrap());
+            continue
+          }
+
+          if let Some(last_arg) = args.last_mut() {
+            last_arg.push(' ');
+            last_arg.push_str(&token);
+          } else {
+            args.push(token);
+          }
+        }
 
         visitor(kind, name, Some(args), vec![return_type])
       },
@@ -106,7 +122,18 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     impl CodegenContext for Context {
       fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
-        self.functions.get(name).cloned()
+        let (arg_tys, ret_ty) = self.functions.get(name)?;
+        use quote::ToTokens;
+
+        let parse_type = |ty: &str| -> Option<String> {
+          let ty = ty.parse::<cmacro::Type>().ok()?;
+          let ty = ty.to_rust_ty(self.ffi_prefix())?;
+          Some(ty.to_token_stream().to_string())
+        };
+
+        let arg_tys = arg_tys.iter().map(|ty| parse_type(ty.as_str())).collect::<Option<Vec<_>>>()?;
+
+        Some((arg_tys, parse_type(ret_ty.as_str())?))
       }
     }
 

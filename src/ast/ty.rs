@@ -78,6 +78,80 @@ impl BuiltInType {
     }
   }
 
+  fn from_rust_ty(ty: &syn::TypePath, ffi_prefix: Option<&syn::Path>) -> Option<Self> {
+    match ty {
+      syn::TypePath { qself: None, path: syn::Path { leading_colon, segments } } => {
+        let mut it = segments.iter();
+
+        if let Some(ffi_prefix) = ffi_prefix {
+          if leading_colon.is_some() != ffi_prefix.leading_colon.is_some() {
+            return None
+          }
+
+          for segment in ffi_prefix.segments.iter() {
+            if it.next()?.ident != segment.ident {
+              return None
+            }
+          }
+        }
+
+        let id = &it.next()?.ident;
+
+        // ID must be the last segment.
+        if it.next().is_some() {
+          return None
+        }
+
+        Some(if id == "f32" {
+          Self::Float
+        } else if id == "f64" {
+          Self::Double
+        } else if id == "f128" {
+          Self::LongDouble
+        } else if id == "bool" {
+          Self::Bool
+        } else if id == "c_char" {
+          Self::Char
+        } else if id == "c_schar" {
+          Self::SChar
+        } else if id == "c_uchar" {
+          Self::UChar
+        } else if id == "u8" {
+          Self::Char8T
+        } else if id == "u16" {
+          Self::Char16T
+        } else if id == "u32" {
+          Self::Char32T
+        } else if id == "c_short" {
+          Self::Short
+        } else if id == "c_ushort" {
+          Self::UShort
+        } else if id == "c_int" {
+          Self::Int
+        } else if id == "c_uint" {
+          Self::UInt
+        } else if id == "c_long" {
+          Self::Long
+        } else if id == "c_ulong" {
+          Self::ULong
+        } else if id == "c_longlong" {
+          Self::LongLong
+        } else if id == "c_ulonglong" {
+          Self::ULongLong
+        } else if id == "size_t" {
+          Self::SizeT
+        } else if id == "ssize_t" {
+          Self::SSizeT
+        } else if id == "c_void" {
+          Self::Void
+        } else {
+          return None
+        })
+      },
+      _ => None,
+    }
+  }
+
   fn to_rust_ty(self, ffi_prefix: Option<syn::Path>) -> syn::Type {
     let ffi_prefix = ffi_prefix.into_iter();
 
@@ -305,6 +379,62 @@ impl Type {
     self.to_tokens(ctx, &mut tokens);
     tokens
   }
+
+  pub(crate) fn from_rust_ty(ty: syn::Type, ffi_prefix: Option<&syn::Path>) -> Result<Self, crate::CodegenError> {
+    match ty {
+      syn::Type::Ptr(ptr_ty) => Ok(Self::Ptr {
+        ty: Box::new(Self::from_rust_ty(*ptr_ty.elem, ffi_prefix)?),
+        mutable: ptr_ty.mutability.is_some(),
+      }),
+      syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
+      syn::Type::Verbatim(ty) => Ok(Self::Identifier {
+        name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_string() } }),
+        is_struct: false,
+      }),
+      syn::Type::Path(path_ty) => {
+        if let Some(ty) = BuiltInType::from_rust_ty(&path_ty, ffi_prefix) {
+          return Ok(Self::BuiltIn(ty))
+        }
+
+        Ok(Self::Path {
+          leading_colon: path_ty.path.leading_colon.is_some(),
+          segments: path_ty.path.segments.iter().map(|s| LitIdent { id: s.ident.to_string() }).collect(),
+        })
+      },
+      ty => Err(crate::CodegenError::UnsupportedType(ty.into_token_stream().to_string())),
+    }
+  }
+
+  pub fn to_rust_ty(&self, ffi_prefix: Option<syn::Path>) -> Option<syn::Type> {
+    Some(match self {
+      Self::BuiltIn(ty) => ty.to_rust_ty(ffi_prefix),
+      Self::Identifier { name, .. } => {
+        if let Expr::Variable { name } = &**name {
+          let name = Ident::new(name.as_str(), Span::call_site());
+          syn::parse_quote! { #name }
+        } else {
+          return None
+        }
+      },
+      Self::Path { leading_colon, segments } => {
+        let colon = if *leading_colon { Some(quote! { :: }) } else { None }.into_iter();
+
+        let segments = segments.iter().map(|s| Ident::new(s.as_str(), Span::call_site()));
+
+        syn::parse_quote! { #(#colon)* #(#segments)::*  }
+      },
+      Self::Ptr { ty, mutable } => {
+        let constness = if *mutable {
+          quote! { *mut }
+        } else {
+          quote! { *const }
+        };
+
+        let ty = ty.to_rust_ty(ffi_prefix)?;
+        syn::parse_quote! { #constness #ty }
+      },
+    })
+  }
 }
 
 impl FromStr for Type {
@@ -320,33 +450,38 @@ impl FromStr for Type {
   }
 }
 
-impl TryFrom<syn::Type> for Type {
-  type Error = crate::CodegenError;
-
-  fn try_from(ty: syn::Type) -> Result<Self, Self::Error> {
-    match ty {
-      syn::Type::Ptr(ptr_ty) => {
-        Ok(Self::Ptr { ty: Box::new(Self::try_from(*ptr_ty.elem)?), mutable: ptr_ty.mutability.is_some() })
-      },
-      syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
-      syn::Type::Verbatim(ty) => Ok(Self::Identifier {
-        name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_string() } }),
-        is_struct: false,
-      }),
-      syn::Type::Path(path_ty) => Ok(Self::Path {
-        leading_colon: path_ty.path.leading_colon.is_some(),
-        segments: path_ty.path.segments.iter().map(|s| LitIdent { id: s.ident.to_string() }).collect(),
-      }),
-      ty => Err(crate::CodegenError::UnsupportedType(ty.into_token_stream().to_string())),
-    }
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
 
   use crate::macro_set::tokens;
+
+  #[test]
+  fn parse_builtin_from_syn_type() {
+    let no_prefix = None;
+    let core_ffi_prefix = Some(syn::parse_quote! { ::core::ffi });
+    let std_ffi_prefix = Some(syn::parse_quote! { ::std::ffi });
+
+    let ty: syn::TypePath = syn::parse_quote! { c_int };
+    assert_eq!(BuiltInType::from_rust_ty(&ty, no_prefix.as_ref()), Some(BuiltInType::Int));
+    assert_eq!(BuiltInType::from_rust_ty(&ty, core_ffi_prefix.as_ref()), None);
+    assert_eq!(BuiltInType::from_rust_ty(&ty, std_ffi_prefix.as_ref()), None);
+
+    let ty: syn::TypePath = syn::parse_quote! { ::c_int };
+    assert_eq!(BuiltInType::from_rust_ty(&ty, no_prefix.as_ref()), Some(BuiltInType::Int));
+    assert_eq!(BuiltInType::from_rust_ty(&ty, core_ffi_prefix.as_ref()), None);
+    assert_eq!(BuiltInType::from_rust_ty(&ty, std_ffi_prefix.as_ref()), None);
+
+    let ty: syn::TypePath = syn::parse_quote! { ::core::ffi::c_int };
+    assert_eq!(BuiltInType::from_rust_ty(&ty, no_prefix.as_ref()), None);
+    assert_eq!(BuiltInType::from_rust_ty(&ty, core_ffi_prefix.as_ref()), Some(BuiltInType::Int));
+    assert_eq!(BuiltInType::from_rust_ty(&ty, std_ffi_prefix.as_ref()), None);
+
+    let ty: syn::TypePath = syn::parse_quote! { ::std::ffi::c_int };
+    assert_eq!(BuiltInType::from_rust_ty(&ty, no_prefix.as_ref()), None);
+    assert_eq!(BuiltInType::from_rust_ty(&ty, core_ffi_prefix.as_ref()), None);
+    assert_eq!(BuiltInType::from_rust_ty(&ty, std_ffi_prefix.as_ref()), Some(BuiltInType::Int));
+  }
 
   #[test]
   fn parse_builtin() {
