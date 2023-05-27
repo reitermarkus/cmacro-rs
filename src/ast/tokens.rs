@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use nom::{
   bytes::complete::{tag, take_until},
   combinator::{all_consuming, map_opt, map_parser, opt, value},
@@ -14,10 +12,10 @@ pub(crate) fn macro_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [Ma
   map_opt(take_one, |token| if let MacroToken::Arg(index) = token { Some(*index) } else { None })(tokens)
 }
 
-pub(crate) fn macro_token<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Cow<'t, str>> {
+pub(crate) fn macro_token<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'i str> {
   map_opt(take_one, |token| {
     let token = if let MacroToken::Token(token) = token { token } else { return None };
-    Some(token.clone())
+    Some(token.as_ref())
   })(tokens)
 }
 
@@ -32,16 +30,14 @@ where
   Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Eof)))
 }
 
-pub(crate) fn comment<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Cow<'t, str>> {
-  map_parser(macro_token, |token: Cow<'t, str>| {
-    all_consuming(delimited(tag("/*"), take_until("*/"), tag("*/")))(token.as_ref())
-      .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
-
-    Ok((Cow::Borrowed(""), token))
+pub(crate) fn comment<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'i str> {
+  map_parser(macro_token, |token: &'i str| {
+    all_consuming(delimited(tag("/*"), take_until("*/"), tag("*/")))(token)
+      .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))
   })(tokens)
 }
 
-pub(crate) fn meta<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Vec<Cow<'t, str>>> {
+pub(crate) fn meta<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Vec<&'i str>> {
   many0(comment)(input)
 }
 
@@ -52,11 +48,11 @@ where
   't: 'i,
 {
   move |tokens| {
-    map_parser(macro_token, |token2: Cow<'t, str>| {
-      all_consuming(preceded(opt(tag("\\\n")), value(token, tag(token))))(token2.as_ref())
+    map_parser(macro_token, |token2: &'i str| {
+      all_consuming(preceded(opt(tag("\\\n")), value(token, tag(token))))(token2)
         .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
 
-      Ok((Cow::Borrowed(""), token))
+      Ok(("", token))
     })(tokens)
   }
 }

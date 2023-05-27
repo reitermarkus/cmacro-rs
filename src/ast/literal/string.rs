@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug, ops::RangeFrom, str};
+use std::{fmt::Debug, ops::RangeFrom, str};
 
 use nom::{
   branch::alt,
@@ -14,7 +14,7 @@ use quote::quote;
 
 use crate::{BuiltInType, CodegenContext, Expr, LocalContext, MacroToken, Type};
 
-use crate::ast::{macro_token, LitIdent};
+use crate::ast::{tokens::macro_token, LitIdent};
 
 use super::escaped_char;
 
@@ -184,7 +184,7 @@ impl LitString {
       preceded(tag("u"), map(Self::parse_utf16, Self::Utf16)),
       preceded(tag("U"), map(Self::parse_utf32, Self::Utf32)),
       preceded(tag("L"), map(Self::parse_wide, Self::Wide)),
-    )))(token.as_ref());
+    )))(token);
 
     if let Ok((_, s)) = res {
       return Ok((input2, s))
@@ -200,11 +200,9 @@ impl LitString {
     match s {
       Self::Ordinary(bytes) => map(
         fold_many0(
-          map_parser(macro_token, |token: Cow<'t, str>| {
-            let (_, s) = all_consuming(Self::parse_ordinary)(token.as_ref())
-              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))?;
-
-            Ok((Cow::Borrowed(""), s))
+          map_parser(macro_token, |token: &'i str| {
+            all_consuming(Self::parse_ordinary)(token)
+              .map_err(|err: nom::Err<nom::error::Error<&'i str>>| err.map_input(|_| input))
           }),
           move || bytes.clone(),
           |mut acc, s| {
@@ -216,11 +214,9 @@ impl LitString {
       )(input),
       Self::Utf8(s) => map(
         fold_many0(
-          map_parser(macro_token, |token: Cow<'t, str>| {
-            let (_, s) = all_consuming(preceded(opt(tag("u8")), Self::parse_utf8))(token.as_ref())
-              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))?;
-
-            Ok((Cow::Borrowed(""), s))
+          map_parser(macro_token, |token: &'i str| {
+            all_consuming(preceded(opt(tag("u8")), Self::parse_utf8))(token)
+              .map_err(|err: nom::Err<nom::error::Error<&'i str>>| err.map_input(|_| input))
           }),
           move || s.clone(),
           |mut acc, s| {
@@ -232,11 +228,9 @@ impl LitString {
       )(input),
       Self::Utf16(s) => map(
         fold_many0(
-          map_parser(macro_token, |token: Cow<'t, str>| {
-            let (_, s) = all_consuming(preceded(opt(tag("u")), Self::parse_utf16))(token.as_ref())
-              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))?;
-
-            Ok((Cow::Borrowed(""), s))
+          map_parser(macro_token, |token: &'i str| {
+            all_consuming(preceded(opt(tag("u")), Self::parse_utf16))(token)
+              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))
           }),
           move || s.clone(),
           |mut acc, s| {
@@ -248,11 +242,9 @@ impl LitString {
       )(input),
       Self::Utf32(s) => map(
         fold_many0(
-          map_parser(macro_token, |token: Cow<'t, str>| {
-            let (_, s) = all_consuming(preceded(opt(tag("U")), Self::parse_utf32))(token.as_ref())
-              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))?;
-
-            Ok((Cow::Borrowed(""), s))
+          map_parser(macro_token, |token: &'i str| {
+            all_consuming(preceded(opt(tag("U")), Self::parse_utf32))(token)
+              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))
           }),
           move || s.clone(),
           |mut acc, s| {
@@ -264,11 +256,9 @@ impl LitString {
       )(input),
       Self::Wide(v) => map(
         fold_many0(
-          map_parser(macro_token, |token: Cow<'t, str>| {
-            let (_, s) = all_consuming(preceded(opt(tag("L")), Self::parse_wide))(token.as_ref())
-              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))?;
-
-            Ok((Cow::Borrowed(""), s))
+          map_parser(macro_token, |token: &'i str| {
+            all_consuming(preceded(opt(tag("L")), Self::parse_wide))(token)
+              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))
           }),
           move || v.clone(),
           |mut acc, s| {

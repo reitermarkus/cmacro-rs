@@ -82,7 +82,7 @@ impl LitFloat {
   pub fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (_, input) = macro_token(tokens)?;
 
-    let (_, (repr, size1)) = Self::from_str(input.as_ref()).map_err(|err| err.map_input(|_| tokens))?;
+    let (_, (repr, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;
 
     let tokens = &tokens[1..];
 

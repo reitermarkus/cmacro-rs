@@ -1,5 +1,4 @@
 use std::{
-  borrow::Cow,
   fmt::Debug,
   ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Shl, Shr, Sub},
   str,
@@ -115,7 +114,7 @@ impl LitInt {
   pub fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, input) = macro_token(tokens)?;
 
-    let (_, (value, unsigned1, size1)) = Self::from_str(input.as_ref()).map_err(|err| err.map_input(|_| tokens))?;
+    let (_, (value, unsigned1, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;
 
     let suffix_unsigned = |tokens| alt((token("u"), token("U")))(tokens);
     let suffix_long = |tokens| alt((token("l"), token("L")))(tokens);
@@ -149,11 +148,8 @@ impl LitInt {
             unsigned1.is_none() && size1.is_none(),
             preceded(
               delimited(meta, token("##"), meta),
-              map_parser(macro_token, |token: Cow<'t, str>| {
-                let (_, suffix) = Self::parse_suffix(token.as_ref())
-                  .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
-
-                Ok((Cow::Borrowed(""), suffix))
+              map_parser(macro_token, |token: &'i str| {
+                Self::parse_suffix(token).map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))
               }),
             ),
           ),

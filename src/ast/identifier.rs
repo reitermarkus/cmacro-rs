@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug};
+use std::fmt::Debug;
 
 use nom::{
   branch::alt,
@@ -24,8 +24,8 @@ pub(crate) fn is_identifier(s: &str) -> bool {
 }
 
 pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
-  map_parser(macro_token, |token: Cow<'t, str>| {
-    let (_, id) = map_opt(
+  map_parser(macro_token, |token: &'i str| {
+    map_opt(
       all_consuming(|token| {
         fold_many1(
           alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
@@ -47,16 +47,14 @@ pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'
           None
         }
       },
-    )(token.as_ref())
-    .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
-
-    Ok((Cow::Borrowed(""), id))
+    )(token)
+    .map_err(|err: nom::Err<nom::error::Error<&'i str>>| err.map_input(|_| tokens))
   })(tokens)
 }
 
 fn concat_identifier<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
-  map_parser(macro_token, |token: Cow<'t, str>| {
-    let (_, id) = all_consuming(map_opt(
+  map_parser(macro_token, |token: &'i str| {
+    all_consuming(map_opt(
       fold_many1(
         alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
         String::new,
@@ -74,10 +72,8 @@ fn concat_identifier<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [Macro
           None
         }
       },
-    ))(token.as_ref())
-    .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
-
-    Ok((Cow::Borrowed(""), id))
+    ))(token)
+    .map_err(|err: nom::Err<nom::error::Error<&'i str>>| err.map_input(|_| tokens))
   })(tokens)
 }
 

@@ -101,7 +101,7 @@ impl LitChar {
         ),
       )),
       char('\''),
-    ))(token.as_ref())
+    ))(token)
     .map_err(|err| err.map_input(|_| input))?;
 
     Ok((input2, c))
