@@ -1,9 +1,9 @@
-use std::{fmt::Debug, ops::RangeFrom};
+use std::fmt::Debug;
 
 use nom::{
   combinator::map,
   sequence::{preceded, terminated},
-  AsChar, Compare, FindSubstring, IResult, InputIter, InputLength, InputTake, Slice,
+  IResult,
 };
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
@@ -27,18 +27,7 @@ pub struct Stringify {
 
 impl Stringify {
   /// Parse a stringification expression.
-  pub(crate) fn parse<'i, I>(tokens: &'i [I], _ctx: &ParseContext<'_>) -> IResult<&'i [I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + InputIter
-      + Slice<RangeFrom<usize>>
-      + Compare<&'static str>
-      + FindSubstring<&'static str>
-      + Clone,
-    <I as InputIter>::Item: AsChar,
-  {
+  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], _ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
     map(preceded(terminated(token("#"), meta), identifier_lit), |id| Self { id })(tokens)
   }
 
@@ -85,8 +74,6 @@ impl Stringify {
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  use crate::ast::lit_id;
 
   const CTX: ParseContext = ParseContext::fn_macro("STRINGIFY", &["var"]);
 

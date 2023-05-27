@@ -1,45 +1,35 @@
-use std::{fmt::Debug, ops::RangeFrom};
+use std::{fmt::Debug};
 
 use nom::{
   branch::alt,
   character::complete::{anychar, char},
-  combinator::{all_consuming, map, map_opt, map_parser},
-  multi::{fold_many0, fold_many1},
-  sequence::{delimited, preceded},
-  AsChar, IResult, InputIter, InputLength, Slice,
+  combinator::{all_consuming, map_opt, map_parser},
+  multi::{fold_many1},
+  sequence::{preceded}, IResult,
 };
-use proc_macro2::{Ident, Span, TokenStream};
-use quote::{quote, TokenStreamExt};
+
+
 
 use super::{
   literal::universal_char,
-  tokens::{meta, take_one, token},
-  Type,
+  tokens::{take_one},
 };
-use crate::{CodegenContext, LocalContext, ParseContext};
+use crate::{ParseContext};
 
-pub(crate) fn identifier_arg<I>(tokens: &[I]) -> IResult<&[I], LitIdent>
-where
-  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
-  <I as InputIter>::Item: AsChar,
-{
+pub(crate) fn identifier_arg<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], LitIdent> {
   map_parser(take_one, |token| {
     map_opt(
       all_consuming(|token| {
         fold_many1(
           alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
-          Vec::new,
+          String::new,
           |mut acc, c| {
             acc.push(c);
             acc
           },
         )(token)
       }),
-      |c| {
-        let s: Option<Vec<u8>> = c.iter().map(|c| if *c as u32 <= 0xff { Some(*c as u8) } else { None }).collect();
-        let s =
-          if let Some(s) = s.and_then(|s| String::from_utf8(s).ok()) { s } else { c.into_iter().collect::<String>() };
-
+      |s| {
         let mut chars = s.chars();
 
         let mut start = chars.next()?;
@@ -55,32 +45,24 @@ where
         None
       },
     )(token)
-    .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))
+    .map_err(|err: nom::Err<nom::error::Error<&'t str>>| err.map_input(|_| tokens))
   })(tokens)
 }
 
-pub(crate) fn identifier_lit<I>(tokens: &[I]) -> IResult<&[I], LitIdent>
-where
-  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
-  <I as InputIter>::Item: AsChar,
-{
+pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], LitIdent> {
   map_parser(take_one, |token| {
     map_opt(
       all_consuming(|token| {
         fold_many1(
           alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
-          Vec::new,
+          String::new,
           |mut acc, c| {
             acc.push(c);
             acc
           },
         )(token)
       }),
-      |c| {
-        let s: Option<Vec<u8>> = c.iter().map(|c| if *c as u32 <= 0xff { Some(*c as u8) } else { None }).collect();
-        let s =
-          if let Some(s) = s.and_then(|s| String::from_utf8(s).ok()) { s } else { c.into_iter().collect::<String>() };
-
+      |s| {
         let mut chars = s.chars();
 
         let mut start = chars.next()?;
@@ -100,38 +82,28 @@ where
         }
       },
     )(token)
-    .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))
+    .map_err(|err: nom::Err<nom::error::Error<&'t str>>| err.map_input(|_| tokens))
   })(tokens)
 }
 
-pub(crate) fn concat_identifier_arg<I>(tokens: &[I]) -> IResult<&[I], LitIdent>
-where
-  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
-  <I as InputIter>::Item: AsChar,
-{
+pub(crate) fn concat_identifier_arg<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], LitIdent> {
   map_parser(take_one, |token| {
     all_consuming(map_opt(
       fold_many1(
         alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
-        Vec::new,
+        String::new,
         |mut acc, c| {
           acc.push(c);
           acc
         },
       ),
-      |c| {
-        let s: Option<Vec<u8>> = c.iter().map(|c| if *c as u32 <= 0xff { Some(*c as u8) } else { None }).collect();
-        let s =
-          if let Some(s) = s.and_then(|s| String::from_utf8(s).ok()) { s } else { c.into_iter().collect::<String>() };
-
+      |s| {
         let mut chars = s.chars();
 
-        let mut start = chars.next()?;
+        let start = chars.next()?;
 
-        if start == '$' {
-          if chars.all(unicode_ident::is_xid_continue) {
-            return Some(LitIdent { id: s[1..].to_owned() })
-          }
+        if start == '$' && chars.all(unicode_ident::is_xid_continue) {
+          return Some(LitIdent { id: s[1..].to_owned() })
         }
 
         {
@@ -139,30 +111,22 @@ where
         }
       },
     ))(token)
-    .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))
+    .map_err(|err: nom::Err<nom::error::Error<&'t str>>| err.map_input(|_| tokens))
   })(tokens)
 }
 
-fn concat_identifier<I>(tokens: &[I]) -> IResult<&[I], LitIdent>
-where
-  I: Debug + InputLength + InputIter + Slice<RangeFrom<usize>> + Clone,
-  <I as InputIter>::Item: AsChar,
-{
+fn concat_identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], LitIdent> {
   map_parser(take_one, |token| {
     all_consuming(map_opt(
       fold_many1(
         alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
-        Vec::new,
+        String::new,
         |mut acc, c| {
           acc.push(c);
           acc
         },
       ),
-      |c| {
-        let s: Option<Vec<u8>> = c.iter().map(|c| if *c as u32 <= 0xff { Some(*c as u8) } else { None }).collect();
-        let s =
-          if let Some(s) = s.and_then(|s| String::from_utf8(s).ok()) { s } else { c.into_iter().collect::<String>() };
-
+      |s| {
         let mut chars = s.chars();
 
         if chars.all(unicode_ident::is_xid_continue) {
@@ -172,7 +136,7 @@ where
         }
       },
     ))(token)
-    .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))
+    .map_err(|err: nom::Err<nom::error::Error<&'t str>>| err.map_input(|_| tokens))
   })(tokens)
 }
 
