@@ -52,16 +52,19 @@ impl Expr {
     tokens: &'i [&'t str],
     ctx: &ParseContext<'_>,
   ) -> IResult<&'i [&'t str], Self> {
-    let (tokens, id) = LitIdent::parse(tokens, ctx)?;
-
-    let id = if id.macro_arg { Self::Arg { name: id } } else { Self::Variable { name: id } };
+    let (tokens, id) = alt((
+      map(identifier_arg, |id| Self::Arg { name: id }),
+      map(|tokens| LitIdent::parse(tokens, ctx), |id| Self::Variable { name: id }),
+    ))(tokens)?;
 
     fold_many0(
-      preceded(delimited(meta::<&'t str>, token::<&'t str>("##"), meta::<&'t str>), |tokens| {
-        let (tokens, id) = LitIdent::parse_concat(tokens, ctx)?;
-        let id = if id.macro_arg { Self::Arg { name: id } } else { Self::Variable { name: id } };
-        Ok((tokens, id))
-      }),
+      preceded(
+        delimited(meta::<&'t str>, token::<&'t str>("##"), meta::<&'t str>),
+        alt((
+          map(concat_identifier_arg, |id| Self::Arg { name: id }),
+          map(|tokens| LitIdent::parse_concat(tokens, ctx), |id| Self::Variable { name: id }),
+        )),
+      ),
       move || id.clone(),
       |acc, item| match acc {
         Self::ConcatIdent(mut ids) => {
@@ -969,10 +972,7 @@ mod tests {
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), var!(_def)]));
 
     let (_, id) = Expr::parse(&["$abc", "##", "123"], &ctx).unwrap();
-    assert_eq!(
-      id,
-      Expr::ConcatIdent(vec![arg!(abc), Expr::Variable { name: LitIdent { id: "123".into(), macro_arg: false } }])
-    );
+    assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), Expr::Variable { name: LitIdent { id: "123".into() } }]));
 
     let (_, id) = Expr::parse(&["__INT", "##", "_MAX__"], &CTX).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![var!(__INT), var!(_MAX__)]));

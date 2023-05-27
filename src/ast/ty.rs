@@ -261,9 +261,8 @@ impl Type {
       "long long" => Type::BuiltIn(BuiltInType::LongLong),
       "unsigned long long" => Type::BuiltIn(BuiltInType::ULongLong),
       "void" => Type::BuiltIn(BuiltInType::Void),
-      ty => Type::Identifier {
-        name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_owned(), macro_arg: false } }),
-        is_struct: false,
+      ty => {
+        Type::Identifier { name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_owned() } }), is_struct: false }
       },
     }
   }
@@ -342,17 +341,12 @@ impl TryFrom<syn::Type> for Type {
       },
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
       syn::Type::Verbatim(ty) => Ok(Self::Identifier {
-        name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_string(), macro_arg: false } }),
+        name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_string() } }),
         is_struct: false,
       }),
       syn::Type::Path(path_ty) => Ok(Self::Path {
         leading_colon: path_ty.path.leading_colon.is_some(),
-        segments: path_ty
-          .path
-          .segments
-          .iter()
-          .map(|s| LitIdent { id: s.ident.to_string(), macro_arg: false })
-          .collect(),
+        segments: path_ty.path.segments.iter().map(|s| LitIdent { id: s.ident.to_string() }).collect(),
       }),
       ty => Err(crate::CodegenError::UnsupportedType(ty.into_token_stream().to_string())),
     }

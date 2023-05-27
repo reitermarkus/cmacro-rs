@@ -305,7 +305,7 @@ impl LitString {
       Self::Utf32(_) => Type::BuiltIn(BuiltInType::Char32T),
       Self::Wide(_) => {
         let mut ty = Type::Identifier {
-          name: Box::new(Expr::Variable { name: LitIdent { id: "wchar_t".to_owned(), macro_arg: false } }),
+          name: Box::new(Expr::Variable { name: LitIdent { id: "wchar_t".to_owned() } }),
           is_struct: false,
         };
         ty.finish(ctx)?;

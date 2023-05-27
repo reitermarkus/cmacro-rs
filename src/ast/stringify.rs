@@ -93,6 +93,6 @@ mod tests {
   #[test]
   fn parse_stringify() {
     let (_, ty) = Stringify::parse(&["#", "$var"], &CTX).unwrap();
-    assert_eq!(ty, Stringify { id: LitIdent { id: "var".into(), macro_arg: true } });
+    assert_eq!(ty, Stringify { id: LitIdent { id: "var".into() } });
   }
 }

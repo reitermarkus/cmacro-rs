@@ -107,7 +107,7 @@ where
 
     self.export_as_macro = true;
 
-    Ok((Expr::Variable { name: LitIdent { id: name.to_owned(), macro_arg: false } }, None))
+    Ok((Expr::Variable { name: LitIdent { id: name.to_owned() } }, None))
   }
 }
 
