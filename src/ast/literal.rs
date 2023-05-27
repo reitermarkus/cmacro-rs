@@ -1,6 +1,6 @@
 use std::{
   fmt::Debug,
-  ops::{RangeFrom, RangeTo},
+  ops::{RangeFrom},
   str,
 };
 
@@ -14,14 +14,13 @@ use nom::{
   combinator::{map, map_opt, verify},
   multi::fold_many_m_n,
   sequence::preceded,
-  AsChar, Compare, FindSubstring, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset,
-  ParseTo, Slice,
+  AsChar, Compare, FindToken, IResult, InputIter, InputLength, InputTake, Slice,
 };
 use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
 
-use super::tokens::{meta, take_one, token};
-use crate::{CodegenContext, LitIdent, LocalContext, Type};
+
+use crate::{CodegenContext, LocalContext, MacroToken, Type};
 
 mod char;
 pub use self::char::LitChar;
@@ -77,7 +76,7 @@ impl From<i32> for Lit {
 
 impl Lit {
   /// Parse a literal.
-  pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
       map(LitChar::parse, Self::Char),
       map(LitString::parse, Self::String),
@@ -202,14 +201,16 @@ where
 mod tests {
   use super::*;
 
+  use crate::macro_set::tokens;
+
   use crate::BuiltInType;
 
   #[test]
   fn parse_int_before_float() {
-    let (_, int) = Lit::parse(&["123"]).unwrap();
+    let (_, int) = Lit::parse(tokens!["123"]).unwrap();
     assert_eq!(int, Lit::Int(LitInt { value: 123, suffix: None }));
 
-    let (_, int) = Lit::parse(&["123L"]).unwrap();
+    let (_, int) = Lit::parse(tokens!["123L"]).unwrap();
     assert_eq!(int, Lit::Int(LitInt { value: 123, suffix: Some(BuiltInType::Long) }));
   }
 }

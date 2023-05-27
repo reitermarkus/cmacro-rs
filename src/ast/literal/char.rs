@@ -1,7 +1,5 @@
 use std::{
   fmt::Debug,
-  ops::{RangeFrom, RangeTo},
-  str,
 };
 
 use nom::{
@@ -10,13 +8,16 @@ use nom::{
   character::complete::{char, none_of},
   combinator::{all_consuming, cond, map, map_opt, opt, value},
   sequence::{pair, preceded, terminated},
-  AsChar, Compare, FindToken, IResult, InputIter, InputLength, InputTake, Offset, Slice,
+  AsChar, IResult,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
-use super::{escaped_char, take_one, token};
-use crate::{BuiltInType, CodegenContext, Expr, LitIdent, LocalContext, Type};
+use super::escaped_char;
+use crate::{
+  ast::tokens::{macro_token, token},
+  BuiltInType, CodegenContext, Expr, LitIdent, LocalContext, MacroToken, Type,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LitCharPrefix {
@@ -63,9 +64,9 @@ pub enum LitChar {
 
 impl LitChar {
   /// Parse a character literal.
-  pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
+  pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (input, utf8_prefix) = if let Ok((input, _)) = token("u8")(input) { (input, true) } else { (input, false) };
-    let (input2, token) = take_one(input)?;
+    let (input2, token) = macro_token(input)?;
 
     let one_char = |input| alt((escaped_char, map(none_of("\\\'\n"), |b| u32::from(b.as_char()))))(input);
 
@@ -102,7 +103,7 @@ impl LitChar {
         ),
       )),
       char('\''),
-    ))(token)
+    ))(token.as_ref())
     .map_err(|err| err.map_input(|_| input))?;
 
     Ok((input2, c))
@@ -179,31 +180,34 @@ impl LitChar {
 mod tests {
   use super::*;
 
+  use crate::macro_set::tokens;
+
   #[test]
   fn parse_char() {
-    let (rest, id) = LitChar::parse(&[r#"'a'"#]).unwrap();
+    let tokens = tokens![r#"'a'"#];
+    let (rest, id) = LitChar::parse(tokens).unwrap();
     assert_eq!(id, LitChar::Ordinary(b'a'));
     assert!(rest.is_empty());
 
-    let (_, id) = LitChar::parse(&[r#"'\n'"#]).unwrap();
+    let (_, id) = LitChar::parse(tokens![r#"'\n'"#]).unwrap();
     assert_eq!(id, LitChar::Ordinary(b'\n'));
 
-    let (_, id) = LitChar::parse(&[r#"'\''"#]).unwrap();
+    let (_, id) = LitChar::parse(tokens![r#"'\''"#]).unwrap();
     assert_eq!(id, LitChar::Ordinary(b'\''));
 
-    let (_, id) = LitChar::parse(&[r#"u'\uFFee'"#]).unwrap();
+    let (_, id) = LitChar::parse(tokens![r#"u'\uFFee'"#]).unwrap();
     assert_eq!(id, LitChar::Utf16(0xffee));
 
-    let (_, id) = LitChar::parse(&[r#"U'\U0001f369'"#]).unwrap();
+    let (_, id) = LitChar::parse(tokens![r#"U'\U0001f369'"#]).unwrap();
     assert_eq!(id, LitChar::Utf32(0x0001f369));
 
-    let (_, id) = LitChar::parse(&[r#"U'🍌'"#]).unwrap();
+    let (_, id) = LitChar::parse(tokens![r#"U'🍌'"#]).unwrap();
     assert_eq!(id, LitChar::Utf32(0x0001f34c));
 
-    let (_, id) = LitChar::parse(&[r#"'\xff'"#]).unwrap();
+    let (_, id) = LitChar::parse(tokens![r#"'\xff'"#]).unwrap();
     assert_eq!(id, LitChar::Ordinary(0xff));
 
-    let (_, id) = LitChar::parse(&[r#"'ÿ'"#]).unwrap();
+    let (_, id) = LitChar::parse(tokens![r#"'ÿ'"#]).unwrap();
     assert_eq!(id, LitChar::Ordinary(0xff));
   }
 }

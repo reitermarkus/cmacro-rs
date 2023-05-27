@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{borrow::Cow, fmt::Debug};
 
 use nom::{
   branch::alt,
@@ -9,12 +9,15 @@ use nom::{
   IResult,
 };
 
-use super::{literal::universal_char, tokens::take_one};
-use crate::ParseContext;
+use super::{
+  literal::universal_char,
+  tokens::{macro_token},
+};
+use crate::{MacroToken, ParseContext};
 
-pub(crate) fn identifier_arg<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], LitIdent> {
-  map_parser(take_one, |token| {
-    map_opt(
+pub(crate) fn identifier_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
+  map_parser(macro_token, |token: Cow<'t, str>| {
+    let (_, id) = map_opt(
       all_consuming(|token| {
         fold_many1(
           alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
@@ -40,14 +43,27 @@ pub(crate) fn identifier_arg<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t 
 
         None
       },
-    )(token)
-    .map_err(|err: nom::Err<nom::error::Error<&'t str>>| err.map_input(|_| tokens))
+    )(token.as_ref())
+    .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
+
+    Ok((Cow::Borrowed(""), id))
   })(tokens)
 }
 
-pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], LitIdent> {
-  map_parser(take_one, |token| {
-    map_opt(
+pub(crate) fn is_identifier(s: &str) -> bool {
+  let mut chars = s.chars();
+
+  if let Some(first_character) = chars.next() {
+    return (unicode_ident::is_xid_start(first_character) || first_character == '_')
+      && chars.all(unicode_ident::is_xid_continue)
+  }
+
+  false
+}
+
+pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
+  map_parser(macro_token, |token: Cow<'t, str>| {
+    let (_, id) = map_opt(
       all_consuming(|token| {
         fold_many1(
           alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
@@ -77,14 +93,16 @@ pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t 
           None
         }
       },
-    )(token)
-    .map_err(|err: nom::Err<nom::error::Error<&'t str>>| err.map_input(|_| tokens))
+    )(token.as_ref())
+    .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
+
+    Ok((Cow::Borrowed(""), id))
   })(tokens)
 }
 
-pub(crate) fn concat_identifier_arg<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], LitIdent> {
-  map_parser(take_one, |token| {
-    all_consuming(map_opt(
+pub(crate) fn concat_identifier_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
+  map_parser(macro_token, |token: Cow<'t, str>| {
+    let (_, id) = all_consuming(map_opt(
       fold_many1(
         alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
         String::new,
@@ -106,14 +124,16 @@ pub(crate) fn concat_identifier_arg<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'
           None
         }
       },
-    ))(token)
-    .map_err(|err: nom::Err<nom::error::Error<&'t str>>| err.map_input(|_| tokens))
+    ))(token.as_ref())
+    .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
+
+    Ok((Cow::Borrowed(""), id))
   })(tokens)
 }
 
-fn concat_identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], LitIdent> {
-  map_parser(take_one, |token| {
-    all_consuming(map_opt(
+fn concat_identifier<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
+  map_parser(macro_token, |token: Cow<'t, str>| {
+    let (_, id) = all_consuming(map_opt(
       fold_many1(
         alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
         String::new,
@@ -131,8 +151,10 @@ fn concat_identifier<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Li
           None
         }
       },
-    ))(token)
-    .map_err(|err: nom::Err<nom::error::Error<&'t str>>| err.map_input(|_| tokens))
+    ))(token.as_ref())
+    .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
+
+    Ok((Cow::Borrowed(""), id))
   })(tokens)
 }
 
@@ -151,12 +173,18 @@ impl LitIdent {
 
 impl LitIdent {
   /// Parse an identifier.
-  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], _ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  pub(crate) fn parse<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    _ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     identifier_lit(tokens)
   }
 
   /// Parse an identifier.
-  pub(crate) fn parse_concat<'i, 't>(tokens: &'i [&'t str], _ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  pub(crate) fn parse_concat<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    _ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     concat_identifier(tokens)
   }
 }
@@ -171,29 +199,33 @@ impl From<&str> for LitIdent {
 mod tests {
   use super::*;
 
+  use crate::macro_set::tokens;
+
   const CTX: ParseContext = ParseContext::var_macro("IDENTIFIER");
 
   #[test]
   fn parse_literal() {
-    let (_, id) = LitIdent::parse(&["asdf"], &CTX).unwrap();
+    let (_, id) = LitIdent::parse(tokens!["asdf"], &CTX).unwrap();
     assert_eq!(id, "asdf".into());
 
-    let (_, id) = LitIdent::parse(&["Δx"], &CTX).unwrap();
+    let (_, id) = LitIdent::parse(tokens!["Δx"], &CTX).unwrap();
     assert_eq!(id, "Δx".into());
 
-    let (_, id) = LitIdent::parse(&["_123"], &CTX).unwrap();
+    let (_, id) = LitIdent::parse(tokens!["_123"], &CTX).unwrap();
     assert_eq!(id, "_123".into());
 
-    let (_, id) = LitIdent::parse(&["__INT_MAX__"], &CTX).unwrap();
+    let (_, id) = LitIdent::parse(tokens!["__INT_MAX__"], &CTX).unwrap();
     assert_eq!(id, "__INT_MAX__".into());
   }
 
   #[test]
   fn parse_wrong() {
-    let res = LitIdent::parse(&["123def"], &CTX);
+    let tokens = tokens!["123def"];
+    let res = LitIdent::parse(tokens, &CTX);
     assert!(res.is_err());
 
-    let res = LitIdent::parse(&["123", "##", "def"], &CTX);
+    let tokens = tokens!["123", "##", "def"];
+    let res = LitIdent::parse(tokens, &CTX);
     assert!(res.is_err());
   }
 }

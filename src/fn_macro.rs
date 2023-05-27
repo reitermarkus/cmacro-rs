@@ -10,7 +10,10 @@ use nom::{
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
-use crate::{identifier_lit, meta, token, CodegenContext, LocalContext, MacroArgType, MacroBody, ParseContext};
+use crate::{
+  identifier_lit, is_identifier, meta, token, CodegenContext, LocalContext, MacroArgType, MacroBody, MacroToken,
+  ParseContext,
+};
 
 /// A function-like macro.
 ///
@@ -20,7 +23,7 @@ use crate::{identifier_lit, meta, token, CodegenContext, LocalContext, MacroArgT
 /// therefore the argument types cannot be inferred and the macro is
 /// generated as a Rust macro.
 ///
-/// ```
+/// ```ignore
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use cmacro::{FnMacro, CodegenContext};
 /// use quote::quote;
@@ -57,7 +60,7 @@ use crate::{identifier_lit, meta, token, CodegenContext, LocalContext, MacroArgT
 /// [`CodegenContext::function_macro`] methods, respectively. If all types can be inferred,
 /// a function is generated instead of a macro, as seen in the following example:
 ///
-/// ```
+/// ```ignore
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use cmacro::{FnMacro, CodegenContext};
 /// use quote::quote;
@@ -101,7 +104,7 @@ pub struct FnMacro {
 }
 
 impl FnMacro {
-  fn parse_args<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Vec<String>> {
+  fn parse_args<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Vec<String>> {
     all_consuming(terminated(
       alt((
         map(preceded(meta, token("...")), |var_arg| vec![var_arg.to_owned()]),
@@ -129,15 +132,16 @@ impl FnMacro {
   }
 
   /// Parse a function-like macro from a name, arguments and body tokens.
-  pub fn parse(name: &str, args: &[&str], body: &[&str]) -> Result<Self, crate::ParserError> {
-    let (_, name) = identifier_lit(&[name]).map_err(|_| crate::ParserError::InvalidMacroName)?;
+  pub fn parse(name: &str, args: &[MacroToken<'_>], body: &[MacroToken<'_>]) -> Result<Self, crate::ParserError> {
+    let name = if is_identifier(name) { name.to_owned() } else { return Err(crate::ParserError::InvalidMacroName) };
+
     let (_, args) = Self::parse_args(args).map_err(|_| crate::ParserError::InvalidMacroArgs)?;
 
     let ctx_args = args.iter().map(|a| a.as_str()).collect::<Vec<_>>();
-    let ctx = ParseContext::fn_macro(&name.id, &ctx_args);
+    let ctx = ParseContext::fn_macro(&name, &ctx_args);
     let (_, body) = MacroBody::parse(body, &ctx).map_err(|_| crate::ParserError::InvalidMacroBody)?;
 
-    Ok(Self { name: name.id, args, body })
+    Ok(Self { name, args, body })
   }
 
   /// Infer the type of this function macro and generate corresponding Rust code.

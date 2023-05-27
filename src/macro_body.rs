@@ -8,7 +8,7 @@ use nom::{
 
 use crate::{
   ast::{meta, Type},
-  CodegenContext, Expr, LocalContext, ParseContext, Statement,
+  CodegenContext, Expr, LocalContext, MacroToken, ParseContext, Statement,
 };
 
 /// The body of a macro.
@@ -37,7 +37,10 @@ pub enum MacroBody {
 }
 
 impl MacroBody {
-  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  pub(crate) fn parse<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, _) = meta(tokens)?;
 
     if tokens.is_empty() {

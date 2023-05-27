@@ -1,4 +1,4 @@
-use std::{fmt::Debug, ops::RangeFrom, str};
+use std::{borrow::Cow, fmt::Debug, ops::RangeFrom, str};
 
 use nom::{
   branch::alt,
@@ -12,9 +12,11 @@ use nom::{
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::{BuiltInType, CodegenContext, Expr, LocalContext, Type};
+use crate::{BuiltInType, CodegenContext, Expr, LocalContext, MacroToken, Type};
 
-use super::{escaped_char, take_one, LitIdent};
+use crate::ast::{macro_token, LitIdent};
+
+use super::escaped_char;
 
 /// A string literal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,28 +175,16 @@ impl LitString {
     delimited(char('\"'), many0(alt((escaped_char, map(none_of("\\\"\n"), u32::from)))), char('\"'))(input)
   }
 
-  fn parse_inner<I, C>(input: &[I]) -> IResult<&[I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<RangeFrom<usize>>
-      + InputIter<Item = C>
-      + Clone
-      + InputTakeAtPosition<Item = C>
-      + Compare<&'static str>,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
-  {
-    let (input2, token) = take_one(input)?;
+  fn parse_inner<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+    let (input2, token) = macro_token(input)?;
 
-    let res: IResult<I, Self> = all_consuming(alt((
+    let res: IResult<&str, Self> = all_consuming(alt((
       map(Self::parse_ordinary, Self::Ordinary),
       preceded(tag("u8"), map(Self::parse_utf8, Self::Utf8)),
       preceded(tag("u"), map(Self::parse_utf16, Self::Utf16)),
       preceded(tag("U"), map(Self::parse_utf32, Self::Utf32)),
       preceded(tag("L"), map(Self::parse_wide, Self::Wide)),
-    )))(token);
+    )))(token.as_ref());
 
     if let Ok((_, s)) = res {
       return Ok((input2, s))
@@ -204,27 +194,17 @@ impl LitString {
   }
 
   /// Parse a string literal.
-  pub fn parse<I, C>(input: &[I]) -> IResult<&[I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<RangeFrom<usize>>
-      + InputIter<Item = C>
-      + Clone
-      + InputTakeAtPosition<Item = C>
-      + Compare<&'static str>,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
-  {
+  pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (input, s) = Self::parse_inner(input)?;
 
     match s {
       Self::Ordinary(bytes) => map(
         fold_many0(
-          map_parser(take_one, |token| {
-            all_consuming(Self::parse_ordinary)(token)
-              .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| input))
+          map_parser(macro_token, |token: Cow<'t, str>| {
+            let (_, s) = all_consuming(Self::parse_ordinary)(token.as_ref())
+              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))?;
+
+            Ok((Cow::Borrowed(""), s))
           }),
           move || bytes.clone(),
           |mut acc, s| {
@@ -236,9 +216,11 @@ impl LitString {
       )(input),
       Self::Utf8(s) => map(
         fold_many0(
-          map_parser(take_one, |token| {
-            all_consuming(preceded(opt(tag("u8")), Self::parse_utf8))(token)
-              .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| input))
+          map_parser(macro_token, |token: Cow<'t, str>| {
+            let (_, s) = all_consuming(preceded(opt(tag("u8")), Self::parse_utf8))(token.as_ref())
+              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))?;
+
+            Ok((Cow::Borrowed(""), s))
           }),
           move || s.clone(),
           |mut acc, s| {
@@ -250,9 +232,11 @@ impl LitString {
       )(input),
       Self::Utf16(s) => map(
         fold_many0(
-          map_parser(take_one, |token| {
-            all_consuming(preceded(opt(tag("u")), Self::parse_utf16))(token)
-              .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| input))
+          map_parser(macro_token, |token: Cow<'t, str>| {
+            let (_, s) = all_consuming(preceded(opt(tag("u")), Self::parse_utf16))(token.as_ref())
+              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))?;
+
+            Ok((Cow::Borrowed(""), s))
           }),
           move || s.clone(),
           |mut acc, s| {
@@ -264,9 +248,11 @@ impl LitString {
       )(input),
       Self::Utf32(s) => map(
         fold_many0(
-          map_parser(take_one, |token| {
-            all_consuming(preceded(opt(tag("U")), Self::parse_utf32))(token)
-              .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| input))
+          map_parser(macro_token, |token: Cow<'t, str>| {
+            let (_, s) = all_consuming(preceded(opt(tag("U")), Self::parse_utf32))(token.as_ref())
+              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))?;
+
+            Ok((Cow::Borrowed(""), s))
           }),
           move || s.clone(),
           |mut acc, s| {
@@ -278,9 +264,11 @@ impl LitString {
       )(input),
       Self::Wide(v) => map(
         fold_many0(
-          map_parser(take_one, |token| {
-            all_consuming(preceded(opt(tag("L")), Self::parse_wide))(token)
-              .map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| input))
+          map_parser(macro_token, |token: Cow<'t, str>| {
+            let (_, s) = all_consuming(preceded(opt(tag("L")), Self::parse_wide))(token.as_ref())
+              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))?;
+
+            Ok((Cow::Borrowed(""), s))
           }),
           move || v.clone(),
           |mut acc, s| {
@@ -487,30 +475,32 @@ impl LitString {
 mod tests {
   use super::*;
 
+  use crate::macro_set::tokens;
+
   #[test]
   fn parse_string() {
-    let (_, id) = LitString::parse(&[r#""asdf""#]).unwrap();
+    let (_, id) = LitString::parse(tokens![r#""asdf""#]).unwrap();
     assert_eq!(id, LitString::Ordinary("asdf".into()));
 
-    let (_, id) = LitString::parse(&[r#""\360\237\216\247🎧""#]).unwrap();
+    let (_, id) = LitString::parse(tokens![r#""\360\237\216\247🎧""#]).unwrap();
     assert_eq!(id, LitString::Ordinary("🎧🎧".into()));
 
-    let (_, id) = LitString::parse(&[r#""abc\ndef""#]).unwrap();
+    let (_, id) = LitString::parse(tokens![r#""abc\ndef""#]).unwrap();
     assert_eq!(id, LitString::Ordinary("abc\ndef".into()));
 
-    let (_, id) = LitString::parse(&[r#""escaped\"quote""#]).unwrap();
+    let (_, id) = LitString::parse(tokens![r#""escaped\"quote""#]).unwrap();
     assert_eq!(id, LitString::Ordinary(r#"escaped"quote"#.into()));
 
-    let (_, id) = LitString::parse(&[r#"u8"🎧\xf0\x9f\x8e\xa4""#]).unwrap();
+    let (_, id) = LitString::parse(tokens![r#"u8"🎧\xf0\x9f\x8e\xa4""#]).unwrap();
     assert_eq!(id, LitString::Utf8("🎧🎤".into()));
 
-    let (_, id) = LitString::parse(&[r#"u8"Put your 🎧 on.""#]).unwrap();
+    let (_, id) = LitString::parse(tokens![r#"u8"Put your 🎧 on.""#]).unwrap();
     assert_eq!(id, LitString::Utf8("Put your 🎧 on.".into()));
 
-    let (_, id) = LitString::parse(&[r#"u"🎧\uD83C\uDFA4""#]).unwrap();
+    let (_, id) = LitString::parse(tokens![r#"u"🎧\uD83C\uDFA4""#]).unwrap();
     assert_eq!(id, LitString::Utf16("🎧🎤".into()));
 
-    let (_, id) = LitString::parse(&[r#"U"🎧\U0001F3A4""#]).unwrap();
+    let (_, id) = LitString::parse(tokens![r#"U"🎧\U0001F3A4""#]).unwrap();
     assert_eq!(id, LitString::Utf32("🎧🎤".into()));
   }
 }

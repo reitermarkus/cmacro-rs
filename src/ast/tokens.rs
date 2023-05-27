@@ -1,11 +1,10 @@
-use std::{borrow::Cow, fmt::Debug, ops::RangeFrom};
+use std::{borrow::Cow, fmt::Debug};
 
 use nom::{
   bytes::complete::{tag, take_until},
   combinator::{all_consuming, map_opt, map_parser, opt, value},
   multi::many0,
-  sequence::{delimited, pair, preceded},
-  Compare, FindSubstring, IResult, InputLength, InputTake, Parser, Slice,
+  sequence::{delimited, pair, preceded}, IResult, Parser,
 };
 
 use crate::MacroToken;
@@ -43,25 +42,31 @@ where
   Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Eof)))
 }
 
-pub(crate) fn comment<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], &'t str> {
-  map_parser(take_one, |token| {
-    all_consuming(delimited(tag("/*"), take_until("*/"), tag("*/")))(token)
-      .map_err(|err: nom::Err<nom::error::Error<&'t str>>| err.map_input(|_| tokens))
+pub(crate) fn comment<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Cow<'t, str>> {
+  map_parser(macro_token, |token: Cow<'t, str>| {
+    all_consuming(delimited(tag("/*"), take_until("*/"), tag("*/")))(token.as_ref())
+      .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
+
+    Ok((Cow::Borrowed(""), token))
   })(tokens)
 }
 
-pub(crate) fn meta<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Vec<&'t str>> {
+pub(crate) fn meta<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Vec<Cow<'t, str>>> {
   many0(comment)(input)
 }
 
-pub(crate) fn token<'i, 't>(token: &'static str) -> impl Fn(&'i [&'t str]) -> IResult<&'i [&'t str], &'static str>
+pub(crate) fn token<'i, 't>(
+  token: &'static str,
+) -> impl Fn(&'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'static str>
 where
   't: 'i,
 {
   move |tokens| {
-    map_parser(take_one, |token2| {
-      all_consuming(preceded(opt(tag("\\\n")), value(token, tag(token))))(token2)
-        .map_err(|err: nom::Err<nom::error::Error<&'t str>>| err.map_input(|_| tokens))
+    map_parser(macro_token, |token2: Cow<'t, str>| {
+      all_consuming(preceded(opt(tag("\\\n")), value(token, tag(token))))(token2.as_ref())
+        .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
+
+      Ok((Cow::Borrowed(""), token))
     })(tokens)
   }
 }
@@ -70,10 +75,10 @@ pub(crate) use token as keyword;
 
 pub(crate) fn parenthesized<'i, 't, O, F>(
   f: F,
-) -> impl FnMut(&'i [&'t str]) -> IResult<&'i [&'t str], O, nom::error::Error<&'i [&'t str]>>
+) -> impl FnMut(&'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], O, nom::error::Error<&'i [MacroToken<'t>]>>
 where
   't: 'i,
-  F: Parser<&'i [&'t str], O, nom::error::Error<&'i [&'t str]>>,
+  F: Parser<&'i [MacroToken<'t>], O, nom::error::Error<&'i [MacroToken<'t>]>>,
 {
   delimited(pair(token("("), meta), f, pair(meta, token(")")))
 }

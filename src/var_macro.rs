@@ -4,13 +4,15 @@ use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
 use semver::{Version, VersionReq};
 
-use crate::{ast::Lit, identifier_lit, CodegenContext, Expr, LocalContext, MacroBody, ParseContext};
+use crate::{
+  ast::Lit, is_identifier, CodegenContext, Expr, LocalContext, MacroBody, MacroToken, ParseContext,
+};
 
 /// A variable-like macro.
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use cmacro::VarMacro;
 ///
@@ -32,17 +34,16 @@ pub struct VarMacro {
 
 impl VarMacro {
   /// Parse a variable-like macro from a name and value tokens.
-  pub fn parse(name: &str, value: &[&str]) -> Result<Self, crate::ParserError> {
-    let name =
-      if let Ok((_, name)) = identifier_lit(&[name]) { name } else { return Err(crate::ParserError::InvalidMacroName) };
+  pub fn parse(name: &str, value: &[MacroToken<'_>]) -> Result<Self, crate::ParserError> {
+    let name = if is_identifier(name) { name.to_owned() } else { return Err(crate::ParserError::InvalidMacroName) };
 
-    let ctx = ParseContext::var_macro(&name.id);
+    let ctx = ParseContext::var_macro(&name);
     let body = match MacroBody::parse(value, &ctx) {
       Ok((_, body)) => body,
       Err(_) => return Err(crate::ParserError::InvalidMacroBody),
     };
 
-    Ok(Self { name: name.id, body })
+    Ok(Self { name, body })
   }
 
   /// Evaluate the value and type of this macro and generate corresponding Rust code.

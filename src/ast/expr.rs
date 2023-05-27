@@ -11,7 +11,7 @@ use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext, MacroArgType, ParseContext, UnaryOp};
+use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken, ParseContext, UnaryOp};
 
 /// An expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,9 +49,9 @@ impl Expr {
 
   /// Parse identifier concatenation, e.g. `arg ## 2`.
   pub(crate) fn parse_concat_ident<'i, 't>(
-    tokens: &'i [&'t str],
+    tokens: &'i [MacroToken<'t>],
     ctx: &ParseContext<'_>,
-  ) -> IResult<&'i [&'t str], Self> {
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, id) = alt((
       map(identifier_arg, |id| Self::Arg { name: id }),
       map(|tokens| LitIdent::parse(tokens, ctx), |id| Self::Variable { name: id }),
@@ -77,7 +77,10 @@ impl Expr {
   }
 
   /// Parse string concatenation, e.g. `arg "333"`.
-  fn parse_concat_string<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_concat_string<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let parse_var = |tokens| Self::parse_concat_ident(tokens, ctx);
     let parse_string = alt((
       map(LitString::parse, |s| Self::Literal(Lit::String(s))),
@@ -100,7 +103,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_factor<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_factor<'i, 't>(tokens: &'i [MacroToken<'t>], ctx: &ParseContext<'_>) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
       map(LitChar::parse, |c| Self::Literal(Lit::Char(c))),
       |tokens| Self::parse_concat_string(tokens, ctx),
@@ -109,7 +112,10 @@ impl Expr {
     ))(tokens)
   }
 
-  fn parse_term_prec1<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec1<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, factor) = Self::parse_factor(tokens, ctx)?;
 
     // `__asm ( ... )` or `__asm volatile ( ... )`
@@ -207,7 +213,10 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec2<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec2<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
       map(
         pair(parenthesized(|tokens| Type::parse(tokens, ctx)), |tokens| Self::parse_term_prec2(tokens, ctx)),
@@ -236,7 +245,10 @@ impl Expr {
     ))(tokens)
   }
 
-  fn parse_term_prec3<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec3<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec2(tokens, ctx)?;
 
     fold_many0(
@@ -253,7 +265,10 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec4<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec4<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec3(tokens, ctx)?;
 
     fold_many0(
@@ -266,7 +281,10 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec5<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec5<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec4(tokens, ctx)?;
 
     fold_many0(
@@ -279,7 +297,10 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec6<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec6<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec5(tokens, ctx)?;
 
     fold_many0(
@@ -301,7 +322,10 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec7<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec7<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec6(tokens, ctx)?;
 
     fold_many0(
@@ -314,7 +338,10 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec8<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec8<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec7(tokens, ctx)?;
 
     fold_many0(
@@ -324,7 +351,10 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec9<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec9<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec8(tokens, ctx)?;
 
     fold_many0(
@@ -334,7 +364,10 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec10<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec10<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec9(tokens, ctx)?;
 
     fold_many0(
@@ -344,7 +377,10 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec13<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec13<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec10(tokens, ctx)?;
 
     // Parse ternary.
@@ -358,7 +394,10 @@ impl Expr {
     Ok((tokens, term))
   }
 
-  fn parse_term_prec14<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_term_prec14<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec13(tokens, ctx)?;
 
     fold_many0(
@@ -388,7 +427,10 @@ impl Expr {
   }
 
   /// Parse an expression.
-  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  pub(crate) fn parse<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     Self::parse_term_prec14(tokens, ctx)
   }
 
@@ -924,31 +966,33 @@ impl Expr {
 mod tests {
   use super::*;
 
+  use crate::macro_set::tokens;
+
   const CTX: ParseContext = ParseContext::var_macro("EXPR");
 
   #[test]
   fn parse_literal() {
-    let (_, expr) = Expr::parse(&["u8", "'a'"], &CTX).unwrap();
+    let (_, expr) = Expr::parse(tokens!["u8", "'a'"], &CTX).unwrap();
     assert_eq!(expr, lit!(u8 'a'));
 
-    let (_, expr) = Expr::parse(&["U'🍩'"], &CTX).unwrap();
+    let (_, expr) = Expr::parse(tokens!["U'🍩'"], &CTX).unwrap();
     assert_eq!(expr, lit!(U '🍩'));
   }
 
   #[test]
   fn parse_stringify() {
     let ctx = ParseContext::fn_macro("EXPR", &["a"]);
-    let (_, expr) = Expr::parse(&["#", "$a"], &ctx).unwrap();
+    let (_, expr) = Expr::parse(tokens!["#", "$a"], &ctx).unwrap();
     assert_eq!(expr, Expr::Stringify(Stringify { id: lit_id!(@a) }));
   }
 
   #[test]
   fn parse_concat() {
-    let (_, expr) = Expr::parse(&[r#""abc""#, r#""def""#], &CTX).unwrap();
+    let (_, expr) = Expr::parse(tokens![r#""abc""#, r#""def""#], &CTX).unwrap();
     assert_eq!(expr, Expr::Literal(Lit::String(LitString::Ordinary("abcdef".into()))));
 
     let ctx = ParseContext::fn_macro("EXPR", &["a"]);
-    let (_, expr) = Expr::parse(&[r#""def""#, "#", "$a"], &ctx).unwrap();
+    let (_, expr) = Expr::parse(tokens![r#""def""#, "#", "$a"], &ctx).unwrap();
     assert_eq!(
       expr,
       Expr::ConcatString(vec![
@@ -962,31 +1006,31 @@ mod tests {
   fn parse_concat_ident() {
     let ctx = ParseContext::fn_macro("IDENTIFIER", &["abc"]);
 
-    let (_, id) = Expr::parse(&["$abc", "##", "def"], &ctx).unwrap();
+    let (_, id) = Expr::parse(tokens!["$abc", "##", "def"], &ctx).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), var!(def)]));
 
-    let (_, id) = Expr::parse(&["$abc", "##", "def", "##", "ghi"], &ctx).unwrap();
+    let (_, id) = Expr::parse(tokens!["$abc", "##", "def", "##", "ghi"], &ctx).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), var!(def), var!(ghi)]));
 
-    let (_, id) = Expr::parse(&["$abc", "##", "_def"], &ctx).unwrap();
+    let (_, id) = Expr::parse(tokens!["$abc", "##", "_def"], &ctx).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), var!(_def)]));
 
-    let (_, id) = Expr::parse(&["$abc", "##", "123"], &ctx).unwrap();
+    let (_, id) = Expr::parse(tokens!["$abc", "##", "123"], &ctx).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(abc), Expr::Variable { name: LitIdent { id: "123".into() } }]));
 
-    let (_, id) = Expr::parse(&["__INT", "##", "_MAX__"], &CTX).unwrap();
+    let (_, id) = Expr::parse(tokens!["__INT", "##", "_MAX__"], &CTX).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![var!(__INT), var!(_MAX__)]));
   }
 
   #[test]
   fn parse_field_access() {
-    let (_, expr) = Expr::parse(&["a", ".", "b"], &CTX).unwrap();
+    let (_, expr) = Expr::parse(tokens!["a", ".", "b"], &CTX).unwrap();
     assert_eq!(expr, Expr::FieldAccess { expr: Box::new(var!(a)), field: Box::new(var!(b)) });
   }
 
   #[test]
   fn parse_pointer_access() {
-    let (_, expr) = Expr::parse(&["a", "->", "b"], &CTX).unwrap();
+    let (_, expr) = Expr::parse(tokens!["a", "->", "b"], &CTX).unwrap();
     assert_eq!(
       expr,
       Expr::FieldAccess {
@@ -998,10 +1042,10 @@ mod tests {
 
   #[test]
   fn parse_array_access() {
-    let (_, expr) = Expr::parse(&["a", "[", "0", "]"], &CTX).unwrap();
+    let (_, expr) = Expr::parse(tokens!["a", "[", "0", "]"], &CTX).unwrap();
     assert_eq!(expr, Expr::ArrayAccess { expr: Box::new(var!(a)), index: Box::new(lit!(0)) });
 
-    let (_, expr) = Expr::parse(&["a", "[", "0", "]", "[", "1", "]"], &CTX).unwrap();
+    let (_, expr) = Expr::parse(tokens!["a", "[", "0", "]", "[", "1", "]"], &CTX).unwrap();
     assert_eq!(
       expr,
       Expr::ArrayAccess {
@@ -1010,13 +1054,13 @@ mod tests {
       }
     );
 
-    let (_, expr) = Expr::parse(&["a", "[", "b", "]"], &CTX).unwrap();
+    let (_, expr) = Expr::parse(tokens!["a", "[", "b", "]"], &CTX).unwrap();
     assert_eq!(expr, Expr::ArrayAccess { expr: Box::new(var!(a)), index: Box::new(var!(b)) });
   }
 
   #[test]
   fn parse_assignment() {
-    let (_, expr) = Expr::parse(&["a", "=", "b", "=", "c"], &CTX).unwrap();
+    let (_, expr) = Expr::parse(tokens!["a", "=", "b", "=", "c"], &CTX).unwrap();
     assert_eq!(
       expr,
       Expr::Binary(Box::new(BinaryExpr {
@@ -1029,7 +1073,7 @@ mod tests {
 
   #[test]
   fn parse_function_call() {
-    let (_, expr) = Expr::parse(&["my_function", "(", "arg1", ",", "arg2", ")"], &CTX).unwrap();
+    let (_, expr) = Expr::parse(tokens!["my_function", "(", "arg1", ",", "arg2", ")"], &CTX).unwrap();
     assert_eq!(
       expr,
       Expr::FunctionCall(FunctionCall { name: Box::new(var!(my_function)), args: vec![var!(arg1), var!(arg2)] })
@@ -1038,7 +1082,7 @@ mod tests {
 
   #[test]
   fn parse_paren() {
-    let (_, expr) = Expr::parse(&["(", "-", "123456789012ULL", ")"], &CTX).unwrap();
+    let (_, expr) = Expr::parse(tokens!["(", "-", "123456789012ULL", ")"], &CTX).unwrap();
     assert_eq!(
       expr,
       Expr::Unary(Box::new(UnaryExpr {

@@ -15,7 +15,7 @@ use super::{
   tokens::{meta, parenthesized, token},
   Expr, LitString, Type,
 };
-use crate::{CodegenContext, LocalContext, ParseContext};
+use crate::{CodegenContext, LocalContext, MacroToken, ParseContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Dir {
@@ -139,7 +139,10 @@ impl Asm {
     all_consuming(Self::parse_reg_constraint)(input)
   }
 
-  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  pub(crate) fn parse<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, (template, outputs, inputs, clobbers)) = parenthesized(tuple((
       delimited(
         meta,

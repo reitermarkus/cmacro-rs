@@ -11,7 +11,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext, ParseContext};
+use crate::{CodegenContext, LocalContext, MacroToken, ParseContext};
 
 /// A statement.
 ///
@@ -39,7 +39,7 @@ pub enum Statement {
 }
 
 impl Statement {
-  fn parse_single<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  fn parse_single<'i, 't>(tokens: &'i [MacroToken<'t>], ctx: &ParseContext<'_>) -> IResult<&'i [MacroToken<'t>], Self> {
     let condition = |input| parenthesized(|tokens| Expr::parse(tokens, ctx))(input);
     let block = |input| {
       map(
@@ -81,7 +81,10 @@ impl Statement {
   }
 
   /// Parse a statement.
-  pub(crate) fn parse<'i, 't>(tokens: &'i [&'t str], ctx: &ParseContext<'_>) -> IResult<&'i [&'t str], Self> {
+  pub(crate) fn parse<'i, 't>(
+    tokens: &'i [MacroToken<'t>],
+    ctx: &ParseContext<'_>,
+  ) -> IResult<&'i [MacroToken<'t>], Self> {
     map(many0(delimited(meta, |tokens| Self::parse_single(tokens, ctx), meta)), |mut stmts| {
       if stmts.len() == 1 {
         stmts.remove(0)
@@ -193,11 +196,13 @@ impl Statement {
 mod tests {
   use super::*;
 
+  use crate::macro_set::tokens;
+
   const CTX: ParseContext = ParseContext::var_macro("STMT");
 
   #[test]
   fn parse_expr() {
-    let (_, stmt) = Statement::parse(&["a", "+=", "2", ";"], &CTX).unwrap();
+    let (_, stmt) = Statement::parse(tokens!["a", "+=", "2", ";"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::Expr(Expr::Binary(Box::new(BinaryExpr { lhs: var!(a), op: BinaryOp::AddAssign, rhs: lit!(2) })))
@@ -206,13 +211,13 @@ mod tests {
 
   #[test]
   fn parse_empty_block() {
-    let (_, stmt) = Statement::parse(&["{", "}"], &CTX).unwrap();
+    let (_, stmt) = Statement::parse(tokens!["{", "}"], &CTX).unwrap();
     assert_eq!(stmt, Statement::Block(vec![]));
   }
 
   #[test]
   fn parse_block() {
-    let (_, stmt) = Statement::parse(&["{", "int", "a", "=", "0", ";", "}"], &CTX).unwrap();
+    let (_, stmt) = Statement::parse(tokens!["{", "int", "a", "=", "0", ";", "}"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::Block(vec![Statement::Decl(Decl {
@@ -226,7 +231,7 @@ mod tests {
 
   #[test]
   fn parse_if_stmt() {
-    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "b", ";"], &CTX).unwrap();
+    let (_, stmt) = Statement::parse(tokens!["if", "(", "a", ")", "b", ";"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
@@ -235,7 +240,7 @@ mod tests {
 
   #[test]
   fn parse_if_else_stmt() {
-    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "b", ";", "else", "c", ";"], &CTX).unwrap();
+    let (_, stmt) = Statement::parse(tokens!["if", "(", "a", ")", "b", ";", "else", "c", ";"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::If {
@@ -248,7 +253,7 @@ mod tests {
 
   #[test]
   fn parse_if_block() {
-    let (_, stmt) = Statement::parse(&["if", "(", "a", ")", "{", "b", ";", "}"], &CTX).unwrap();
+    let (_, stmt) = Statement::parse(tokens!["if", "(", "a", ")", "{", "b", ";", "}"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
@@ -258,7 +263,7 @@ mod tests {
   #[test]
   fn parse_if_else_block() {
     let (_, stmt) =
-      Statement::parse(&["if", "(", "a", ")", "{", "b", ";", "}", "else", "{", "c", ";", "}"], &CTX).unwrap();
+      Statement::parse(tokens!["if", "(", "a", ")", "{", "b", ";", "}", "else", "{", "c", ";", "}"], &CTX).unwrap();
     assert_eq!(
       stmt,
       Statement::If {
@@ -271,13 +276,13 @@ mod tests {
 
   #[test]
   fn parse_do_while_stmt() {
-    let (_, stmt) = Statement::parse(&["do", "a", ";", "while", "(", "b", ")"], &CTX).unwrap();
+    let (_, stmt) = Statement::parse(tokens!["do", "a", ";", "while", "(", "b", ")"], &CTX).unwrap();
     assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
   }
 
   #[test]
   fn parse_do_while_block() {
-    let (_, stmt) = Statement::parse(&["do", "{", "a", ";", "}", "while", "(", "b", ")"], &CTX).unwrap();
+    let (_, stmt) = Statement::parse(tokens!["do", "{", "a", ";", "}", "while", "(", "b", ")"], &CTX).unwrap();
     assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
   }
 }

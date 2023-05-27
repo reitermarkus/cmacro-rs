@@ -10,15 +10,17 @@ use nom::{
   character::complete::{char, digit1},
   combinator::{all_consuming, cond, map, opt, recognize},
   sequence::{delimited, pair, preceded, tuple},
-  AsChar, Compare, CompareResult, FindSubstring, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition,
+  AsChar, Compare, CompareResult, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition,
   Offset, ParseTo, Slice,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use std::num::FpCategory;
 
-use super::{meta, take_one, token};
-use crate::{BuiltInType, CodegenContext, LocalContext, Type};
+use crate::{
+  ast::tokens::{macro_token, meta, token},
+  BuiltInType, CodegenContext, LocalContext, MacroToken, Type,
+};
 
 /// A floating-point literal.
 ///
@@ -77,10 +79,10 @@ impl LitFloat {
   }
 
   /// Parse a floating-point literal.
-  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
-    let (_, input) = take_one(tokens)?;
+  pub fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+    let (_, input) = macro_token(tokens)?;
 
-    let (_, (repr, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;
+    let (_, (repr, size1)) = Self::from_str(input.as_ref()).map_err(|err| err.map_input(|_| tokens))?;
 
     let tokens = &tokens[1..];
 
@@ -223,27 +225,29 @@ impl Div for LitFloat {
 mod tests {
   use super::*;
 
+  use crate::macro_set::tokens;
+
   #[test]
   fn parse_float() {
-    let (_, id) = LitFloat::parse(&[r#"12.34"#]).unwrap();
+    let (_, id) = LitFloat::parse(tokens![r#"12.34"#]).unwrap();
     assert_eq!(id, LitFloat::Double(12.34));
 
-    let (_, id) = LitFloat::parse(&[r#"12.34f"#]).unwrap();
+    let (_, id) = LitFloat::parse(tokens![r#"12.34f"#]).unwrap();
     assert_eq!(id, LitFloat::Float(12.34));
 
-    let (_, id) = LitFloat::parse(&[r#"12.34L"#]).unwrap();
+    let (_, id) = LitFloat::parse(tokens![r#"12.34L"#]).unwrap();
     assert_eq!(id, LitFloat::LongDouble(12.34));
 
-    let (_, id) = LitFloat::parse(&[r#".1"#]).unwrap();
+    let (_, id) = LitFloat::parse(tokens![r#".1"#]).unwrap();
     assert_eq!(id, LitFloat::Double(0.1));
 
-    let (_, id) = LitFloat::parse(&[r#"1."#]).unwrap();
+    let (_, id) = LitFloat::parse(tokens![r#"1."#]).unwrap();
     assert_eq!(id, LitFloat::Double(1.0));
 
-    let (_, id) = LitFloat::parse(&[r#"1e1"#]).unwrap();
+    let (_, id) = LitFloat::parse(tokens![r#"1e1"#]).unwrap();
     assert_eq!(id, LitFloat::Double(10.0));
 
-    let (_, id) = LitFloat::parse(&[r#"1e-1f"#]).unwrap();
+    let (_, id) = LitFloat::parse(tokens![r#"1e-1f"#]).unwrap();
     assert_eq!(id, LitFloat::Float(0.1));
   }
 }

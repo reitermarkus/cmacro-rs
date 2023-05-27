@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, fs, process::exit};
+use std::{borrow::Cow, collections::HashMap, env, fs, process::exit};
 
 use clang::{source::SourceRange, Clang, EntityKind, EntityVisitResult, Index};
 use glob::glob;
@@ -148,12 +148,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             .map(|s| if s == "..." { "$__VA_ARGS__".to_owned() } else { format!("${s}") })
             .collect::<Vec<_>>();
           let arg_names2 = arg_names2.iter().map(|s| s.as_ref()).collect::<Vec<_>>();
-          let arg_names = arg_names.iter().map(|s| s.as_ref()).collect::<Vec<_>>();
+          let arg_names =
+            arg_names.iter().map(|s| cmacro::MacroToken::Token(Cow::Borrowed(s.as_ref()))).collect::<Vec<_>>();
           let body = fn_macro
-            .iter()
+            .into_iter()
             .map(|t| match t {
-              cmacro::MacroToken::Arg(i) => arg_names2[*i],
-              cmacro::MacroToken::Token(s) => s.as_ref(),
+              cmacro::MacroToken::Arg(i) => cmacro::MacroToken::Token(Cow::Borrowed(arg_names2[i])),
+              cmacro::MacroToken::Token(s) => cmacro::MacroToken::Token(s),
             })
             .collect::<Vec<_>>();
 
@@ -173,10 +174,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
       match context.macro_set.expand_var_macro(name) {
         Ok(var_macro) => {
           let body = var_macro
-            .iter()
+            .into_iter()
             .map(|t| match t {
               cmacro::MacroToken::Arg(_) => unreachable!(),
-              cmacro::MacroToken::Token(s) => s.as_ref(),
+              cmacro::MacroToken::Token(s) => cmacro::MacroToken::Token(s),
             })
             .collect::<Vec<_>>();
 
