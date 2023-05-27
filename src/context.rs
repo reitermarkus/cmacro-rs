@@ -91,7 +91,7 @@ where
     self.global_context.resolve_ty(ty)
   }
 
-  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
+  fn function(&self, name: &str) -> Option<(Vec<syn::Type>, syn::Type)> {
     self.global_context.function(name)
   }
 }
@@ -147,7 +147,7 @@ pub trait CodegenContext {
   /// exists, this should return `Some((vec!["int".into(), "int".into()], "int".into()))`
   /// when `name` is `"add"`.
   #[allow(unused_variables)]
-  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
+  fn function(&self, name: &str) -> Option<(Vec<syn::Type>, syn::Type)> {
     None
   }
 }
@@ -176,7 +176,7 @@ where
     T::resolve_ty(self, ty)
   }
 
-  fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
+  fn function(&self, name: &str) -> Option<(Vec<syn::Type>, syn::Type)> {
     T::function(self, name)
   }
 }

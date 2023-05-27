@@ -380,10 +380,10 @@ impl Type {
     tokens
   }
 
-  pub(crate) fn from_rust_ty(ty: syn::Type, ffi_prefix: Option<&syn::Path>) -> Result<Self, crate::CodegenError> {
+  pub(crate) fn from_rust_ty(ty: &syn::Type, ffi_prefix: Option<&syn::Path>) -> Result<Self, crate::CodegenError> {
     match ty {
       syn::Type::Ptr(ptr_ty) => Ok(Self::Ptr {
-        ty: Box::new(Self::from_rust_ty(*ptr_ty.elem, ffi_prefix)?),
+        ty: Box::new(Self::from_rust_ty(&*ptr_ty.elem, ffi_prefix)?),
         mutable: ptr_ty.mutability.is_some(),
       }),
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),

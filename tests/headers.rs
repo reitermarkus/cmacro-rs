@@ -121,14 +121,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     }
 
     impl CodegenContext for Context {
-      fn function(&self, name: &str) -> Option<(Vec<String>, String)> {
+      fn function(&self, name: &str) -> Option<(Vec<syn::Type>, syn::Type)> {
         let (arg_tys, ret_ty) = self.functions.get(name)?;
-        use quote::ToTokens;
 
-        let parse_type = |ty: &str| -> Option<String> {
+        let parse_type = |ty: &str| {
           let ty = ty.parse::<cmacro::Type>().ok()?;
           let ty = ty.to_rust_ty(self.ffi_prefix())?;
-          Some(ty.to_token_stream().to_string())
+          Some(ty)
         };
 
         let arg_tys = arg_tys.iter().map(|ty| parse_type(ty.as_str())).collect::<Option<Vec<_>>>()?;
