@@ -45,8 +45,8 @@ impl MacroBody {
     }
 
     let (tokens, body) = alt((
-      all_consuming(map(|tokens| Expr::parse(tokens), Self::Expr)),
-      all_consuming(map(|tokens| Statement::parse(tokens), Self::Statement)),
+      all_consuming(map(Expr::parse, Self::Expr)),
+      all_consuming(map(Statement::parse, Self::Statement)),
     ))(tokens)?;
 
     Ok((tokens, body))

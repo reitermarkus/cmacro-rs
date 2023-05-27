@@ -182,11 +182,7 @@ fn ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Type
     map(int_ty, Type::BuiltIn),
     // [const] <identifier>
     map(
-      delimited(
-        const_qualifier,
-        pair(opt(keyword("struct")), |tokens| Expr::parse_concat_ident(tokens)),
-        const_qualifier,
-      ),
+      delimited(const_qualifier, pair(opt(keyword("struct")), Expr::parse_concat_ident), const_qualifier),
       |(s, id)| Type::Identifier { name: Box::new(id), is_struct: s.is_some() },
     ),
   ))(input)
@@ -215,7 +211,7 @@ pub enum Type {
 impl Type {
   /// Parse a type.
   pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, ty) = delimited(const_qualifier, |tokens| ty(tokens), const_qualifier)(tokens)?;
+    let (tokens, ty) = delimited(const_qualifier, ty, const_qualifier)(tokens)?;
 
     fold_many0(
       preceded(pair(token("*"), meta), const_qualifier),

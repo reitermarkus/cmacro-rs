@@ -159,7 +159,7 @@ impl Asm {
                 let (_, operands) = Self::parse_output_operands(s.as_str()?).ok()?;
                 Some(operands)
               }),
-              parenthesized(|tokens| Expr::parse(tokens)),
+              parenthesized(Expr::parse),
             ),
             |((dir, reg), id)| (dir, reg, id),
           ),
@@ -174,7 +174,7 @@ impl Asm {
               let (_, operands) = Self::parse_input_operands(s.as_str()?).ok()?;
               Some(operands)
             }),
-            parenthesized(|tokens| Expr::parse(tokens)),
+            parenthesized(Expr::parse),
           ),
         ),
       )),

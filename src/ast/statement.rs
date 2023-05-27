@@ -40,12 +40,9 @@ pub enum Statement {
 
 impl Statement {
   fn parse_single<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let condition = |input| parenthesized(|tokens| Expr::parse(tokens))(input);
-    let block = |input| {
-      map(|tokens| Self::parse_single(tokens), |stmt| if let Self::Block(stmts) = stmt { stmts } else { vec![stmt] })(
-        input,
-      )
-    };
+    let condition = |input| parenthesized(Expr::parse)(input);
+    let block =
+      |input| map(Self::parse_single, |stmt| if let Self::Block(stmts) = stmt { stmts } else { vec![stmt] })(input);
     let semicolon_or_eof = |input| alt((value((), token(";")), value((), eof)))(input);
 
     alt((
@@ -66,22 +63,18 @@ impl Statement {
         |(block, condition)| Self::DoWhile { block, condition },
       ),
       map(
-        delimited(
-          terminated(token("{"), meta),
-          many0(preceded(meta, |tokens| Self::parse_single(tokens))),
-          preceded(meta, token("}")),
-        ),
+        delimited(terminated(token("{"), meta), many0(preceded(meta, Self::parse_single)), preceded(meta, token("}"))),
         Self::Block,
       ),
-      map(terminated(|tokens| FunctionDecl::parse(tokens), semicolon_or_eof), Self::FunctionDecl),
-      map(terminated(|tokens| Decl::parse(tokens), semicolon_or_eof), Self::Decl),
-      map(terminated(|tokens| Expr::parse(tokens), semicolon_or_eof), Self::Expr),
+      map(terminated(FunctionDecl::parse, semicolon_or_eof), Self::FunctionDecl),
+      map(terminated(Decl::parse, semicolon_or_eof), Self::Decl),
+      map(terminated(Expr::parse, semicolon_or_eof), Self::Expr),
     ))(tokens)
   }
 
   /// Parse a statement.
   pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    map(many0(delimited(meta, |tokens| Self::parse_single(tokens), meta)), |mut stmts| {
+    map(many0(delimited(meta, Self::parse_single, meta)), |mut stmts| {
       if stmts.len() == 1 {
         stmts.remove(0)
       } else {

@@ -29,12 +29,9 @@ impl FunctionDecl {
   /// Parse a function declaration.
   pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, ((_, ret_ty), name, args)) = tuple((
-      permutation((opt(token("static")), |tokens| Type::parse(tokens))),
-      |tokens| Expr::parse_concat_ident(tokens),
-      parenthesized(separated_list0(
-        pair(meta, token(",")),
-        pair(|tokens| Type::parse(tokens), |tokens| Expr::parse_concat_ident(tokens)),
-      )),
+      permutation((opt(token("static")), Type::parse)),
+      Expr::parse_concat_ident,
+      parenthesized(separated_list0(pair(meta, token(",")), pair(Type::parse, Expr::parse_concat_ident))),
     ))(tokens)?;
 
     Ok((tokens, Self { ret_ty, name, args }))

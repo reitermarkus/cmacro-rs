@@ -51,7 +51,7 @@ impl Expr {
   pub(crate) fn parse_concat_ident<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, id) = alt((
       map(macro_arg, |index| Self::Arg { index }),
-      map(|tokens| LitIdent::parse(tokens), |id| Self::Variable { name: id }),
+      map(LitIdent::parse, |id| Self::Variable { name: id }),
     ))(tokens)?;
 
     fold_many0(
@@ -59,7 +59,7 @@ impl Expr {
         delimited(meta, token("##"), meta),
         alt((
           map(macro_arg, |index| Self::Arg { index }),
-          map(|tokens| LitIdent::parse_concat(tokens), |id| Self::Variable { name: id }),
+          map(LitIdent::parse_concat, |id| Self::Variable { name: id }),
         )),
       ),
       move || id.clone(),
@@ -75,11 +75,9 @@ impl Expr {
 
   /// Parse string concatenation, e.g. `arg "333"`.
   fn parse_concat_string<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let parse_var = |tokens| Self::parse_concat_ident(tokens);
-    let parse_string = alt((
-      map(LitString::parse, |s| Self::Literal(Lit::String(s))),
-      map(|tokens| Stringify::parse(tokens), Self::Stringify),
-    ));
+    let parse_var = Self::parse_concat_ident;
+    let parse_string =
+      alt((map(LitString::parse, |s| Self::Literal(Lit::String(s))), map(Stringify::parse, Self::Stringify)));
     let mut parse_part = alt((parse_string, parse_var));
 
     let (tokens, s) = parse_part(tokens)?;
@@ -100,9 +98,9 @@ impl Expr {
   fn parse_factor<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
       map(LitChar::parse, |c| Self::Literal(Lit::Char(c))),
-      |tokens| Self::parse_concat_string(tokens),
+      Self::parse_concat_string,
       map(Lit::parse, Self::Literal),
-      parenthesized(|tokens| Self::parse(tokens)),
+      parenthesized(Self::parse),
     ))(tokens)
   }
 
@@ -155,19 +153,17 @@ impl Expr {
         preceded(
           meta,
           alt((
-            map(
-              parenthesized(separated_list0(tuple((meta, token(","), meta)), |tokens| Self::parse(tokens))),
-              Access::Fn,
-            ),
-            map(preceded(terminated(token("."), meta), |tokens| Self::parse_concat_ident(tokens)), |field| {
-              Access::Field { field: Box::new(field), deref: false }
+            map(parenthesized(separated_list0(tuple((meta, token(","), meta)), Self::parse)), Access::Fn),
+            map(preceded(terminated(token("."), meta), Self::parse_concat_ident), |field| Access::Field {
+              field: Box::new(field),
+              deref: false,
             }),
-            map(
-              delimited(terminated(token("["), meta), |tokens| Self::parse(tokens), preceded(meta, token("]"))),
-              |index| Access::Array { index: Box::new(index) },
-            ),
-            map(preceded(terminated(token("->"), meta), |tokens| Self::parse_concat_ident(tokens)), |field| {
-              Access::Field { field: Box::new(field), deref: true }
+            map(delimited(terminated(token("["), meta), Self::parse, preceded(meta, token("]"))), |index| {
+              Access::Array { index: Box::new(index) }
+            }),
+            map(preceded(terminated(token("->"), meta), Self::parse_concat_ident), |field| Access::Field {
+              field: Box::new(field),
+              deref: true,
             }),
             map(alt((value(UnaryOp::PostInc, token("++")), value(UnaryOp::PostDec, token("--")))), |op| {
               Access::UnaryOp(op)
@@ -206,8 +202,9 @@ impl Expr {
 
   fn parse_term_prec2<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
-      map(pair(parenthesized(|tokens| Type::parse(tokens)), |tokens| Self::parse_term_prec2(tokens)), |(ty, term)| {
-        Self::Cast { expr: Box::new(term), ty }
+      map(pair(parenthesized(Type::parse), Self::parse_term_prec2), |(ty, term)| Self::Cast {
+        expr: Box::new(term),
+        ty,
       }),
       map(
         pair(
@@ -224,11 +221,11 @@ impl Expr {
             )),
             meta,
           ),
-          |tokens| Self::parse_term_prec2(tokens),
+          Self::parse_term_prec2,
         ),
         |(op, expr)| Self::Unary(Box::new(UnaryExpr { op, expr })),
       ),
-      |tokens| Self::parse_term_prec1(tokens),
+      Self::parse_term_prec1,
     ))(tokens)
   }
 
@@ -242,7 +239,7 @@ impl Expr {
           alt((value(BinaryOp::Mul, token("*")), value(BinaryOp::Div, token("/")), value(BinaryOp::Rem, token("%")))),
           meta,
         ),
-        |tokens| Self::parse_term_prec2(tokens),
+        Self::parse_term_prec2,
       ),
       move || term.clone(),
       |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
@@ -255,7 +252,7 @@ impl Expr {
     fold_many0(
       pair(
         delimited(meta, alt((value(BinaryOp::Add, token("+")), value(BinaryOp::Sub, token("-")))), meta),
-        |tokens| Self::parse_term_prec3(tokens),
+        Self::parse_term_prec3,
       ),
       move || term.clone(),
       |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
@@ -268,7 +265,7 @@ impl Expr {
     fold_many0(
       pair(
         delimited(meta, alt((value(BinaryOp::Shl, token("<<")), value(BinaryOp::Shr, token(">>")))), meta),
-        |tokens| Self::parse_term_prec4(tokens),
+        Self::parse_term_prec4,
       ),
       move || term.clone(),
       |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
@@ -290,7 +287,7 @@ impl Expr {
           )),
           meta,
         ),
-        |tokens| Self::parse_term_prec5(tokens),
+        Self::parse_term_prec5,
       ),
       move || term.clone(),
       |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
@@ -303,7 +300,7 @@ impl Expr {
     fold_many0(
       pair(
         delimited(meta, alt((value(BinaryOp::Eq, token("==")), value(BinaryOp::Neq, token("!=")))), meta),
-        |tokens| Self::parse_term_prec6(tokens),
+        Self::parse_term_prec6,
       ),
       move || term.clone(),
       |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
@@ -314,7 +311,7 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec7(tokens)?;
 
     fold_many0(
-      preceded(delimited(meta, token("&"), meta), |tokens| Self::parse_term_prec7(tokens)),
+      preceded(delimited(meta, token("&"), meta), Self::parse_term_prec7),
       move || term.clone(),
       |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitAnd, rhs })),
     )(tokens)
@@ -324,7 +321,7 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec8(tokens)?;
 
     fold_many0(
-      preceded(delimited(meta, token("^"), meta), |tokens| Self::parse_term_prec8(tokens)),
+      preceded(delimited(meta, token("^"), meta), Self::parse_term_prec8),
       move || term.clone(),
       |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitXor, rhs })),
     )(tokens)
@@ -334,7 +331,7 @@ impl Expr {
     let (tokens, term) = Self::parse_term_prec9(tokens)?;
 
     fold_many0(
-      preceded(delimited(meta, token("|"), meta), |tokens| Self::parse_term_prec9(tokens)),
+      preceded(delimited(meta, token("|"), meta), Self::parse_term_prec9),
       move || term.clone(),
       |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitOr, rhs })),
     )(tokens)
@@ -376,7 +373,7 @@ impl Expr {
           )),
           meta,
         ),
-        |tokens| Self::parse_term_prec14(tokens),
+        Self::parse_term_prec14,
       ),
       move || term.clone(),
       |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),

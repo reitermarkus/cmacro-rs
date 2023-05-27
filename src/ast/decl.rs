@@ -24,12 +24,10 @@ pub struct Decl {
 impl Decl {
   /// Parse a variable declaration.
   pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, ((static_storage, ty), name, _, rhs)) = tuple((
-      permutation((opt(token("static")), |tokens| Type::parse(tokens))),
-      |tokens| Expr::parse_concat_ident(tokens),
-      token("="),
-      |tokens| Expr::parse(tokens),
-    ))(tokens)?;
+    let (tokens, ((static_storage, ty), name, _, rhs)) =
+      tuple((permutation((opt(token("static")), Type::parse)), Expr::parse_concat_ident, token("="), Expr::parse))(
+        tokens,
+      )?;
 
     Ok((tokens, Self { ty, name, rhs, is_static: static_storage.is_some() }))
   }
