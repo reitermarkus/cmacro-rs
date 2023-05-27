@@ -24,6 +24,11 @@ impl FunctionCall {
   where
     C: CodegenContext,
   {
+    // Cannot call functions in `const` context.
+    if ctx.is_variable_macro() {
+      return Err(crate::CodegenError::UnsupportedExpression)
+    }
+
     self.name.finish(ctx)?;
 
     for arg in self.args.iter_mut() {
@@ -34,11 +39,6 @@ impl FunctionCall {
 
     if let Expr::Variable { ref name } = *self.name {
       if let Some((known_args, known_ret_ty)) = ctx.function(name.as_str()) {
-        // Cannot call external functions in `const` context.
-        if ctx.is_variable_macro() {
-          return Err(crate::CodegenError::UnsupportedExpression)
-        }
-
         if known_args.len() == self.args.len() {
           if let Ok(y) = syn::parse_str::<syn::Type>(&known_ret_ty) {
             ty = Some(Type::try_from(y)?);
