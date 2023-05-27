@@ -9,9 +9,8 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{
-  identifier::identifier_lit,
   tokens::{macro_arg, meta, token},
-  BuiltInType, LitIdent, Type,
+  BuiltInType, Type,
 };
 use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken, ParseContext};
 
@@ -43,7 +42,7 @@ impl Stringify {
       *arg_ty = MacroArgType::Expr;
     }
 
-    return Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
+    Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {

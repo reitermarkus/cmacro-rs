@@ -5,7 +5,7 @@ use nom::{
   combinator::{eof, map, opt, value},
   multi::many0,
   sequence::{delimited, pair, preceded, terminated, tuple},
-  AsChar, IResult,
+  IResult,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};

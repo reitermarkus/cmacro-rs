@@ -39,7 +39,7 @@ pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'
       |s| {
         let mut chars = s.chars();
 
-        let mut start = chars.next()?;
+        let start = chars.next()?;
 
         if (unicode_ident::is_xid_start(start) || start == '_') && chars.all(unicode_ident::is_xid_continue) {
           Some(LitIdent { id: s })

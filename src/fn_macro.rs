@@ -165,7 +165,7 @@ impl FnMacro {
       })
       .collect::<Result<_, _>>()?;
 
-    let mut ctx = LocalContext::new(&self.name, &cx);
+    let mut ctx = LocalContext::new(&cx);
     ctx.arg_names = self.args.clone();
     ctx.arg_types = arg_types;
     let ret_ty = self.body.finish(&mut ctx)?;

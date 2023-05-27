@@ -485,6 +485,7 @@ impl MacroSet {
     Ok(detokenize(&[], tokens))
   }
 
+  /// Get the argument names of a function-like macro.
   pub fn fn_macro_args<'s>(&'s self, name: &str) -> Option<&'s [String]> {
     self.fn_macros.get(name).map(|(arg_names, _)| arg_names.as_slice())
   }
@@ -498,31 +499,38 @@ impl MacroSet {
   }
 }
 
+#[cfg(test)]
 pub(crate) trait ToMacroToken<'t> {
   fn to_macro_token(self) -> MacroToken<'t>;
 }
 
+#[cfg(test)]
 impl<'t> ToMacroToken<'t> for MacroToken<'t> {
   fn to_macro_token(self) -> MacroToken<'t> {
     self
   }
 }
 
+#[cfg(test)]
 impl<'t> ToMacroToken<'t> for &'t str {
   fn to_macro_token(self) -> MacroToken<'t> {
     MacroToken::Token(Cow::Borrowed(self))
   }
 }
 
+#[cfg(test)]
 macro_rules! arg {
   ($index:expr) => {{
     MacroToken::Arg($index)
   }};
 }
+#[cfg(test)]
 pub(crate) use arg;
 
+#[cfg(test)]
 macro_rules! tokens {
   ($($token:expr),*) => {{
+    #[allow(unused)]
     use $crate::macro_set::ToMacroToken;
 
     &[
@@ -532,10 +540,13 @@ macro_rules! tokens {
     ]
   }};
 }
+#[cfg(test)]
 pub(crate) use tokens;
 
+#[cfg(test)]
 macro_rules! token_vec {
   ($($token:expr),*) => {{
+    #[allow(unused)]
     use $crate::macro_set::ToMacroToken;
 
     vec![

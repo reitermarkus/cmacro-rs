@@ -49,7 +49,7 @@ impl VarMacro {
   where
     C: CodegenContext,
   {
-    let mut ctx = LocalContext::new(&self.name, &cx);
+    let mut ctx = LocalContext::new(&cx);
     ctx.is_variable_macro = true;
 
     ctx.generate_cstr = ctx

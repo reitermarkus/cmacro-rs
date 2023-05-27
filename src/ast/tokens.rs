@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug};
+use std::borrow::Cow;
 
 use nom::{
   bytes::complete::{tag, take_until},
@@ -11,33 +11,22 @@ use nom::{
 use crate::MacroToken;
 
 pub(crate) fn macro_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], usize> {
-  map_opt(take_one_ref, |token| if let MacroToken::Arg(index) = token { Some(*index) } else { None })(tokens)
+  map_opt(take_one, |token| if let MacroToken::Arg(index) = token { Some(*index) } else { None })(tokens)
 }
 
 pub(crate) fn macro_token<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Cow<'t, str>> {
-  map_opt(take_one_ref, |token| {
+  map_opt(take_one, |token| {
     let token = if let MacroToken::Token(token) = token { token } else { return None };
     Some(token.clone())
   })(tokens)
 }
 
-pub(crate) fn take_one_ref<I>(tokens: &[I]) -> IResult<&[I], &I>
+pub(crate) fn take_one<I>(tokens: &[I]) -> IResult<&[I], &I>
 where
   I: Clone,
 {
   if let Some((first, tokens)) = tokens.split_first() {
     return Ok((tokens, first))
-  }
-
-  Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Eof)))
-}
-
-pub(crate) fn take_one<I>(tokens: &[I]) -> IResult<&[I], I>
-where
-  I: Debug + Clone,
-{
-  if let Some((first, tokens)) = tokens.split_first() {
-    return Ok((tokens, first.clone()))
   }
 
   Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Eof)))

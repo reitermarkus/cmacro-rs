@@ -105,8 +105,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     struct Context {
       pub macros: Vec<String>,
       pub functions: HashMap<String, (Vec<String>, String)>,
-      pub fn_macros: HashMap<String, FnMacro>,
-      pub var_macros: HashMap<String, VarMacro>,
       pub macro_set: MacroSet,
     }
 

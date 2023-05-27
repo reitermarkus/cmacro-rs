@@ -1,5 +1,3 @@
-use std::collections::{HashMap, HashSet};
-
 use super::*;
 
 /// Type of a macro argument.
@@ -17,27 +15,24 @@ pub(crate) enum MacroArgType {
 
 pub(crate) struct ParseContext<'m> {
   #[allow(unused)]
-  pub name: &'m str,
   pub args: &'m [&'m str],
 }
 
 impl<'m> ParseContext<'m> {
   const NO_ARGS: &'static [&'static str] = &[];
 
-  pub const fn fn_macro(name: &'m str, args: &'m [&'m str]) -> Self {
-    Self { name, args }
+  pub const fn fn_macro(_name: &'m str, args: &'m [&'m str]) -> Self {
+    Self { args }
   }
 
-  pub const fn var_macro(name: &'m str) -> Self {
-    Self { name, args: Self::NO_ARGS }
+  pub const fn var_macro(_name: &'m str) -> Self {
+    Self { args: Self::NO_ARGS }
   }
 }
 
 /// Local code generation context.
 #[derive(Debug, Clone)]
 pub(crate) struct LocalContext<'g, C> {
-  pub(crate) root_name: String,
-  pub(crate) names: HashSet<String>,
   pub(crate) arg_names: Vec<String>,
   pub(crate) arg_types: Vec<MacroArgType>,
   pub(crate) export_as_macro: bool,
@@ -50,15 +45,8 @@ impl<'g, C> LocalContext<'g, C>
 where
   C: CodegenContext,
 {
-  pub fn new(root_name: &str, cx: &'g C) -> Self {
-    let root_name = root_name.to_owned();
-
-    let mut names = HashSet::new();
-    names.insert(root_name.clone());
-
+  pub fn new(cx: &'g C) -> Self {
     Self {
-      root_name,
-      names,
       arg_names: Default::default(),
       arg_types: Default::default(),
       export_as_macro: false,
@@ -94,28 +82,7 @@ impl<'g, C> LocalContext<'g, C> {
   }
 }
 
-impl<C> LocalContext<'_, C>
-where
-  C: CodegenContext,
-{
-  pub fn eval_variable(&mut self, name: &str) -> Result<(Expr, Option<Type>), crate::CodegenError> {
-    if self.names.contains(name) {
-      return Err(crate::CodegenError::RecursiveDefinition(name.to_owned()))
-    }
-
-    let mut ctx = Self::new(&self.root_name, self.global_context);
-    ctx.names.insert(name.to_owned());
-    ctx.names.extend(self.names.iter().cloned());
-
-    if ctx.is_variable_macro() {
-      return Err(crate::CodegenError::UnknownVariable(name.to_owned()))
-    }
-
-    self.export_as_macro = true;
-
-    Ok((Expr::Variable { name: LitIdent { id: name.to_owned() } }, None))
-  }
-}
+impl<C> LocalContext<'_, C> where C: CodegenContext {}
 
 impl<'g, C> CodegenContext for LocalContext<'g, C>
 where

@@ -56,8 +56,6 @@ pub(crate) use ty;
 macro_rules! assert_eq_tokens {
   ($expr:expr, $expected:expr) => {
     let mut ctx = LocalContext {
-      root_name: Default::default(),
-      names: Default::default(),
       arg_names: Default::default(),
       arg_types: Default::default(),
       export_as_macro: false,

@@ -322,7 +322,7 @@ impl FromStr for Type {
     let ty = s.replace('*', " * ");
 
     let tokens = ty.split_whitespace().map(|t| MacroToken::Token(Cow::Borrowed(t))).collect::<Vec<_>>();
-    let ctx = ParseContext { name: "", args: &[] };
+    let ctx = ParseContext { args: &[] };
     let (_, ty) = Self::parse(&tokens, &ctx).map_err(|_| crate::CodegenError::UnsupportedType(s.to_owned()))?;
     Ok(ty)
   }
