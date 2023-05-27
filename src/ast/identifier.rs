@@ -1,4 +1,4 @@
-use std::{fmt::Debug};
+use std::fmt::Debug;
 
 use nom::{
   branch::alt,
@@ -9,10 +9,7 @@ use nom::{
   IResult,
 };
 
-use super::{
-  literal::universal_char,
-  tokens::{take_one},
-};
+use super::{literal::universal_char, tokens::take_one};
 use crate::ParseContext;
 
 pub(crate) fn identifier_arg<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], LitIdent> {

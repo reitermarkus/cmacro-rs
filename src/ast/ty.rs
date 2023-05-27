@@ -112,17 +112,11 @@ impl BuiltInType {
 }
 
 fn int_ty<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], BuiltInType> {
-  fn int_signedness<I>(input: &[I]) -> IResult<&[I], &'static str>
-  where
-    I: Debug + InputTake + InputLength + Slice<std::ops::RangeFrom<usize>> + Compare<&'static str> + Clone,
-  {
+  fn int_signedness<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], &'static str> {
     alt((keyword("unsigned"), keyword("signed")))(input)
   }
 
-  fn int_length<I>(input: &[I]) -> IResult<&[I], &'static str>
-  where
-    I: Debug + InputTake + InputLength + Slice<std::ops::RangeFrom<usize>> + Compare<&'static str> + Clone,
-  {
+  fn int_length<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], &'static str> {
     alt((keyword("short"), keyword("long")))(input)
   }
 

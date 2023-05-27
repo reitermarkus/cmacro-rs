@@ -77,23 +77,7 @@ impl LitFloat {
   }
 
   /// Parse a floating-point literal.
-  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<RangeTo<usize>>
-      + Slice<RangeFrom<usize>>
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Compare<&'static str>
-      + Offset
-      + Clone
-      + ParseTo<f32>
-      + ParseTo<f64>
-      + FindSubstring<&'static str>,
-    C: AsChar,
-  {
+  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (_, input) = take_one(tokens)?;
 
     let (_, (repr, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;

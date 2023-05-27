@@ -59,7 +59,7 @@ impl Expr {
 
     fold_many0(
       preceded(
-        delimited(meta::<&'t str>, token::<&'t str>("##"), meta::<&'t str>),
+        delimited(meta, token("##"), meta),
         alt((
           map(concat_identifier_arg, |id| Self::Arg { name: id }),
           map(|tokens| LitIdent::parse_concat(tokens, ctx), |id| Self::Variable { name: id }),

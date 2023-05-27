@@ -77,24 +77,7 @@ impl From<i32> for Lit {
 
 impl Lit {
   /// Parse a literal.
-  pub fn parse<I, C>(input: &[I]) -> IResult<&[I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + InputIter<Item = C>
-      + Clone
-      + InputTakeAtPosition<Item = C>
-      + Compare<&'static str>
-      + Offset
-      + ParseTo<f32>
-      + ParseTo<f64>
-      + FindSubstring<&'static str>,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     alt((
       map(LitChar::parse, Self::Char),
       map(LitString::parse, Self::String),

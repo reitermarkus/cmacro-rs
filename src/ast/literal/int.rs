@@ -109,20 +109,7 @@ impl LitInt {
   }
 
   /// Parse an integer literal.
-  pub fn parse<I, C>(tokens: &[I]) -> IResult<&[I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<std::ops::RangeFrom<usize>>
-      + Compare<&'static str>
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + FindSubstring<&'static str>
-      + Clone,
-    C: AsChar,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  pub fn parse<'i, 't>(tokens: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (tokens, input) = take_one(tokens)?;
 
     let (_, (value, unsigned1, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;
@@ -160,7 +147,7 @@ impl LitInt {
             preceded(
               delimited(meta, token("##"), meta),
               map_parser(take_one, |token| {
-                Self::parse_suffix(token).map_err(|err: nom::Err<nom::error::Error<I>>| err.map_input(|_| tokens))
+                Self::parse_suffix(token).map_err(|err: nom::Err<nom::error::Error<&'t str>>| err.map_input(|_| tokens))
               }),
             ),
           ),

@@ -63,20 +63,7 @@ pub enum LitChar {
 
 impl LitChar {
   /// Parse a character literal.
-  pub fn parse<I>(input: &[I]) -> IResult<&[I], Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<RangeFrom<usize>>
-      + Slice<RangeTo<usize>>
-      + Offset
-      + InputIter
-      + Clone
-      + Compare<&'static str>,
-    <I as InputIter>::Item: AsChar + Copy,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
+  pub fn parse<'i, 't>(input: &'i [&'t str]) -> IResult<&'i [&'t str], Self> {
     let (input, utf8_prefix) = if let Ok((input, _)) = token("u8")(input) { (input, true) } else { (input, false) };
     let (input2, token) = take_one(input)?;
 
