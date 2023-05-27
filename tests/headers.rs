@@ -18,7 +18,7 @@ fn location_in_scope(r: &SourceRange) -> bool {
   start.is_in_main_file() && !start.is_in_system_header() && location.file.is_some()
 }
 
-fn file_visit_macros<F: FnMut(EntityKind, &str, Option<&[&str]>, &[&str])>(file: &str, mut visitor: F) {
+fn file_visit_macros<F: FnMut(EntityKind, String, Option<Vec<String>>, Vec<String>)>(file: &str, mut visitor: F) {
   let clang = Clang::new().unwrap();
 
   let index = Index::new(&clang, false, true);
@@ -40,15 +40,14 @@ fn file_visit_macros<F: FnMut(EntityKind, &str, Option<&[&str]>, &[&str])>(file:
 
     match cur.get_kind() {
       kind @ EntityKind::FunctionDecl => {
-        let mut tokens = range.tokenize().into_iter().map(|token| token.get_spelling());
+        let mut tokens = range.tokenize().into_iter().map(|token| token.get_spelling().to_owned());
 
         let return_type = tokens.next().unwrap();
         let name = tokens.next().unwrap();
         tokens.next();
         let args = tokens.take_while(|token| token != ")").collect::<Vec<_>>();
-        let args = args.iter().map(|t| t.as_str()).collect::<Vec<&str>>();
 
-        visitor(kind, &name, Some(args).as_deref(), &[&return_type])
+        visitor(kind, name, Some(args), vec![return_type])
       },
       kind @ EntityKind::MacroDefinition => {
         let range = cur.get_range().unwrap();
@@ -70,10 +69,7 @@ fn file_visit_macros<F: FnMut(EntityKind, &str, Option<&[&str]>, &[&str])>(file:
           None
         };
 
-        let args = args.as_ref().map(|args| args.iter().map(|t| t.as_str()).collect::<Vec<&str>>());
-        let tokens = tokens.iter().map(|t| t.as_str()).collect::<Vec<&str>>();
-
-        visitor(kind, &name, args.as_deref(), &tokens)
+        visitor(kind, name, args, tokens)
       },
       _ => (),
     }
@@ -116,21 +112,18 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let mut context = Context::default();
 
-    file_visit_macros(&header_path, |kind, name, args, value| match kind {
+    file_visit_macros(&header_path, |kind, name, args, mut value| match kind {
       EntityKind::FunctionDecl => {
-        context.functions.insert(
-          name.to_owned(),
-          (args.unwrap().iter().map(|&token| token.to_owned()).collect(), value[0].to_owned()),
-        );
+        context.functions.insert(name.to_owned(), (args.unwrap(), value.remove(0)));
       },
       EntityKind::MacroDefinition => {
         if let Some(args) = args {
-          context.macro_set.define_fn_macro(name, args, value);
+          context.macro_set.define_fn_macro(name.clone(), args, value);
         } else {
-          context.macro_set.define_var_macro(name, value);
+          context.macro_set.define_var_macro(name.clone(), value);
         }
 
-        context.macros.push(name.to_owned());
+        context.macros.push(name);
       },
       _ => (),
     });
@@ -139,15 +132,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     for name in &context.macros {
       match context.macro_set.expand_fn_macro(name) {
-        Ok((arg_names, fn_macro)) => {
-          match FnMacro::parse(name.as_str(), &arg_names, &fn_macro) {
-            Ok(mut fn_macro) => {
-              if let Ok(tokens) = fn_macro.generate(&context) {
-                f.append_all(tokens);
-              }
-            },
-            Err(err) => eprintln!("Error parsing function-like macro {name}: {err}"),
-          }
+        Ok((arg_names, fn_macro)) => match FnMacro::parse(name.as_str(), &arg_names, &fn_macro) {
+          Ok(mut fn_macro) => {
+            if let Ok(tokens) = fn_macro.generate(&context) {
+              f.append_all(tokens);
+            }
+          },
+          Err(err) => eprintln!("Error parsing function-like macro {name}: {err}"),
         },
         Err(ExpansionError::MacroNotFound) => (),
         Err(err) => eprintln!("Error for {name}: {err:?}"),
