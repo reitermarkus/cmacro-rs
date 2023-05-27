@@ -12,7 +12,6 @@ use quote::{quote, TokenStreamExt};
 
 use crate::{
   identifier_lit, is_identifier, meta, token, CodegenContext, LocalContext, MacroArgType, MacroBody, MacroToken,
-  ParseContext,
 };
 
 /// A function-like macro.
@@ -137,9 +136,7 @@ impl FnMacro {
 
     let (_, args) = Self::parse_args(args).map_err(|_| crate::ParserError::InvalidMacroArgs)?;
 
-    let ctx_args = args.iter().map(|a| a.as_str()).collect::<Vec<_>>();
-    let ctx = ParseContext::fn_macro(&name, &ctx_args);
-    let (_, body) = MacroBody::parse(body, &ctx).map_err(|_| crate::ParserError::InvalidMacroBody)?;
+    let (_, body) = MacroBody::parse(body).map_err(|_| crate::ParserError::InvalidMacroBody)?;
 
     Ok(Self { name, args, body })
   }

@@ -12,7 +12,7 @@ use super::{
   tokens::{macro_arg, meta, token},
   BuiltInType, Type,
 };
-use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken, ParseContext};
+use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken};
 
 /// Stringification of a macro argument.
 ///
@@ -26,10 +26,7 @@ pub struct Stringify {
 
 impl Stringify {
   /// Parse a stringification expression.
-  pub(crate) fn parse<'i, 't>(
-    tokens: &'i [MacroToken<'t>],
-    _ctx: &ParseContext<'_>,
-  ) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     map(preceded(terminated(token("#"), meta), macro_arg), |index| Self { index })(tokens)
   }
 
@@ -75,11 +72,9 @@ mod tests {
 
   use crate::macro_set::{arg as macro_arg, tokens};
 
-  const CTX: ParseContext = ParseContext::fn_macro("STRINGIFY", &["var"]);
-
   #[test]
   fn parse_stringify() {
-    let (_, ty) = Stringify::parse(tokens!["#", macro_arg!(0)], &CTX).unwrap();
+    let (_, ty) = Stringify::parse(tokens!["#", macro_arg!(0)]).unwrap();
     assert_eq!(ty, Stringify { index: 0 });
   }
 }

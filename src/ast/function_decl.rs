@@ -11,7 +11,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken, ParseContext};
+use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken};
 
 /// A function declaration.
 ///
@@ -27,16 +27,13 @@ pub struct FunctionDecl {
 
 impl FunctionDecl {
   /// Parse a function declaration.
-  pub(crate) fn parse<'i, 't>(
-    tokens: &'i [MacroToken<'t>],
-    ctx: &ParseContext<'_>,
-  ) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, ((_, ret_ty), name, args)) = tuple((
-      permutation((opt(token("static")), |tokens| Type::parse(tokens, ctx))),
-      |tokens| Expr::parse_concat_ident(tokens, ctx),
+      permutation((opt(token("static")), |tokens| Type::parse(tokens))),
+      |tokens| Expr::parse_concat_ident(tokens),
       parenthesized(separated_list0(
         pair(meta, token(",")),
-        pair(|tokens| Type::parse(tokens, ctx), |tokens| Expr::parse_concat_ident(tokens, ctx)),
+        pair(|tokens| Type::parse(tokens), |tokens| Expr::parse_concat_ident(tokens)),
       )),
     ))(tokens)?;
 

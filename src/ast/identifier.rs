@@ -10,7 +10,7 @@ use nom::{
 };
 
 use super::{literal::universal_char, tokens::macro_token};
-use crate::{MacroToken, ParseContext};
+use crate::MacroToken;
 
 pub(crate) fn is_identifier(s: &str) -> bool {
   let mut chars = s.chars();
@@ -96,18 +96,12 @@ impl LitIdent {
 
 impl LitIdent {
   /// Parse an identifier.
-  pub(crate) fn parse<'i, 't>(
-    tokens: &'i [MacroToken<'t>],
-    _ctx: &ParseContext<'_>,
-  ) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     identifier_lit(tokens)
   }
 
   /// Parse an identifier.
-  pub(crate) fn parse_concat<'i, 't>(
-    tokens: &'i [MacroToken<'t>],
-    _ctx: &ParseContext<'_>,
-  ) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse_concat<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     concat_identifier(tokens)
   }
 }
@@ -124,31 +118,29 @@ mod tests {
 
   use crate::macro_set::tokens;
 
-  const CTX: ParseContext = ParseContext::var_macro("IDENTIFIER");
-
   #[test]
   fn parse_literal() {
-    let (_, id) = LitIdent::parse(tokens!["asdf"], &CTX).unwrap();
+    let (_, id) = LitIdent::parse(tokens!["asdf"]).unwrap();
     assert_eq!(id, "asdf".into());
 
-    let (_, id) = LitIdent::parse(tokens!["Δx"], &CTX).unwrap();
+    let (_, id) = LitIdent::parse(tokens!["Δx"]).unwrap();
     assert_eq!(id, "Δx".into());
 
-    let (_, id) = LitIdent::parse(tokens!["_123"], &CTX).unwrap();
+    let (_, id) = LitIdent::parse(tokens!["_123"]).unwrap();
     assert_eq!(id, "_123".into());
 
-    let (_, id) = LitIdent::parse(tokens!["__INT_MAX__"], &CTX).unwrap();
+    let (_, id) = LitIdent::parse(tokens!["__INT_MAX__"]).unwrap();
     assert_eq!(id, "__INT_MAX__".into());
   }
 
   #[test]
   fn parse_wrong() {
     let tokens = tokens!["123def"];
-    let res = LitIdent::parse(tokens, &CTX);
+    let res = LitIdent::parse(tokens);
     assert!(res.is_err());
 
     let tokens = tokens!["123", "##", "def"];
-    let res = LitIdent::parse(tokens, &CTX);
+    let res = LitIdent::parse(tokens);
     assert!(res.is_err());
   }
 }

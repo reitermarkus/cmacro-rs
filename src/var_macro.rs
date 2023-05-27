@@ -4,7 +4,7 @@ use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
 use semver::{Version, VersionReq};
 
-use crate::{ast::Lit, is_identifier, CodegenContext, Expr, LocalContext, MacroBody, MacroToken, ParseContext};
+use crate::{ast::Lit, is_identifier, CodegenContext, Expr, LocalContext, MacroBody, MacroToken};
 
 /// A variable-like macro.
 ///
@@ -35,8 +35,7 @@ impl VarMacro {
   pub fn parse(name: &str, value: &[MacroToken<'_>]) -> Result<Self, crate::ParserError> {
     let name = if is_identifier(name) { name.to_owned() } else { return Err(crate::ParserError::InvalidMacroName) };
 
-    let ctx = ParseContext::var_macro(&name);
-    let body = match MacroBody::parse(value, &ctx) {
+    let body = match MacroBody::parse(value) {
       Ok((_, body)) => body,
       Err(_) => return Err(crate::ParserError::InvalidMacroBody),
     };
