@@ -117,7 +117,7 @@ fn stringify(tokens: Vec<Token<'_>>) -> String {
   for token in tokens {
     let token = match &token {
       Token::VarArgs => "__VA_ARGS__",
-      Token::Identifier(t) | Token::Plain(t) | Token::NonReplacable(t) => t.as_ref(),
+      Token::Identifier(t) | Token::Plain(t) => t.as_ref(),
       Token::Punctuation(t) => t,
       _ => {
         // At the point where `stringify` is called, macro arguments are already replaced and placemarkers removed.
@@ -145,7 +145,7 @@ fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroT
       Some(match t {
         Token::MacroArg(arg_index) => MacroToken::Arg(arg_index),
         Token::VarArgs => MacroToken::Arg(arg_names.len() - 1),
-        Token::Identifier(t) | Token::Plain(t) | Token::NonReplacable(t) => MacroToken::Token(t),
+        Token::Identifier(t) | Token::Plain(t) => MacroToken::Token(t),
         Token::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
         Token::Placemarker => return None,
       })
@@ -168,7 +168,6 @@ enum Token<'t> {
   VarArgs,
   Identifier(Cow<'t, str>),
   Plain(Cow<'t, str>),
-  NonReplacable(Cow<'t, str>),
   Punctuation(&'t str),
   Placemarker,
 }
@@ -208,24 +207,35 @@ impl MacroSet {
       match token {
         Token::Identifier(id) => {
           if non_replaced_names.contains(id.as_ref()) {
-            tokens.push(Token::NonReplacable(id));
-          } else if let Some(body) = self.var_macros.get(id.as_ref()) {
-            let body = tokenize(&[], body);
-            tokens.extend(self.expand_var_macro_body(non_replaced_names.clone(), id.as_ref(), &body)?);
-            tokens.extend(it);
-            return self.expand_macro_body(non_replaced_names, &tokens)
-          } else if let Some((arg_names, body)) = self.fn_macros.get(id.as_ref()) {
-            if let Ok(args) = self.collect_args(&mut it) {
-              let body = tokenize(arg_names, body);
-              let expanded_tokens =
-                self.expand_fn_macro_body(non_replaced_names.clone(), id.as_ref(), arg_names, Some(&args), &body)?;
-              tokens.extend(expanded_tokens);
+            tokens.push(Token::Plain(id));
+          } else {
+            // Treat as function-like macro call if immediately followed by `(`.
+            if it.peek() == Some(&Token::Punctuation("(")) {
+              if let Some((arg_names, body)) = self.fn_macros.get(id.as_ref()) {
+                if let Ok(args) = self.collect_args(&mut it) {
+                  let body = tokenize(arg_names, body);
+                  let expanded_tokens = self.expand_fn_macro_body(
+                    non_replaced_names.clone(),
+                    id.as_ref(),
+                    arg_names,
+                    Some(&args),
+                    &body,
+                  )?;
+                  tokens.extend(expanded_tokens);
+                  tokens.extend(it);
+                  return self.expand_macro_body(non_replaced_names, &tokens)
+                }
+              }
+            }
+
+            // If it's not a macro call, check if it is a variable-like macro.
+            if let Some(body) = self.var_macros.get(id.as_ref()) {
+              let body = tokenize(&[], body);
+              tokens.extend(self.expand_var_macro_body(non_replaced_names.clone(), id.as_ref(), &body)?);
               tokens.extend(it);
               return self.expand_macro_body(non_replaced_names, &tokens)
-            } else {
-              tokens.push(Token::Identifier(id));
             }
-          } else {
+
             tokens.push(Token::Identifier(id))
           }
         },
@@ -329,35 +339,44 @@ impl MacroSet {
 
     while let Some(token) = it2.next() {
       match token {
-        Token::Punctuation(t) => match t {
-          p @ "(" | p @ "[" | p @ "{" => {
-            parentheses.push(p.chars().next().unwrap());
-            current_arg.push(Token::Punctuation(t));
-          },
-          "}" => match parentheses.pop() {
-            Some('{') => current_arg.push(Token::Punctuation(t)),
-            Some(parenthesis) => return Err(ExpansionError::UnclosedParenthesis(parenthesis)),
-            None => return Err(ExpansionError::MissingOpenParenthesis('{')),
-          },
-          "]" => match parentheses.pop() {
-            Some('[') => current_arg.push(Token::Punctuation(t)),
-            Some(parenthesis) => return Err(ExpansionError::UnclosedParenthesis(parenthesis)),
-            None => return Err(ExpansionError::MissingOpenParenthesis('[')),
-          },
-          ")" => match parentheses.pop() {
-            Some('(') => current_arg.push(Token::Punctuation(t)),
-            Some(parenthesis) => return Err(ExpansionError::UnclosedParenthesis(parenthesis)),
-            None => {
-              args.push(mem::take(&mut current_arg));
-
-              *it = it2;
-              return Ok(args)
+        Token::Punctuation(p) => {
+          let pop = |parentheses: &mut Vec<char>, open, close| match parentheses.pop() {
+            Some(p) => {
+              if p == open {
+                Ok(())
+              } else {
+                Err(ExpansionError::UnclosedParenthesis(p))
+              }
             },
-          },
-          "," if parentheses.is_empty() => {
-            args.push(mem::take(&mut current_arg));
-          },
-          _ => current_arg.push(Token::Punctuation(t)),
+            None => Err(ExpansionError::MissingOpenParenthesis(close)),
+          };
+
+          match p {
+            "(" => parentheses.push('('),
+            ")" => {
+              if parentheses.is_empty() {
+                args.push(mem::take(&mut current_arg));
+
+                *it = it2;
+                return Ok(args)
+              } else {
+                pop(&mut parentheses, '(', ')')?
+              }
+            },
+            "[" => parentheses.push('['),
+            "]" => pop(&mut parentheses, '[', ']')?,
+            "{" => parentheses.push('{'),
+            "}" => pop(&mut parentheses, '{', '}')?,
+            "," => {
+              if parentheses.is_empty() {
+                args.push(mem::take(&mut current_arg));
+                continue
+              }
+            },
+            _ => (),
+          }
+
+          current_arg.push(Token::Punctuation(p));
         },
         token => current_arg.push(token),
       }
@@ -403,7 +422,7 @@ impl MacroSet {
           match tokens.last() {
             Some(Token::Punctuation("#")) => {
               tokens.pop();
-              tokens.push(Token::NonReplacable(Cow::Owned(stringify(arg))));
+              tokens.push(Token::Plain(Cow::Owned(stringify(arg))));
             },
             Some(Token::Punctuation("##")) => {
               let arg = self.expand_macro_body(non_replaced_names.clone(), &arg)?;
@@ -457,27 +476,24 @@ impl MacroSet {
             (Token::Punctuation(lhs), Token::Punctuation(rhs)) => {
               let mut token = Cow::Borrowed(lhs);
               token.to_mut().push_str(rhs.as_ref());
-              Token::NonReplacable(token)
+              Token::Plain(token)
             },
-            (Token::Punctuation(lhs), Token::Identifier(rhs) | Token::Plain(rhs) | Token::NonReplacable(rhs)) => {
+            (Token::Punctuation(lhs), Token::Identifier(rhs) | Token::Plain(rhs)) => {
               let mut token = Cow::Borrowed(lhs);
               token.to_mut().push_str(rhs.as_ref());
-              Token::NonReplacable(token)
+              Token::Plain(token)
             },
-            (Token::Identifier(lhs) | Token::Plain(lhs) | Token::NonReplacable(lhs), Token::Punctuation(rhs)) => {
+            (Token::Identifier(lhs) | Token::Plain(lhs), Token::Punctuation(rhs)) => {
               let mut token = lhs;
               token.to_mut().push_str(rhs.as_ref());
-              Token::NonReplacable(token)
+              Token::Plain(token)
             },
             (Token::Identifier(lhs), Token::Identifier(rhs)) => {
               let mut id = lhs;
               id.to_mut().push_str(rhs.as_ref());
               Token::Identifier(id)
             },
-            (
-              Token::Identifier(lhs) | Token::Plain(lhs) | Token::NonReplacable(lhs),
-              Token::Identifier(rhs) | Token::Plain(rhs) | Token::NonReplacable(rhs),
-            ) => {
+            (Token::Identifier(lhs) | Token::Plain(lhs), Token::Identifier(rhs) | Token::Plain(rhs)) => {
               let lhs_is_string_or_char_prefix = match lhs.as_ref() {
                 "u8" => true,
                 "u" => true,
@@ -499,7 +515,7 @@ impl MacroSet {
                 // Can only concatenate a string or character literal with a
                 // string or character prefix if it isn't already prefixed.
                 if lhs_is_string_or_char_prefix && rhs_is_unprefixed_string_or_char {
-                  Token::NonReplacable(Cow::Owned(format!("{lhs}{rhs}")))
+                  Token::Plain(Cow::Owned(format!("{lhs}{rhs}")))
                 } else {
                   return Err(ExpansionError::InvalidConcat)
                 }
