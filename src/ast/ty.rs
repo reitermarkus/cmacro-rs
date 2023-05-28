@@ -304,33 +304,6 @@ impl Type {
     matches!(self, Self::Ptr { .. })
   }
 
-  pub(crate) fn from_resolved_type(resolved_type: &str) -> Self {
-    match resolved_type {
-      "float" => Type::BuiltIn(BuiltInType::Float),
-      "double" => Type::BuiltIn(BuiltInType::Double),
-      "long double" => Type::BuiltIn(BuiltInType::LongDouble),
-      "bool" => Type::BuiltIn(BuiltInType::Bool),
-      "char" => Type::BuiltIn(BuiltInType::Char),
-      "signed char" => Type::BuiltIn(BuiltInType::SChar),
-      "unsigned char" => Type::BuiltIn(BuiltInType::UChar),
-      "char8_t" => Type::BuiltIn(BuiltInType::Char8T),
-      "char16_t" => Type::BuiltIn(BuiltInType::Char16T),
-      "char32_t" => Type::BuiltIn(BuiltInType::Char32T),
-      "short" => Type::BuiltIn(BuiltInType::Short),
-      "unsigned short" => Type::BuiltIn(BuiltInType::UShort),
-      "int" => Type::BuiltIn(BuiltInType::Int),
-      "unsigned int" => Type::BuiltIn(BuiltInType::UInt),
-      "long" => Type::BuiltIn(BuiltInType::Long),
-      "unsigned long" => Type::BuiltIn(BuiltInType::ULong),
-      "long long" => Type::BuiltIn(BuiltInType::LongLong),
-      "unsigned long long" => Type::BuiltIn(BuiltInType::ULongLong),
-      "void" => Type::BuiltIn(BuiltInType::Void),
-      ty => {
-        Type::Identifier { name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_owned() } }), is_struct: false }
-      },
-    }
-  }
-
   pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
   where
     C: CodegenContext,
@@ -342,7 +315,7 @@ impl Type {
 
         if let Expr::Variable { name: ref id } = **name {
           if let Some(ty) = ctx.resolve_ty(id.as_str()) {
-            *self = Self::from_resolved_type(&ty);
+            *self = Self::from_rust_ty(&ty, ctx.ffi_prefix().as_ref())?;
           }
         }
 

@@ -416,8 +416,12 @@ impl LitString {
         let wchars =
           s.iter().cloned().chain(std::iter::once(0)).map(proc_macro2::Literal::u32_unsuffixed).collect::<Vec<_>>();
 
-        let wchar_ty =
-          Type::from_resolved_type(&ctx.resolve_ty("wchar_t").unwrap_or_else(|| "wchar_t".into())).to_token_stream(ctx);
+        let wchar_ty = if let Some(ty) = ctx.resolve_ty("wchar_t") {
+          Type::from_rust_ty(&ty, ctx.ffi_prefix().as_ref()).unwrap().to_token_stream(ctx)
+        } else {
+          quote! { wchar_t }
+        };
+
         let wchar_count = proc_macro2::Literal::usize_unsuffixed(wchars.len());
         let wchar_array = quote! { &[#(#wchars as #wchar_ty),*] };
         let array_ty = quote! { &[#wchar_ty; #wchar_count] };

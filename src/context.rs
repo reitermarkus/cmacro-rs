@@ -87,7 +87,7 @@ where
     self.global_context.macro_arg_ty(macro_name, arg_name)
   }
 
-  fn resolve_ty(&self, ty: &str) -> Option<String> {
+  fn resolve_ty(&self, ty: &str) -> Option<syn::Type> {
     self.global_context.resolve_ty(ty)
   }
 
@@ -132,7 +132,7 @@ pub trait CodegenContext {
   /// is defined, this should return `Some("unsigned long".into())`
   /// when `ty` is `"MyType"`.
   #[allow(unused_variables)]
-  fn resolve_ty(&self, ty: &str) -> Option<String> {
+  fn resolve_ty(&self, ty: &str) -> Option<syn::Type> {
     None
   }
 
@@ -172,7 +172,7 @@ where
     T::macro_arg_ty(self, macro_name, arg_name)
   }
 
-  fn resolve_ty(&self, ty: &str) -> Option<String> {
+  fn resolve_ty(&self, ty: &str) -> Option<syn::Type> {
     T::resolve_ty(self, ty)
   }
 
