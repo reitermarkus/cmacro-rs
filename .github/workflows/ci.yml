@@ -5,5 +5,7 @@ name: CI
 jobs:
   ci:
     uses: reitermarkus/.github/.github/workflows/cargo-build-publish.yml@main
+    with:
+      toolchain: '1.60'
     secrets:
       CRATESIO_TOKEN: ${{ secrets.CRATESIO_TOKEN }}
