@@ -290,7 +290,7 @@ impl Type {
     fold_many0(
       preceded(pair(token("*"), meta), const_qualifier),
       move || ty.clone(),
-      |acc, is_const| Type::Ptr { ty: Box::new(acc), mutable: !is_const },
+      |acc, is_const| Self::Ptr { ty: Box::new(acc), mutable: !is_const },
     )(tokens)
   }
 
@@ -356,7 +356,7 @@ impl Type {
   pub(crate) fn from_rust_ty(ty: &syn::Type, ffi_prefix: Option<&syn::Path>) -> Result<Self, crate::CodegenError> {
     match ty {
       syn::Type::Ptr(ptr_ty) => Ok(Self::Ptr {
-        ty: Box::new(Self::from_rust_ty(&*ptr_ty.elem, ffi_prefix)?),
+        ty: Box::new(Self::from_rust_ty(&ptr_ty.elem, ffi_prefix)?),
         mutable: ptr_ty.mutability.is_some(),
       }),
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
@@ -365,7 +365,7 @@ impl Type {
         is_struct: false,
       }),
       syn::Type::Path(path_ty) => {
-        if let Some(ty) = BuiltInType::from_rust_ty(&path_ty, ffi_prefix) {
+        if let Some(ty) = BuiltInType::from_rust_ty(path_ty, ffi_prefix) {
           return Ok(Self::BuiltIn(ty))
         }
 
@@ -378,6 +378,8 @@ impl Type {
     }
   }
 
+  // Only used for tests.
+  #[doc(hidden)]
   pub fn to_rust_ty(&self, ffi_prefix: Option<syn::Path>) -> Option<syn::Type> {
     Some(match self {
       Self::BuiltIn(ty) => ty.to_rust_ty(ffi_prefix),

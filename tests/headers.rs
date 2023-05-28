@@ -40,7 +40,7 @@ fn file_visit_macros<F: FnMut(EntityKind, String, Option<Vec<String>>, Vec<Strin
 
     match cur.get_kind() {
       kind @ EntityKind::FunctionDecl => {
-        let mut tokens = range.tokenize().into_iter().map(|token| token.get_spelling().to_owned());
+        let mut tokens = range.tokenize().into_iter().map(|token| token.get_spelling());
 
         let return_type = tokens.next().unwrap();
         let name = tokens.next().unwrap();
@@ -140,7 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     file_visit_macros(&header_path, |kind, name, args, mut value| match kind {
       EntityKind::FunctionDecl => {
-        context.functions.insert(name.to_owned(), (args.unwrap(), value.remove(0)));
+        context.functions.insert(name, (args.unwrap(), value.remove(0)));
       },
       EntityKind::MacroDefinition => {
         if let Some(args) = args {
