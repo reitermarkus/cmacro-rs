@@ -48,12 +48,13 @@ where
   't: 'i,
 {
   move |tokens| {
-    map_parser(macro_token, |token2: &'i str| {
-      all_consuming(preceded(opt(tag("\\\n")), value(token, tag(token))))(token2)
-        .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))?;
+    let (tokens2, token2) = macro_token(tokens)?;
 
-      Ok(("", token))
-    })(tokens)
+    if token2 == token {
+      return Ok((tokens2, token))
+    }
+
+    Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
   }
 }
 
