@@ -1,8 +1,8 @@
 use nom::{
   bytes::complete::{tag, take_until},
-  combinator::{all_consuming, map_opt, map_parser, opt, value},
+  combinator::{all_consuming, map_opt, map_parser},
   multi::many0,
-  sequence::{delimited, pair, preceded},
+  sequence::{delimited, pair},
   IResult, Parser,
 };
 
