@@ -100,6 +100,7 @@ fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
       } else {
         match t.as_ref() {
           "__VA_ARGS__" => Token::VarArgs,
+          token if is_comment(token) => Token::Comment(token),
           token if is_punctuation(token) => Token::Punctuation(token),
           token if is_identifier(token) => Token::Identifier(Cow::Borrowed(token)),
           token => Token::Plain(Cow::Borrowed(token)),
@@ -147,6 +148,7 @@ fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroT
         Token::VarArgs => MacroToken::Arg(arg_names.len() - 1),
         Token::Identifier(t) | Token::Plain(t) => MacroToken::Token(t),
         Token::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
+        Token::Comment(t) => MacroToken::Token(Cow::Borrowed(t)),
         Token::Placemarker => return None,
       })
     })
@@ -169,6 +171,7 @@ enum Token<'t> {
   Identifier(Cow<'t, str>),
   Plain(Cow<'t, str>),
   Punctuation(&'t str),
+  Comment(&'t str),
   Placemarker,
 }
 
@@ -176,19 +179,6 @@ impl MacroSet {
   /// Create a new macro set.
   pub fn new() -> Self {
     Self::default()
-  }
-
-  // Macros may not start or and with `##`.
-  fn check_concat_begin_end(body: &[Token<'_>]) -> Result<(), ExpansionError> {
-    if body.first() == Some(&Token::Punctuation("##")) {
-      return Err(ExpansionError::ConcatBegin)
-    }
-
-    if body.last() == Some(&Token::Punctuation("##")) {
-      return Err(ExpansionError::ConcatEnd)
-    }
-
-    Ok(())
   }
 
   fn contains_var_args(body: &[Token<'_>]) -> bool {
@@ -252,8 +242,6 @@ impl MacroSet {
     name: &'n str,
     body: &[Token<'s>],
   ) -> Result<Vec<Token<'s>>, ExpansionError> {
-    Self::check_concat_begin_end(body)?;
-
     // Variable-like macros shall not contain `__VA_ARGS__`.
     if Self::contains_var_args(body) {
       return Err(ExpansionError::NonVariadicVarArgs)
@@ -275,8 +263,6 @@ impl MacroSet {
     args: Option<&[Vec<Token<'s>>]>,
     body: &[Token<'s>],
   ) -> Result<Vec<Token<'s>>, ExpansionError> {
-    Self::check_concat_begin_end(body)?;
-
     let is_variadic = arg_names.last().map(|arg_name| *arg_name == "...").unwrap_or(false);
 
     if !is_variadic {
@@ -462,13 +448,27 @@ impl MacroSet {
           if !matches!(tokens.last(), Some(&Token::MacroArg(_) | &Token::VarArgs))
             && !matches!(it.peek(), Some(&Token::MacroArg(_) | &Token::VarArgs)) =>
         {
-          // NOTE: `##` cannot be at the beginning or end, so there must be a token before and after this.
-          let lhs = tokens.pop().unwrap();
+          macro_rules! until_no_whitespace {
+            ($expr:expr, $error:ident) => {{
+              loop {
+                match $expr {
+                  Some(Token::Comment(_)) => continue,
+                  Some(token) => break token,
+                  // Macros may not start or and with `##`.
+                  None => return Err(ExpansionError::$error),
+                }
+              }
+            }};
+          }
+
+          // Ignore whitespace between the last non-whitespace token and this `##`.
+          let lhs = until_no_whitespace!(tokens.pop(), ConcatBegin);
           let rhs = if it.peek() == Some(&Token::Punctuation("##")) {
             // Treat consecutive `##` as one.
             Token::Placemarker
           } else {
-            it.next().unwrap()
+            // Ignore whitespace between this `##` and the next non-whitespace token.
+            until_no_whitespace!(it.next(), ConcatEnd)
           };
           tokens.push(match (lhs, rhs) {
             (Token::Placemarker, rhs) => rhs,
@@ -530,7 +530,8 @@ impl MacroSet {
                 }
               }
             },
-            (Token::MacroArg(_) | Token::VarArgs, _) | (_, Token::MacroArg(_) | Token::VarArgs) => unreachable!(),
+            (Token::MacroArg(_) | Token::VarArgs | Token::Comment(_), _)
+            | (_, Token::MacroArg(_) | Token::VarArgs | Token::Comment(_)) => unreachable!(),
           })
         },
         token => tokens.push(token),
@@ -720,6 +721,26 @@ mod tests {
   }
 
   #[test]
+  fn concat_begin_end() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.define_var_macro("CONCAT_BEGIN", ["##", "b"]);
+    macro_set.define_var_macro("CONCAT_END", ["a", "##"]);
+    macro_set.define_var_macro("CONCAT_BEGIN_END", ["##"]);
+    macro_set.define_var_macro("CONCAT_COMMENT_BEGIN", ["/* a */", "##", "b"]);
+    macro_set.define_var_macro("CONCAT_COMMENT_END", ["a", "##", "/* b */"]);
+    macro_set.define_var_macro("CONCAT_COMMENT_BEGIN_END", ["/* a */", "##", "/* b */"]);
+
+    assert_eq!(macro_set.expand_var_macro("CONCAT_BEGIN"), Err(ExpansionError::ConcatBegin));
+    assert_eq!(macro_set.expand_var_macro("CONCAT_END"), Err(ExpansionError::ConcatEnd));
+    assert_eq!(macro_set.expand_var_macro("CONCAT_BEGIN_END"), Err(ExpansionError::ConcatBegin));
+
+    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT_BEGIN"), Err(ExpansionError::ConcatBegin));
+    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT_END"), Err(ExpansionError::ConcatEnd));
+    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT_BEGIN_END"), Err(ExpansionError::ConcatBegin));
+  }
+
+  #[test]
   fn parse_disjunct() {
     let mut macro_set = MacroSet::new();
 
@@ -827,6 +848,18 @@ mod tests {
     macro_set.define_var_macro("B", ["2"]);
     macro_set.define_var_macro("CONCAT", ["A", "##", "B"]);
     assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(token_vec!["AB"]));
+  }
+
+  #[test]
+  fn parse_concat_comment() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.define_var_macro("CONCAT_COMMENT1", ["A", "/* 1 */", "##", "B"]);
+    macro_set.define_var_macro("CONCAT_COMMENT2", ["A", "##", "/* 2 */", "B"]);
+    macro_set.define_var_macro("CONCAT_COMMENT3", ["A", "/* 1 */", "##", "/* 2 */", "B"]);
+    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT1"), Ok(token_vec!["AB"]));
+    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT2"), Ok(token_vec!["AB"]));
+    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT3"), Ok(token_vec!["AB"]));
   }
 
   #[test]
