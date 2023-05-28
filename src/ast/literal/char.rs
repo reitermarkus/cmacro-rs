@@ -1,28 +1,40 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::RangeFrom};
 
 use nom::{
   branch::alt,
   bytes::complete::tag,
-  character::complete::{char, none_of},
-  combinator::{all_consuming, cond, map, map_opt, opt, value},
-  sequence::{pair, preceded, terminated},
-  AsChar, IResult,
+  character::complete::char,
+  combinator::{map, map_opt, opt, value},
+  sequence::{delimited, pair},
+  AsChar, Compare, IResult, InputIter, InputTake, Slice,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
-use super::escaped_char;
-use crate::{
-  ast::tokens::{macro_token, token},
-  BuiltInType, CodegenContext, Expr, LitIdent, LocalContext, MacroToken, Type,
-};
+use super::{escaped_char, unescaped_char};
+use crate::{ast::tokens::map_token, BuiltInType, CodegenContext, Expr, LitIdent, LocalContext, MacroToken, Type};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum LitCharPrefix {
+pub(crate) enum LitCharPrefix {
   Utf8,
   Utf16,
   Utf32,
   Wide,
+}
+
+impl LitCharPrefix {
+  pub fn parse<I, C>(input: I) -> IResult<I, Self>
+  where
+    I: Debug + InputTake + Slice<RangeFrom<usize>> + InputIter<Item = C> + Compare<&'static str> + Clone,
+    C: AsChar,
+  {
+    alt((
+      value(LitCharPrefix::Utf8, tag("u8")),
+      value(LitCharPrefix::Utf16, char('u')),
+      value(LitCharPrefix::Utf32, char('U')),
+      value(LitCharPrefix::Wide, char('L')),
+    ))(input)
+  }
 }
 
 /// A character literal.
@@ -63,11 +75,6 @@ pub enum LitChar {
 impl LitChar {
   /// Parse a character literal.
   pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (input, utf8_prefix) = if let Ok((input, _)) = token("u8")(input) { (input, true) } else { (input, false) };
-    let (input2, token) = macro_token(input)?;
-
-    let one_char = |input| alt((escaped_char, map(none_of("\\\'\n"), |b| u32::from(b.as_char()))))(input);
-
     let parse_char = |(prefix, c)| match prefix {
       None if c <= 0xff => Some(LitChar::Ordinary(c as u8)),
       Some(LitCharPrefix::Utf8) if c <= 0x7f => Some(LitChar::Utf8(c as u8)),
@@ -77,34 +84,15 @@ impl LitChar {
       _ => None,
     };
 
-    let (_, c) = all_consuming(terminated(
-      alt((
-        map_opt(
-          cond(utf8_prefix, map(preceded(char('\''), one_char), |c| parse_char((Some(LitCharPrefix::Utf8), c)))),
-          |c| c.flatten(),
-        ),
-        preceded(char('\''), map_opt(one_char, |c| parse_char((None, c)))),
-        map_opt(
-          pair(
-            terminated(
-              opt(alt((
-                value(LitCharPrefix::Utf8, tag("u8")),
-                value(LitCharPrefix::Utf16, tag("u")),
-                value(LitCharPrefix::Utf32, tag("U")),
-                value(LitCharPrefix::Wide, tag("L")),
-              ))),
-              char('\''),
-            ),
-            one_char,
-          ),
-          parse_char,
-        ),
-      )),
-      char('\''),
-    ))(token)
-    .map_err(|err| err.map_input(|_| input))?;
+    let delimited_char =
+      move |input| delimited(char('\''), alt((escaped_char, map(unescaped_char, u32::from))), char('\''))(input);
 
-    Ok((input2, c))
+    alt((
+      map_opt(pair(map_token(LitCharPrefix::parse), map_token(delimited_char)), move |(prefix, c)| {
+        parse_char((Some(prefix), c))
+      }),
+      map_token(map_opt(pair(opt(LitCharPrefix::parse), delimited_char), parse_char)),
+    ))(input)
   }
 
   #[allow(unused_variables)]

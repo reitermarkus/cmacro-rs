@@ -3,13 +3,13 @@ use std::fmt::Debug;
 use nom::{
   branch::alt,
   character::complete::{anychar, char},
-  combinator::{all_consuming, map_opt, map_parser},
+  combinator::map_opt,
   multi::fold_many1,
   sequence::preceded,
   IResult,
 };
 
-use super::{literal::universal_char, tokens::macro_token};
+use super::{literal::universal_char, tokens::map_token};
 use crate::MacroToken;
 
 pub(crate) fn is_identifier(s: &str) -> bool {
@@ -24,37 +24,8 @@ pub(crate) fn is_identifier(s: &str) -> bool {
 }
 
 pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
-  map_parser(macro_token, |token: &'i str| {
-    map_opt(
-      all_consuming(|token| {
-        fold_many1(
-          alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
-          String::new,
-          |mut acc, c| {
-            acc.push(c);
-            acc
-          },
-        )(token)
-      }),
-      |s| {
-        let mut chars = s.chars();
-
-        let start = chars.next()?;
-
-        if (unicode_ident::is_xid_start(start) || start == '_') && chars.all(unicode_ident::is_xid_continue) {
-          Some(LitIdent { id: s })
-        } else {
-          None
-        }
-      },
-    )(token)
-    .map_err(|err: nom::Err<nom::error::Error<&'i str>>| err.map_input(|_| tokens))
-  })(tokens)
-}
-
-fn concat_identifier<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
-  map_parser(macro_token, |token: &'i str| {
-    all_consuming(map_opt(
+  map_token(map_opt(
+    |token| {
       fold_many1(
         alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
         String::new,
@@ -62,19 +33,42 @@ fn concat_identifier<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [Macro
           acc.push(c);
           acc
         },
-      ),
-      |s| {
-        let mut chars = s.chars();
+      )(token)
+    },
+    |s| {
+      let mut chars = s.chars();
 
-        if chars.all(unicode_ident::is_xid_continue) {
-          Some(LitIdent { id: s })
-        } else {
-          None
-        }
+      let start = chars.next()?;
+
+      if (unicode_ident::is_xid_start(start) || start == '_') && chars.all(unicode_ident::is_xid_continue) {
+        Some(LitIdent { id: s })
+      } else {
+        None
+      }
+    },
+  ))(tokens)
+}
+
+fn concat_identifier<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
+  map_token(map_opt(
+    fold_many1(
+      alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
+      String::new,
+      |mut acc, c| {
+        acc.push(c);
+        acc
       },
-    ))(token)
-    .map_err(|err: nom::Err<nom::error::Error<&'i str>>| err.map_input(|_| tokens))
-  })(tokens)
+    ),
+    |s| {
+      let mut chars = s.chars();
+
+      if chars.all(unicode_ident::is_xid_continue) {
+        Some(LitIdent { id: s })
+      } else {
+        None
+      }
+    },
+  ))(tokens)
 }
 
 /// A literal identifier.

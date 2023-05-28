@@ -4,7 +4,7 @@ use nom::{
   branch::alt,
   bytes::complete::{is_not, tag},
   character::complete::{char, none_of},
-  combinator::{all_consuming, map, map_parser, map_res, opt},
+  combinator::{map, map_res, opt},
   multi::{fold_many0, many0, many1},
   sequence::{delimited, preceded},
   AsChar, Compare, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Slice,
@@ -14,7 +14,7 @@ use quote::quote;
 
 use crate::{BuiltInType, CodegenContext, Expr, LocalContext, MacroToken, Type};
 
-use crate::ast::{tokens::macro_token, LitIdent};
+use crate::ast::{tokens::map_token, LitIdent};
 
 use super::escaped_char;
 
@@ -176,21 +176,13 @@ impl LitString {
   }
 
   fn parse_inner<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (input2, token) = macro_token(input)?;
-
-    let res: IResult<&str, Self> = all_consuming(alt((
+    map_token(alt((
       map(Self::parse_ordinary, Self::Ordinary),
       preceded(tag("u8"), map(Self::parse_utf8, Self::Utf8)),
       preceded(tag("u"), map(Self::parse_utf16, Self::Utf16)),
       preceded(tag("U"), map(Self::parse_utf32, Self::Utf32)),
       preceded(tag("L"), map(Self::parse_wide, Self::Wide)),
-    )))(token);
-
-    if let Ok((_, s)) = res {
-      return Ok((input2, s))
-    }
-
-    Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
+    )))(input)
   }
 
   /// Parse a string literal.
@@ -200,10 +192,7 @@ impl LitString {
     match s {
       Self::Ordinary(bytes) => map(
         fold_many0(
-          map_parser(macro_token, |token: &'i str| {
-            all_consuming(Self::parse_ordinary)(token)
-              .map_err(|err: nom::Err<nom::error::Error<&'i str>>| err.map_input(|_| input))
-          }),
+          map_token(Self::parse_ordinary),
           move || bytes.clone(),
           |mut acc, s| {
             acc.extend(s);
@@ -214,10 +203,7 @@ impl LitString {
       )(input),
       Self::Utf8(s) => map(
         fold_many0(
-          map_parser(macro_token, |token: &'i str| {
-            all_consuming(preceded(opt(tag("u8")), Self::parse_utf8))(token)
-              .map_err(|err: nom::Err<nom::error::Error<&'i str>>| err.map_input(|_| input))
-          }),
+          map_token(preceded(opt(tag("u8")), Self::parse_utf8)),
           move || s.clone(),
           |mut acc, s| {
             acc.push_str(&s);
@@ -228,10 +214,7 @@ impl LitString {
       )(input),
       Self::Utf16(s) => map(
         fold_many0(
-          map_parser(macro_token, |token: &'i str| {
-            all_consuming(preceded(opt(tag("u")), Self::parse_utf16))(token)
-              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))
-          }),
+          map_token(preceded(opt(tag("u")), Self::parse_utf16)),
           move || s.clone(),
           |mut acc, s| {
             acc.push_str(&s);
@@ -242,10 +225,7 @@ impl LitString {
       )(input),
       Self::Utf32(s) => map(
         fold_many0(
-          map_parser(macro_token, |token: &'i str| {
-            all_consuming(preceded(opt(tag("U")), Self::parse_utf32))(token)
-              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))
-          }),
+          map_token(preceded(opt(tag("U")), Self::parse_utf32)),
           move || s.clone(),
           |mut acc, s| {
             acc.push_str(&s);
@@ -256,10 +236,7 @@ impl LitString {
       )(input),
       Self::Wide(v) => map(
         fold_many0(
-          map_parser(macro_token, |token: &'i str| {
-            all_consuming(preceded(opt(tag("L")), Self::parse_wide))(token)
-              .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| input))
-          }),
+          map_token(preceded(opt(tag("L")), Self::parse_wide)),
           move || v.clone(),
           |mut acc, s| {
             acc.extend(s);

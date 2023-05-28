@@ -1,6 +1,6 @@
 use nom::{
   bytes::complete::{tag, take_until},
-  combinator::{all_consuming, map_opt, map_parser},
+  combinator::{all_consuming, map_opt, value},
   multi::many0,
   sequence::{delimited, pair},
   IResult, Parser,
@@ -30,15 +30,34 @@ where
   Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Eof)))
 }
 
+pub(crate) fn comment_str(s: &str) -> IResult<&str, &str> {
+  all_consuming(delimited(tag("/*"), take_until("*/"), tag("*/")))(s)
+}
+
 pub(crate) fn comment<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'i str> {
-  map_parser(macro_token, |token: &'i str| {
-    all_consuming(delimited(tag("/*"), take_until("*/"), tag("*/")))(token)
-      .map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))
-  })(tokens)
+  map_token(comment_str)(tokens)
 }
 
 pub(crate) fn meta<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Vec<&'i str>> {
   many0(comment)(input)
+}
+
+pub(crate) fn map_token<'i, 't, O, P>(
+  mut parser: P,
+) -> impl FnMut(&'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], O>
+where
+  't: 'i,
+  P: FnMut(&'i str) -> IResult<&'i str, O>,
+{
+  move |input: &'i [MacroToken<'t>]| match macro_token(input) {
+    Ok((rest, token)) => {
+      let (_, output) = all_consuming(&mut parser)(token)
+        .map_err(|err: nom::Err<nom::error::Error<&'i str>>| err.map_input(|_| input))?;
+
+      Ok((rest, output))
+    },
+    Err(err) => Err(err),
+  }
 }
 
 pub(crate) fn token<'i, 't>(
@@ -47,15 +66,7 @@ pub(crate) fn token<'i, 't>(
 where
   't: 'i,
 {
-  move |tokens| {
-    let (tokens2, token2) = macro_token(tokens)?;
-
-    if token2 == token {
-      return Ok((tokens2, token))
-    }
-
-    Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Fail)))
-  }
+  move |tokens| map_token(value(token, tag(token)))(tokens)
 }
 
 pub(crate) use token as keyword;

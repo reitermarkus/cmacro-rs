@@ -8,19 +8,34 @@ use nom::{
   branch::alt,
   bytes::complete::tag_no_case,
   character::complete::{char, digit1},
-  combinator::{all_consuming, cond, map, opt, recognize},
+  combinator::{all_consuming, cond, map, opt, recognize, value},
   sequence::{delimited, pair, preceded, tuple},
-  AsChar, Compare, CompareResult, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, ParseTo,
-  Slice,
+  AsChar, Compare, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, ParseTo, Slice,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use std::num::FpCategory;
 
 use crate::{
-  ast::tokens::{macro_token, meta, token},
+  ast::tokens::{map_token, meta, token},
   BuiltInType, CodegenContext, LocalContext, MacroToken, Type,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum LitFloatSuffix {
+  Float,
+  LongDouble,
+}
+
+impl LitFloatSuffix {
+  pub fn parse<I, C>(input: I) -> IResult<I, Self>
+  where
+    I: InputTake + InputIter<Item = C> + Compare<&'static str> + Clone,
+    C: AsChar,
+  {
+    alt((value(Self::Float, tag_no_case("f")), value(Self::LongDouble, tag_no_case("l"))))(input)
+  }
+}
 
 /// A floating-point literal.
 ///
@@ -42,7 +57,7 @@ pub enum LitFloat {
 impl Eq for LitFloat {}
 
 impl LitFloat {
-  fn from_str<I, C>(input: I) -> IResult<I, (I, Option<&'static str>)>
+  fn from_str<I, C>(input: I) -> IResult<I, (I, Option<LitFloatSuffix>)>
   where
     I: Debug
       + InputTake
@@ -74,29 +89,18 @@ impl LitFloat {
         // 1e1
         recognize(pair(digit1, scientific)),
       )),
-      opt(alt((map(tag_no_case("f"), |_| "f"), map(tag_no_case("l"), |_| "l")))),
+      opt(LitFloatSuffix::parse),
     ))(input)
   }
 
   /// Parse a floating-point literal.
   pub fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (_, input) = macro_token(tokens)?;
-
-    let (_, (repr, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;
+    let (_, (repr, size1)) = map_token(Self::from_str)(tokens)?;
 
     let tokens = &tokens[1..];
 
-    let suffix_f = alt((token("f"), token("F")));
-    let suffix_long = alt((token("l"), token("L")));
-
     let mut suffix = map(
-      cond(
-        size1.is_none(),
-        opt(alt((
-          preceded(delimited(meta, token("##"), meta), suffix_f),
-          preceded(delimited(meta, token("##"), meta), suffix_long),
-        ))),
-      ),
+      cond(size1.is_none(), opt(preceded(delimited(meta, token("##"), meta), map_token(LitFloatSuffix::parse)))),
       |size| size.flatten(),
     );
 
@@ -104,8 +108,8 @@ impl LitFloat {
     let size = size1.or(size2);
 
     let lit = match size {
-      Some(s) if s.compare_no_case("f") == CompareResult::Ok => repr.parse_to().map(Self::Float),
-      Some(s) if s.compare_no_case("l") == CompareResult::Ok => repr.parse_to().map(Self::LongDouble),
+      Some(LitFloatSuffix::Float) => repr.parse_to().map(Self::Float),
+      Some(LitFloatSuffix::LongDouble) => repr.parse_to().map(Self::LongDouble),
       _ => repr.parse_to().map(Self::Double),
     };
 

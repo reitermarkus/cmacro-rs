@@ -4,10 +4,10 @@ use nom::{
   branch::alt,
   bytes::complete::tag_no_case,
   character::{
-    complete::{anychar, char, one_of},
+    complete::{anychar, char, none_of, one_of},
     is_hex_digit, is_oct_digit,
   },
-  combinator::{map, map_opt, verify},
+  combinator::{map, map_opt, value, verify},
   multi::fold_many_m_n,
   sequence::preceded,
   AsChar, Compare, FindToken, IResult, InputIter, InputLength, InputTake, Slice,
@@ -105,22 +105,22 @@ impl Lit {
 }
 
 /// Parse a simple escape sequence, e.g. `\n` (without the leading `\`).
-fn simple_escape_sequence<I>(input: I) -> IResult<I, u32>
+fn simple_escape_sequence<I>(input: I) -> IResult<I, char>
 where
   I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
   <I as InputIter>::Item: AsChar + Copy,
   &'static str: FindToken<<I as InputIter>::Item>,
 {
   alt((
-    map(char('a'), |_| '\x07' as u32),
-    map(char('b'), |_| '\x08' as u32),
-    map(char('e'), |_| '\x1b' as u32),
-    map(char('f'), |_| '\x0c' as u32),
-    map(char('n'), |_| '\n' as u32),
-    map(char('r'), |_| '\r' as u32),
-    map(char('t'), |_| '\t' as u32),
-    map(char('v'), |_| '\x0b' as u32),
-    map(one_of(r#"\'"?"#), |c| c as u32),
+    value('\x07', char('a')),
+    value('\x08', char('b')),
+    value('\x1b', char('e')),
+    value('\x0c', char('f')),
+    value('\n', char('n')),
+    value('\r', char('r')),
+    value('\t', char('t')),
+    value('\x0b', char('v')),
+    one_of(r#"\'"?"#),
   ))(input)
 }
 
@@ -189,7 +189,17 @@ where
   <I as InputIter>::Item: AsChar + Copy,
   &'static str: FindToken<<I as InputIter>::Item>,
 {
-  preceded(char('\\'), alt((simple_escape_sequence, numeric_escape_sequence, universal_char)))(input)
+  preceded(char('\\'), alt((map(simple_escape_sequence, u32::from), numeric_escape_sequence, universal_char)))(input)
+}
+
+/// Parse an unescaped character.
+fn unescaped_char<I>(input: I) -> IResult<I, char>
+where
+  I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
+  <I as InputIter>::Item: AsChar + Copy,
+  &'static str: FindToken<<I as InputIter>::Item>,
+{
+  map(none_of("\\\'\n"), |b| b.as_char())(input)
 }
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ use nom::{
   branch::alt,
   bytes::complete::{is_a, tag, tag_no_case},
   character::complete::{digit1, hex_digit1, oct_digit1},
-  combinator::{all_consuming, cond, eof, map, map_opt, map_parser, opt, success, value},
+  combinator::{all_consuming, cond, eof, map, map_opt, opt, success, value},
   sequence::{delimited, pair, preceded},
   AsChar, Compare, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Slice,
 };
@@ -16,9 +16,43 @@ use proc_macro2::TokenStream;
 use quote::ToTokens;
 
 use crate::{
-  ast::tokens::{macro_token, meta, token},
+  ast::tokens::{map_token, meta, token},
   BuiltInType, CodegenContext, LocalContext, MacroToken, Type,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct LitIntUnsignedSuffix;
+
+impl LitIntUnsignedSuffix {
+  pub fn parse<I, C>(input: I) -> IResult<I, Self>
+  where
+    I: InputTake + InputIter<Item = C> + Compare<&'static str> + Clone,
+    C: AsChar,
+  {
+    value(Self, tag_no_case("u"))(input)
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum LitIntSizeSuffix {
+  LongLong,
+  Long,
+  SizeT,
+}
+
+impl LitIntSizeSuffix {
+  pub fn parse<I, C>(input: I) -> IResult<I, Self>
+  where
+    I: InputTake + InputIter<Item = C> + Compare<&'static str> + Clone,
+    C: AsChar,
+  {
+    alt((
+      value(Self::LongLong, alt((tag("ll"), tag("LL")))),
+      value(Self::Long, tag_no_case("l")),
+      value(Self::SizeT, tag_no_case("z")),
+    ))(input)
+  }
+}
 
 /// An integer literal.
 ///
@@ -54,7 +88,7 @@ impl LitInt {
     }
   }
 
-  fn from_str<I, C>(input: I) -> IResult<I, (i128, Option<&'static str>, Option<&'static str>)>
+  fn from_str<I, C>(input: I) -> IResult<I, (i128, Option<LitIntUnsignedSuffix>, Option<LitIntSizeSuffix>)>
   where
     I: Debug
       + InputTake
@@ -78,7 +112,7 @@ impl LitInt {
     Ok((input, (n, unsigned, size)))
   }
 
-  fn parse_suffix<I, C>(input: I) -> IResult<I, (Option<&'static str>, Option<&'static str>)>
+  fn parse_suffix<I, C>(input: I) -> IResult<I, (Option<LitIntUnsignedSuffix>, Option<LitIntSizeSuffix>)>
   where
     I: Debug
       + InputTake
@@ -92,34 +126,17 @@ impl LitInt {
     &'static str: FindToken<<I as InputIter>::Item>,
   {
     all_consuming(alt((
-      map(
-        pair(
-          value("u", tag_no_case("u")),
-          opt(alt((value("ll", tag_no_case("ll")), value("l", tag_no_case("l")), value("z", tag_no_case("z"))))),
-        ),
-        |(unsigned, size)| (Some(unsigned), size),
-      ),
-      map(
-        pair(
-          alt((value("ll", tag_no_case("ll")), value("l", tag_no_case("l")), value("z", tag_no_case("z")))),
-          opt(value("u", tag_no_case("u"))),
-        ),
-        |(size, unsigned)| (unsigned, Some(size)),
-      ),
+      map(pair(LitIntUnsignedSuffix::parse, opt(LitIntSizeSuffix::parse)), |(unsigned, size)| (Some(unsigned), size)),
+      map(pair(LitIntSizeSuffix::parse, opt(LitIntUnsignedSuffix::parse)), |(size, unsigned)| (unsigned, Some(size))),
       value((None, None), eof),
     )))(input)
   }
 
   /// Parse an integer literal.
   pub fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, input) = macro_token(tokens)?;
+    let (tokens, (value, unsigned1, size1)) = map_token(Self::from_str)(tokens)?;
 
-    let (_, (value, unsigned1, size1)) = Self::from_str(input).map_err(|err| err.map_input(|_| tokens))?;
-
-    let suffix_unsigned = |tokens| alt((token("u"), token("U")))(tokens);
-    let suffix_long = |tokens| alt((token("l"), token("L")))(tokens);
-    let suffix_long_long = |tokens| alt((token("ll"), token("LL")))(tokens);
-    let suffix_size_t = |tokens| alt((token("z"), token("Z")))(tokens);
+    let suffix_unsigned = |tokens| map_token(LitIntUnsignedSuffix::parse)(tokens);
 
     let mut suffix = alt((
       alt((
@@ -128,17 +145,14 @@ impl LitInt {
             cond(unsigned1.is_none(), preceded(delimited(meta, token("##"), meta), suffix_unsigned)),
             cond(
               size1.is_none(),
-              opt(preceded(delimited(meta, token("##"), meta), alt((suffix_long_long, suffix_long, suffix_size_t)))),
+              opt(preceded(delimited(meta, token("##"), meta), map_token(LitIntSizeSuffix::parse))),
             ),
           ),
           |(unsigned, size)| (unsigned, size.flatten()),
         ),
         map(
           pair(
-            cond(
-              size1.is_none(),
-              preceded(delimited(meta, token("##"), meta), alt((suffix_long_long, suffix_long, suffix_size_t))),
-            ),
+            cond(size1.is_none(), preceded(delimited(meta, token("##"), meta), map_token(LitIntSizeSuffix::parse))),
             cond(unsigned1.is_none(), opt(preceded(delimited(meta, token("##"), meta), suffix_unsigned))),
           ),
           |(size, unsigned)| (unsigned.flatten(), size),
@@ -146,12 +160,7 @@ impl LitInt {
         map_opt(
           cond(
             unsigned1.is_none() && size1.is_none(),
-            preceded(
-              delimited(meta, token("##"), meta),
-              map_parser(macro_token, |token: &'i str| {
-                Self::parse_suffix(token).map_err(|err: nom::Err<nom::error::Error<&str>>| err.map_input(|_| tokens))
-              }),
-            ),
+            preceded(delimited(meta, token("##"), meta), map_token(Self::parse_suffix)),
           ),
           |opt| opt,
         ),
@@ -160,21 +169,18 @@ impl LitInt {
     ));
 
     let (tokens, (unsigned2, size2)) = suffix(tokens)?;
-    let unsigned = unsigned1.or(unsigned2).is_some();
+    let unsigned = unsigned1.or(unsigned2);
     let size = size1.or(size2);
 
     let suffix = match (unsigned, size) {
-      (false, None) => None,
-      (true, None) => Some(BuiltInType::UInt),
-      (unsigned, Some(size)) => {
-        if size.eq_ignore_ascii_case("l") {
-          Some(if unsigned { BuiltInType::ULong } else { BuiltInType::Long })
-        } else if size.eq_ignore_ascii_case("ll") {
-          Some(if unsigned { BuiltInType::ULongLong } else { BuiltInType::LongLong })
-        } else {
-          None
-        }
-      },
+      (None, None) => None,
+      (Some(LitIntUnsignedSuffix), None) => Some(BuiltInType::UInt),
+      (Some(LitIntUnsignedSuffix), Some(LitIntSizeSuffix::Long)) => Some(BuiltInType::ULong),
+      (None, Some(LitIntSizeSuffix::Long)) => Some(BuiltInType::Long),
+      (Some(LitIntUnsignedSuffix), Some(LitIntSizeSuffix::LongLong)) => Some(BuiltInType::ULongLong),
+      (None, Some(LitIntSizeSuffix::LongLong)) => Some(BuiltInType::LongLong),
+      (Some(LitIntUnsignedSuffix), Some(LitIntSizeSuffix::SizeT)) => Some(BuiltInType::SizeT),
+      (None, Some(LitIntSizeSuffix::SizeT)) => Some(BuiltInType::SSizeT),
     };
 
     // TODO: Handle suffix.
@@ -379,13 +385,16 @@ mod tests {
     assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
 
     let (_, id) = LitInt::parse(tokens![r#"1z"#]).unwrap();
-    assert_eq!(id, LitInt { value: 1, suffix: None });
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::SSizeT) });
 
     let (_, id) = LitInt::parse(tokens!["1", "##", "z"]).unwrap();
-    assert_eq!(id, LitInt { value: 1, suffix: None });
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::SSizeT) });
 
     let (_, id) = LitInt::parse(tokens![r#"28Z"#]).unwrap();
-    assert_eq!(id, LitInt { value: 28, suffix: None });
+    assert_eq!(id, LitInt { value: 28, suffix: Some(BuiltInType::SSizeT) });
+
+    let (_, id) = LitInt::parse(tokens![r#"28zu"#]).unwrap();
+    assert_eq!(id, LitInt { value: 28, suffix: Some(BuiltInType::SizeT) });
 
     let (_, id) = LitInt::parse(tokens![r#"0xff"#]).unwrap();
     assert_eq!(id, LitInt { value: 0xff, suffix: None });
