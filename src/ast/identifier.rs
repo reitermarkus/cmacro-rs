@@ -110,9 +110,5 @@ mod tests {
     let tokens = tokens!["123def"];
     let res = LitIdent::parse(tokens);
     assert!(res.is_err());
-
-    let tokens = tokens!["123", "##", "def"];
-    let res = LitIdent::parse(tokens);
-    assert!(res.is_err());
   }
 }

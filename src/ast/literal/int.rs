@@ -8,15 +8,15 @@ use nom::{
   branch::alt,
   bytes::complete::{is_a, tag, tag_no_case},
   character::complete::{digit1, hex_digit1, oct_digit1},
-  combinator::{all_consuming, cond, eof, map, map_opt, opt, success, value},
-  sequence::{delimited, pair, preceded},
+  combinator::{all_consuming, eof, map, map_opt, opt, value},
+  sequence::{pair, preceded},
   AsChar, Compare, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Slice,
 };
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 
 use crate::{
-  ast::tokens::{map_token, meta, token},
+  ast::tokens::{map_token},
   BuiltInType, CodegenContext, LocalContext, MacroToken, Type,
 };
 
@@ -134,43 +134,7 @@ impl LitInt {
 
   /// Parse an integer literal.
   pub fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, (value, unsigned1, size1)) = map_token(Self::from_str)(tokens)?;
-
-    let suffix_unsigned = |tokens| map_token(LitIntUnsignedSuffix::parse)(tokens);
-
-    let mut suffix = alt((
-      alt((
-        map(
-          pair(
-            cond(unsigned1.is_none(), preceded(delimited(meta, token("##"), meta), suffix_unsigned)),
-            cond(
-              size1.is_none(),
-              opt(preceded(delimited(meta, token("##"), meta), map_token(LitIntSizeSuffix::parse))),
-            ),
-          ),
-          |(unsigned, size)| (unsigned, size.flatten()),
-        ),
-        map(
-          pair(
-            cond(size1.is_none(), preceded(delimited(meta, token("##"), meta), map_token(LitIntSizeSuffix::parse))),
-            cond(unsigned1.is_none(), opt(preceded(delimited(meta, token("##"), meta), suffix_unsigned))),
-          ),
-          |(size, unsigned)| (unsigned.flatten(), size),
-        ),
-        map_opt(
-          cond(
-            unsigned1.is_none() && size1.is_none(),
-            preceded(delimited(meta, token("##"), meta), map_token(Self::parse_suffix)),
-          ),
-          |opt| opt,
-        ),
-      )),
-      success((None, None)),
-    ));
-
-    let (tokens, (unsigned2, size2)) = suffix(tokens)?;
-    let unsigned = unsigned1.or(unsigned2);
-    let size = size1.or(size2);
+    let (tokens, (value, unsigned, size)) = map_token(Self::from_str)(tokens)?;
 
     let suffix = match (unsigned, size) {
       (None, None) => None,
@@ -341,70 +305,127 @@ mod tests {
   use crate::macro_set::tokens;
 
   #[test]
-  fn parse_int_llu() {
-    let (_, id) = LitInt::parse(tokens!["1", "##", "LL", "##", "U"]).unwrap();
+  fn parse_int_u() {
+    let (_, id) = LitInt::parse(tokens!["1U"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::UInt) });
+
+    let (_, id) = LitInt::parse(tokens!["1u"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::UInt) });
+  }
+
+  #[test]
+  fn parse_int_l() {
+    let (_, id) = LitInt::parse(tokens!["3L"]).unwrap();
+    assert_eq!(id, LitInt { value: 3, suffix: Some(BuiltInType::Long) });
+
+    let (_, id) = LitInt::parse(tokens!["3l"]).unwrap();
+    assert_eq!(id, LitInt { value: 3, suffix: Some(BuiltInType::Long) });
+  }
+
+  #[test]
+  fn parse_int_ull() {
+    let (_, id) = LitInt::parse(tokens!["1ULL"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
+
+    let (_, id) = LitInt::parse(tokens!["1Ull"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
+
+    let (_, id) = LitInt::parse(tokens!["1uLL"]).unwrap();
     assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
   }
 
   #[test]
-  fn parse_int() {
-    let (_, id) = LitInt::parse(tokens!["777"]).unwrap();
-    assert_eq!(id, LitInt { value: 777, suffix: None });
-
-    let (_, id) = LitInt::parse(tokens!["0777"]).unwrap();
-    assert_eq!(id, LitInt { value: 0o777, suffix: None });
-
-    let (_, id) = LitInt::parse(tokens!["8718937817238719"]).unwrap();
-    assert_eq!(id, LitInt { value: 8718937817238719, suffix: None });
-
-    let (_, id) = LitInt::parse(tokens!["1U"]).unwrap();
-    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::UInt) });
-
-    let (_, id) = LitInt::parse(tokens!["1", "##", "U"]).unwrap();
-    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::UInt) });
-
-    let (_, id) = LitInt::parse(tokens!["3L"]).unwrap();
-    assert_eq!(id, LitInt { value: 3, suffix: Some(BuiltInType::Long) });
-
-    let (_, id) = LitInt::parse(tokens!["1ULL"]).unwrap();
-    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
-
-    let (_, id) = LitInt::parse(tokens!["1", "##", "U", "##", "LL"]).unwrap();
-    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
-
-    let (_, id) = LitInt::parse(tokens!["1", "##", "ULL"]).unwrap();
-    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
-
-    let (_, id) = LitInt::parse(tokens!["1UL"]).unwrap();
-    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULong) });
-
+  fn parse_int_llu() {
     let (_, id) = LitInt::parse(tokens!["1LLU"]).unwrap();
     assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
 
-    let (_, id) = LitInt::parse(tokens!["1", "##", "LL", "##", "U"]).unwrap();
+    let (_, id) = LitInt::parse(tokens!["1llU"]).unwrap();
     assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
 
-    let (_, id) = LitInt::parse(tokens!["1", "##", "LLU"]).unwrap();
+    let (_, id) = LitInt::parse(tokens!["1LLu"]).unwrap();
     assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULongLong) });
+  }
 
-    let (_, id) = LitInt::parse(tokens!["1z"]).unwrap();
-    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::SSizeT) });
+  #[test]
+  fn parse_int_ul() {
+    let (_, id) = LitInt::parse(tokens!["1UL"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULong) });
 
-    let (_, id) = LitInt::parse(tokens!["1", "##", "z"]).unwrap();
-    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::SSizeT) });
+    let (_, id) = LitInt::parse(tokens!["1Ul"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULong) });
 
-    let (_, id) = LitInt::parse(tokens!["28Z"]).unwrap();
-    assert_eq!(id, LitInt { value: 28, suffix: Some(BuiltInType::SSizeT) });
+    let (_, id) = LitInt::parse(tokens!["1uL"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULong) });
+
+    let (_, id) = LitInt::parse(tokens!["1ul"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::ULong) });
+  }
+
+  #[test]
+  fn parse_int_ll() {
+    let (_, id) = LitInt::parse(tokens!["1LL"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::LongLong) });
+
+    let (_, id) = LitInt::parse(tokens!["1ll"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::LongLong) });
+
+    LitInt::parse(tokens!["1Ll"]).unwrap_err();
+    LitInt::parse(tokens!["1lL"]).unwrap_err();
+  }
+
+  #[test]
+  fn parse_int_uz() {
+    let (_, id) = LitInt::parse(tokens!["1UZ"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::SizeT) });
+
+    let (_, id) = LitInt::parse(tokens!["1Uz"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::SizeT) });
+
+    let (_, id) = LitInt::parse(tokens!["1uZ"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::SizeT) });
+  }
+
+  #[test]
+  fn parse_int_zu() {
+    let (_, id) = LitInt::parse(tokens!["1ZU"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::SizeT) });
+
+    let (_, id) = LitInt::parse(tokens!["1Zu"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::SizeT) });
+
+    let (_, id) = LitInt::parse(tokens!["1zU"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::SizeT) });
 
     let (_, id) = LitInt::parse(tokens!["28zu"]).unwrap();
     assert_eq!(id, LitInt { value: 28, suffix: Some(BuiltInType::SizeT) });
+  }
 
+  #[test]
+  fn parse_int_z() {
+    let (_, id) = LitInt::parse(tokens!["28Z"]).unwrap();
+    assert_eq!(id, LitInt { value: 28, suffix: Some(BuiltInType::SSizeT) });
+
+    let (_, id) = LitInt::parse(tokens!["1z"]).unwrap();
+    assert_eq!(id, LitInt { value: 1, suffix: Some(BuiltInType::SSizeT) });
+  }
+
+  #[test]
+  fn parse_int_oct() {
+    let (_, id) = LitInt::parse(tokens!["0777"]).unwrap();
+    assert_eq!(id, LitInt { value: 0o777, suffix: None });
+  }
+
+  #[test]
+  fn parse_int_hex() {
     let (_, id) = LitInt::parse(tokens!["0xff"]).unwrap();
     assert_eq!(id, LitInt { value: 0xff, suffix: None });
 
     let (_, id) = LitInt::parse(tokens!["0XFF"]).unwrap();
     assert_eq!(id, LitInt { value: 0xff, suffix: None });
+  }
 
+  #[test]
+  fn parse_int_binary() {
     let (_, id) = LitInt::parse(tokens!["0b101"]).unwrap();
     assert_eq!(id, LitInt { value: 0b101, suffix: None });
 
@@ -413,10 +434,11 @@ mod tests {
   }
 
   #[test]
-  fn rest() {
-    let tokens = tokens!["0"];
-    let (rest, id) = LitInt::parse(tokens).unwrap();
-    assert_eq!(id, LitInt { value: 0, suffix: None });
-    assert!(rest.is_empty());
+  fn parse_int() {
+    let (_, id) = LitInt::parse(tokens!["777"]).unwrap();
+    assert_eq!(id, LitInt { value: 777, suffix: None });
+
+    let (_, id) = LitInt::parse(tokens!["8718937817238719"]).unwrap();
+    assert_eq!(id, LitInt { value: 8718937817238719, suffix: None });
   }
 }
