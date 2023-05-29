@@ -8,18 +8,15 @@ use nom::{
   branch::alt,
   bytes::complete::tag_no_case,
   character::complete::{char, digit1},
-  combinator::{all_consuming, cond, map, opt, recognize, value},
-  sequence::{delimited, pair, preceded, tuple},
+  combinator::{all_consuming, opt, recognize, value},
+  sequence::{pair, tuple},
   AsChar, Compare, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, ParseTo, Slice,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use std::num::FpCategory;
 
-use crate::{
-  ast::tokens::{map_token, meta, token},
-  BuiltInType, CodegenContext, LocalContext, MacroToken, Type,
-};
+use crate::{ast::tokens::map_token, BuiltInType, CodegenContext, LocalContext, MacroToken, Type};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum LitFloatSuffix {
@@ -95,17 +92,7 @@ impl LitFloat {
 
   /// Parse a floating-point literal.
   pub fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (_, (repr, size1)) = map_token(Self::from_str)(tokens)?;
-
-    let tokens = &tokens[1..];
-
-    let mut suffix = map(
-      cond(size1.is_none(), opt(preceded(delimited(meta, token("##"), meta), map_token(LitFloatSuffix::parse)))),
-      |size| size.flatten(),
-    );
-
-    let (tokens, size2) = suffix(tokens)?;
-    let size = size1.or(size2);
+    let (tokens, (repr, size)) = map_token(Self::from_str)(tokens)?;
 
     let lit = match size {
       Some(LitFloatSuffix::Float) => repr.parse_to().map(Self::Float),

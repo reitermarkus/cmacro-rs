@@ -73,25 +73,32 @@ pub enum LitChar {
 }
 
 impl LitChar {
-  /// Parse a character literal.
-  pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let parse_char = |(prefix, c)| match prefix {
+  fn parse_str(input: &str) -> IResult<&str, Self> {
+    map_opt(pair(opt(LitCharPrefix::parse), Self::parse_unprefixed), |(prefix, c)| Self::with_prefix(prefix, c))(input)
+  }
+
+  fn parse_unprefixed(input: &str) -> IResult<&str, u32> {
+    delimited(char('\''), alt((escaped_char, map(unescaped_char, u32::from))), char('\''))(input)
+  }
+
+  fn with_prefix(prefix: Option<LitCharPrefix>, c: u32) -> Option<Self> {
+    match prefix {
       None if c <= 0xff => Some(LitChar::Ordinary(c as u8)),
       Some(LitCharPrefix::Utf8) if c <= 0x7f => Some(LitChar::Utf8(c as u8)),
       Some(LitCharPrefix::Utf16) if c <= u16::MAX as u32 => Some(LitChar::Utf16(c as u16)),
       Some(LitCharPrefix::Utf32) => Some(LitChar::Utf32(c)),
       Some(LitCharPrefix::Wide) => Some(LitChar::Wide(c)),
       _ => None,
-    };
+    }
+  }
 
-    let delimited_char =
-      move |input| delimited(char('\''), alt((escaped_char, map(unescaped_char, u32::from))), char('\''))(input);
-
+  /// Parse a character literal.
+  pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
-      map_opt(pair(map_token(LitCharPrefix::parse), map_token(delimited_char)), move |(prefix, c)| {
-        parse_char((Some(prefix), c))
+      map_opt(pair(map_token(LitCharPrefix::parse), map_token(Self::parse_unprefixed)), move |(prefix, c)| {
+        Self::with_prefix(Some(prefix), c)
       }),
-      map_token(map_opt(pair(opt(LitCharPrefix::parse), delimited_char), parse_char)),
+      map_token(Self::parse_str),
     ))(input)
   }
 

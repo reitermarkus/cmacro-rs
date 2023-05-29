@@ -919,7 +919,7 @@ mod tests {
   #[test]
   fn parse_stringify() {
     let (_, expr) = Expr::parse(tokens!["#", macro_arg!(0)]).unwrap();
-    assert_eq!(expr, Expr::Stringify(Stringify { arg: MacroArg { index: 0} }));
+    assert_eq!(expr, Expr::Stringify(Stringify { arg: MacroArg { index: 0 } }));
   }
 
   #[test]
