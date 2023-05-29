@@ -121,7 +121,10 @@ impl LitFloat {
   }
 
   #[allow(unused_variables)]
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<'t, C>(
+    &mut self,
+    ctx: &mut LocalContext<'_, 't, C>,
+  ) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -132,7 +135,7 @@ impl LitFloat {
     }))
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     let trait_prefix = ctx.trait_prefix().into_iter();
     tokens.append_all(match self {
       Self::Float(f) => match f.classify() {

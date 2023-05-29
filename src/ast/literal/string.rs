@@ -249,7 +249,10 @@ impl LitString {
   }
 
   #[allow(unused_variables)]
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<'t, C>(
+    &mut self,
+    ctx: &mut LocalContext<'_, 't, C>,
+  ) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -260,7 +263,7 @@ impl LitString {
       Self::Utf32(_) => Type::BuiltIn(BuiltInType::Char32T),
       Self::Wide(_) => {
         let mut ty = Type::Identifier {
-          name: Box::new(Expr::Variable { name: LitIdent { id: "wchar_t".to_owned() } }),
+          name: Box::new(Expr::Variable { name: LitIdent { id: "wchar_t".to_owned().into() } }),
           is_struct: false,
         };
         ty.finish(ctx)?;
@@ -273,7 +276,7 @@ impl LitString {
 
   pub(crate) fn to_token_stream<C: CodegenContext>(
     &self,
-    ctx: &mut LocalContext<'_, C>,
+    ctx: &mut LocalContext<'_, '_, C>,
     generate_as_array: bool,
   ) -> (TokenStream, TokenStream) {
     enum GenerationMethod {

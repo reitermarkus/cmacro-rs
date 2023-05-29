@@ -30,7 +30,10 @@ impl Stringify {
     map(preceded(terminated(token("#"), meta), macro_arg), |index| Self { index })(tokens)
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<'t, C>(
+    &mut self,
+    ctx: &mut LocalContext<'_, 't, C>,
+  ) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -42,11 +45,11 @@ impl Stringify {
     Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     tokens.append_all(self.to_token_stream(ctx))
   }
 
-  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>) -> TokenStream {
     let id = Ident::new(ctx.arg_name(self.index), Span::call_site());
 
     let ffi_prefix = ctx.ffi_prefix().into_iter();

@@ -143,16 +143,16 @@ impl ToTokens for BinaryOp {
 /// #define BINARY_EXPR 7 % c
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BinaryExpr {
+pub struct BinaryExpr<'t> {
   /// Left-hand side expression.
-  pub lhs: Expr,
+  pub lhs: Expr<'t>,
   /// Expression operator.
   pub op: BinaryOp,
   /// Right-hand side expression.
-  pub rhs: Expr,
+  pub rhs: Expr<'t>,
 }
 
-impl BinaryExpr {
+impl<'t> BinaryExpr<'t> {
   #[inline]
   pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
     self.op.precedence()
@@ -160,8 +160,8 @@ impl BinaryExpr {
 
   pub(crate) fn finish<C>(
     &mut self,
-    ctx: &mut LocalContext<'_, C>,
-  ) -> Result<(Option<Type>, Option<Type>), crate::CodegenError>
+    ctx: &mut LocalContext<'_, 't, C>,
+  ) -> Result<(Option<Type<'t>>, Option<Type<'t>>), crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -221,10 +221,10 @@ impl BinaryExpr {
     Ok((lhs_ty, rhs_ty))
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     tokens.append_all(self.to_token_stream(ctx))
   }
-  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>) -> TokenStream {
     let mut lhs = self.lhs.to_token_stream(ctx);
     let op = self.op;
     let mut rhs = self.rhs.to_token_stream(ctx);

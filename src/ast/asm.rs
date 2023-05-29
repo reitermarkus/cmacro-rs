@@ -67,14 +67,14 @@ impl ToTokens for RegConstraint {
 ///   );
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Asm {
+pub struct Asm<'t> {
   template: Vec<String>,
-  outputs: Vec<(Dir, RegConstraint, Expr)>,
-  inputs: Vec<(RegConstraint, Expr)>,
+  outputs: Vec<(Dir, RegConstraint, Expr<'t>)>,
+  inputs: Vec<(RegConstraint, Expr<'t>)>,
   clobbers: Vec<String>,
 }
 
-impl Asm {
+impl<'t> Asm<'t> {
   fn parse_template(input: &str) -> IResult<&str, Vec<String>> {
     all_consuming(map(
       fold_many0(
@@ -139,7 +139,7 @@ impl Asm {
     all_consuming(Self::parse_reg_constraint)(input)
   }
 
-  pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, (template, outputs, inputs, clobbers)) = parenthesized(tuple((
       delimited(
         meta,
@@ -192,7 +192,7 @@ impl Asm {
   }
 
   #[allow(unused_variables)]
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -228,7 +228,7 @@ impl Asm {
     self.outputs.is_empty() && self.inputs.is_empty() && self.clobbers.is_empty()
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     let template = &self.template;
 
     let mut outputs = self.outputs.clone();

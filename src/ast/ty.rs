@@ -179,7 +179,7 @@ impl BuiltInType {
     }
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     let ffi_prefix = ctx.ffi_prefix();
     self.to_rust_ty(ffi_prefix).to_tokens(tokens);
   }
@@ -231,7 +231,7 @@ fn int_ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], 
   ))(input)
 }
 
-fn ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Type> {
+fn ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Type<'t>> {
   alt((
     // [const] (float | [long] double | bool | void)
     map(
@@ -268,23 +268,23 @@ fn const_qualifier<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroTok
 
 /// A type.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Type {
+pub enum Type<'t> {
   /// A built-in type.
   BuiltIn(BuiltInType),
   /// A type identifier.
   #[allow(missing_docs)]
-  Identifier { name: Box<Expr>, is_struct: bool },
+  Identifier { name: Box<Expr<'t>>, is_struct: bool },
   /// A type path.
   #[allow(missing_docs)]
-  Path { leading_colon: bool, segments: Vec<LitIdent> },
+  Path { leading_colon: bool, segments: Vec<LitIdent<'t>> },
   /// A pointer type.
   #[allow(missing_docs)]
   Ptr { ty: Box<Self>, mutable: bool },
 }
 
-impl Type {
+impl<'t> Type<'t> {
   /// Parse a type.
-  pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, ty) = delimited(const_qualifier, ty, const_qualifier)(tokens)?;
 
     fold_many0(
@@ -304,7 +304,7 @@ impl Type {
     matches!(self, Self::Ptr { .. })
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -326,7 +326,7 @@ impl Type {
     }
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     match self {
       Self::BuiltIn(ty) => ty.to_tokens(ctx, tokens),
       Self::Identifier { name, .. } => name.to_tokens(ctx, tokens),
@@ -347,7 +347,7 @@ impl Type {
     }
   }
 
-  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>) -> TokenStream {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens
@@ -361,7 +361,7 @@ impl Type {
       }),
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
       syn::Type::Verbatim(ty) => Ok(Self::Identifier {
-        name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_string() } }),
+        name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_string().into() } }),
         is_struct: false,
       }),
       syn::Type::Path(path_ty) => {
@@ -371,7 +371,7 @@ impl Type {
 
         Ok(Self::Path {
           leading_colon: path_ty.path.leading_colon.is_some(),
-          segments: path_ty.path.segments.iter().map(|s| LitIdent { id: s.ident.to_string() }).collect(),
+          segments: path_ty.path.segments.iter().map(|s| LitIdent { id: s.ident.to_string().into() }).collect(),
         })
       },
       ty => Err(crate::CodegenError::UnsupportedType(ty.into_token_stream().to_string())),
@@ -410,9 +410,27 @@ impl Type {
       },
     })
   }
+
+  pub(crate) fn to_static(&self) -> Option<Type<'static>> {
+    match self {
+      Self::BuiltIn(ty) => Some(Type::BuiltIn(ty.clone())),
+      Self::Identifier { name, is_struct } => {
+        if let Expr::Variable { name } = &**name {
+          Some(Type::Identifier { name: Box::new(Expr::Variable { name: name.to_static() }), is_struct: *is_struct })
+        } else {
+          // TODO: Implement `to_static` for `Expr`.
+          None
+        }
+      },
+      Self::Path { leading_colon, segments } => {
+        Some(Type::Path { leading_colon: *leading_colon, segments: segments.iter().map(|ty| ty.to_static()).collect() })
+      },
+      Self::Ptr { ty, mutable } => Some(Type::Ptr { ty: Box::new(ty.to_static()?), mutable: *mutable }),
+    }
+  }
 }
 
-impl FromStr for Type {
+impl FromStr for Type<'static> {
   type Err = crate::CodegenError;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -420,8 +438,12 @@ impl FromStr for Type {
     let ty = s.replace('*', " * ");
 
     let tokens = ty.split_whitespace().map(|t| MacroToken::Token(Cow::Borrowed(t))).collect::<Vec<_>>();
-    let (_, ty) = Self::parse(&tokens).map_err(|_| crate::CodegenError::UnsupportedType(s.to_owned()))?;
-    Ok(ty)
+    let (_, ty) = Type::parse(&tokens).map_err(|_| crate::CodegenError::UnsupportedType(s.to_owned()))?;
+
+    match ty.to_static() {
+      Some(ty) => Ok(ty),
+      _ => Err(crate::CodegenError::UnsupportedType(s.to_owned())),
+    }
   }
 }
 
@@ -578,6 +600,9 @@ mod tests {
     assert_eq!(ty, ty!(*mut BuiltInType::UInt));
 
     let ty = "char *".parse::<Type>().unwrap();
+    assert_eq!(ty, ty!(*mut BuiltInType::Char));
+
+    let ty = "char*".parse::<Type>().unwrap();
     assert_eq!(ty, ty!(*mut BuiltInType::Char));
   }
 }

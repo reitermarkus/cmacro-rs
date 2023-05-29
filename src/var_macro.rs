@@ -25,14 +25,14 @@ use crate::{ast::Lit, is_identifier, CodegenContext, Expr, LocalContext, MacroBo
 /// # }
 /// ```
 #[derive(Debug, Clone)]
-pub struct VarMacro {
+pub struct VarMacro<'t> {
   name: String,
-  body: MacroBody,
+  body: MacroBody<'t>,
 }
 
-impl VarMacro {
+impl<'t> VarMacro<'t> {
   /// Parse a variable-like macro from a name and value tokens.
-  pub fn parse(name: &str, value: &[MacroToken<'_>]) -> Result<Self, crate::ParserError> {
+  pub fn parse(name: &str, value: &[MacroToken<'t>]) -> Result<Self, crate::ParserError> {
     let name = if is_identifier(name) { name.to_owned() } else { return Err(crate::ParserError::InvalidMacroName) };
 
     let body = match MacroBody::parse(value) {
@@ -93,7 +93,7 @@ impl VarMacro {
     }
   }
 
-  pub(crate) fn value_mut(&mut self) -> Option<&mut Expr> {
+  pub(crate) fn value_mut(&mut self) -> Option<&mut Expr<'t>> {
     match &mut self.body {
       MacroBody::Statement(_) => None,
       MacroBody::Expr(expr) => Some(expr),

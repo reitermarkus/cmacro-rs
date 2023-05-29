@@ -23,23 +23,23 @@ use crate::{CodegenContext, LocalContext, MacroToken};
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
-pub enum Statement {
+pub enum Statement<'t> {
   /// An expression.
-  Expr(Expr),
+  Expr(Expr<'t>),
   /// A function declaration.
-  FunctionDecl(FunctionDecl),
+  FunctionDecl(FunctionDecl<'t>),
   /// A variable declaration.
-  Decl(Decl),
+  Decl(Decl<'t>),
   /// A block containing multiple statements.
   Block(Vec<Self>),
   /// An if-condition.
-  If { condition: Expr, if_branch: Vec<Statement>, else_branch: Vec<Statement> },
+  If { condition: Expr<'t>, if_branch: Vec<Statement<'t>>, else_branch: Vec<Statement<'t>> },
   /// A do-while condition.
-  DoWhile { block: Vec<Statement>, condition: Expr },
+  DoWhile { block: Vec<Statement<'t>>, condition: Expr<'t> },
 }
 
-impl Statement {
-  fn parse_single<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+impl<'t> Statement<'t> {
+  fn parse_single<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let condition = |input| parenthesized(Expr::parse)(input);
     let block =
       |input| map(Self::parse_single, |stmt| if let Self::Block(stmts) = stmt { stmts } else { vec![stmt] })(input);
@@ -73,7 +73,7 @@ impl Statement {
   }
 
   /// Parse a statement.
-  pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     map(many0(delimited(meta, Self::parse_single, meta)), |mut stmts| {
       if stmts.len() == 1 {
         stmts.remove(0)
@@ -83,7 +83,7 @@ impl Statement {
     })(tokens)
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -125,7 +125,7 @@ impl Statement {
     Ok(Some(Type::BuiltIn(BuiltInType::Void)))
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     match self {
       Self::Expr(expr) => {
         let expr = expr.to_token_stream(ctx);
@@ -174,7 +174,7 @@ impl Statement {
     }
   }
 
-  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>) -> TokenStream {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens

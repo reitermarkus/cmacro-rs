@@ -2,29 +2,29 @@ use super::*;
 
 /// Type of a macro argument.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum MacroArgType {
+pub(crate) enum MacroArgType<'t> {
   /// `ident` type
   Ident,
   /// `expr` type
   Expr,
   /// known type
-  Known(Type),
+  Known(Type<'t>),
   /// unknown type
   Unknown,
 }
 
 /// Local code generation context.
 #[derive(Debug, Clone)]
-pub(crate) struct LocalContext<'g, C> {
+pub(crate) struct LocalContext<'g, 't, C> {
   pub(crate) arg_names: Vec<String>,
-  pub(crate) arg_types: Vec<MacroArgType>,
+  pub(crate) arg_types: Vec<MacroArgType<'t>>,
   pub(crate) export_as_macro: bool,
   pub(crate) global_context: &'g C,
   pub(crate) generate_cstr: bool,
   pub(crate) is_variable_macro: bool,
 }
 
-impl<'g, C> LocalContext<'g, C>
+impl<'g, 't, C> LocalContext<'g, 't, C>
 where
   C: CodegenContext,
 {
@@ -40,7 +40,7 @@ where
   }
 }
 
-impl<'g, C> LocalContext<'g, C> {
+impl<'g, 't, C> LocalContext<'g, 't, C> {
   pub fn is_variadic(&self) -> bool {
     self.arg_names.last().map(|s| s.as_str()) == Some("...")
   }
@@ -49,11 +49,11 @@ impl<'g, C> LocalContext<'g, C> {
     &self.arg_names[index]
   }
 
-  pub fn arg_type(&self, index: usize) -> &MacroArgType {
+  pub fn arg_type(&self, index: usize) -> &MacroArgType<'t> {
     &self.arg_types[index]
   }
 
-  pub fn arg_type_mut(&mut self, index: usize) -> &mut MacroArgType {
+  pub fn arg_type_mut(&mut self, index: usize) -> &mut MacroArgType<'t> {
     &mut self.arg_types[index]
   }
 
@@ -65,9 +65,9 @@ impl<'g, C> LocalContext<'g, C> {
   }
 }
 
-impl<C> LocalContext<'_, C> where C: CodegenContext {}
+impl<C> LocalContext<'_, '_, C> where C: CodegenContext {}
 
-impl<'g, C> CodegenContext for LocalContext<'g, C>
+impl<'g, 't, C> CodegenContext for LocalContext<'g, 't, C>
 where
   C: CodegenContext,
 {
@@ -83,7 +83,7 @@ where
     self.global_context.trait_prefix()
   }
 
-  fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
+  fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<syn::Type> {
     self.global_context.macro_arg_ty(macro_name, arg_name)
   }
 
@@ -117,7 +117,7 @@ pub trait CodegenContext {
 
   /// Get the type for the given macro argument.
   #[allow(unused_variables)]
-  fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
+  fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<syn::Type> {
     None
   }
 
@@ -168,7 +168,7 @@ where
     T::trait_prefix(self)
   }
 
-  fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
+  fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<syn::Type> {
     T::macro_arg_ty(self, macro_name, arg_name)
   }
 

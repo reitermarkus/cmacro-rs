@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{borrow::Cow, fmt::Debug};
 
 use nom::{
   branch::alt,
@@ -23,7 +23,7 @@ pub(crate) fn is_identifier(s: &str) -> bool {
   false
 }
 
-pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
+pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent<'t>> {
   map_token(map_opt(
     |token| {
       fold_many1(
@@ -37,7 +37,7 @@ pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'
     },
     |s| {
       if is_identifier(&s) {
-        Some(LitIdent { id: s })
+        Some(LitIdent { id: Cow::Owned(s) })
       } else {
         None
       }
@@ -45,7 +45,7 @@ pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'
   ))(tokens)
 }
 
-fn concat_identifier<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent> {
+fn concat_identifier<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent<'t>> {
   map_token(map_opt(
     fold_many1(
       alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
@@ -59,7 +59,7 @@ fn concat_identifier<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [Macro
       let mut chars = s.chars();
 
       if chars.all(unicode_ident::is_xid_continue) {
-        Some(LitIdent { id: s })
+        Some(LitIdent { id: Cow::Owned(s) })
       } else {
         None
       }
@@ -69,32 +69,28 @@ fn concat_identifier<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [Macro
 
 /// A literal identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LitIdent {
-  pub(crate) id: String,
+pub struct LitIdent<'t> {
+  pub(crate) id: Cow<'t, str>,
 }
 
-impl LitIdent {
+impl<'t> LitIdent<'t> {
   /// Get the string representation of this identifier.
   pub fn as_str(&self) -> &str {
-    &self.id
+    self.id.as_ref()
   }
-}
 
-impl LitIdent {
   /// Parse an identifier.
-  pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     identifier_lit(tokens)
   }
 
   /// Parse an identifier.
-  pub(crate) fn parse_concat<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse_concat<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     concat_identifier(tokens)
   }
-}
 
-impl From<&str> for LitIdent {
-  fn from(s: &str) -> Self {
-    Self { id: s.to_owned() }
+  pub(crate) fn to_static(&self) -> LitIdent<'static> {
+    LitIdent { id: Cow::Owned(self.id.clone().into_owned()) }
   }
 }
 
@@ -102,21 +98,21 @@ impl From<&str> for LitIdent {
 mod tests {
   use super::*;
 
-  use crate::macro_set::tokens;
+  use crate::{lit_id, macro_set::tokens};
 
   #[test]
   fn parse_literal() {
     let (_, id) = LitIdent::parse(tokens!["asdf"]).unwrap();
-    assert_eq!(id, "asdf".into());
+    assert_eq!(id, lit_id!(asdf));
 
     let (_, id) = LitIdent::parse(tokens!["Δx"]).unwrap();
-    assert_eq!(id, "Δx".into());
+    assert_eq!(id, lit_id!(Δx));
 
     let (_, id) = LitIdent::parse(tokens!["_123"]).unwrap();
-    assert_eq!(id, "_123".into());
+    assert_eq!(id, lit_id!(_123));
 
     let (_, id) = LitIdent::parse(tokens!["__INT_MAX__"]).unwrap();
-    assert_eq!(id, "__INT_MAX__".into());
+    assert_eq!(id, lit_id!(__INT_MAX__));
   }
 
   #[test]

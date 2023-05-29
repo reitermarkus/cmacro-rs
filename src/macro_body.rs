@@ -13,7 +13,7 @@ use crate::{
 
 /// The body of a macro.
 #[derive(Debug, Clone)]
-pub enum MacroBody {
+pub enum MacroBody<'t> {
   /// A statement, e.g.
   ///
   /// ```c
@@ -27,17 +27,17 @@ pub enum MacroBody {
   /// ```c
   /// #define STMT a += b;
   /// ```
-  Statement(Statement),
+  Statement(Statement<'t>),
   /// An expression, e.g.
   ///
   /// ```c
   /// #define EXPR a + b
   /// ```
-  Expr(Expr),
+  Expr(Expr<'t>),
 }
 
-impl MacroBody {
-  pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+impl<'t> MacroBody<'t> {
+  pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, _) = meta(tokens)?;
 
     if tokens.is_empty() {
@@ -52,7 +52,7 @@ impl MacroBody {
     Ok((tokens, body))
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {

@@ -16,24 +16,24 @@ use crate::{ast::tokens::macro_arg, CodegenContext, LocalContext, MacroArgType, 
 /// An expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
-pub enum Expr {
+pub enum Expr<'t> {
   Arg { index: usize },
-  Variable { name: LitIdent },
-  FunctionCall(FunctionCall),
-  Cast { expr: Box<Self>, ty: Type },
+  Variable { name: LitIdent<'t> },
+  FunctionCall(FunctionCall<'t>),
+  Cast { expr: Box<Self>, ty: Type<'t> },
   Literal(Lit),
   FieldAccess { expr: Box<Self>, field: Box<Self> },
   ArrayAccess { expr: Box<Self>, index: Box<Self> },
   Stringify(Stringify),
   ConcatIdent(Vec<Self>),
   ConcatString(Vec<Self>),
-  Unary(Box<UnaryExpr>),
-  Binary(Box<BinaryExpr>),
+  Unary(Box<UnaryExpr<'t>>),
+  Binary(Box<BinaryExpr<'t>>),
   Ternary(Box<Self>, Box<Self>, Box<Self>),
-  Asm(Asm),
+  Asm(Asm<'t>),
 }
 
-impl Expr {
+impl<'t> Expr<'t> {
   pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
     match self {
       Self::Asm(_) | Self::Literal(_) | Self::Arg { .. } | Self::Variable { .. } | Self::ConcatIdent(_) => (0, None),
@@ -48,7 +48,7 @@ impl Expr {
   }
 
   /// Parse identifier concatenation, e.g. `arg ## 2`.
-  pub(crate) fn parse_concat_ident<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse_concat_ident<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, id) = alt((
       map(macro_arg, |index| Self::Arg { index }),
       map(LitIdent::parse, |id| Self::Variable { name: id }),
@@ -74,7 +74,7 @@ impl Expr {
   }
 
   /// Parse string concatenation, e.g. `arg "333"`.
-  fn parse_concat_string<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_concat_string<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let parse_var = Self::parse_concat_ident;
     let parse_string =
       alt((map(LitString::parse, |s| Self::Literal(Lit::String(s))), map(Stringify::parse, Self::Stringify)));
@@ -95,7 +95,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_factor<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_factor<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
       map(LitChar::parse, |c| Self::Literal(Lit::Char(c))),
       Self::parse_concat_string,
@@ -104,7 +104,7 @@ impl Expr {
     ))(tokens)
   }
 
-  fn parse_term_prec1<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec1<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, factor) = Self::parse_factor(tokens)?;
 
     // `__asm ( ... )` or `__asm volatile ( ... )`
@@ -141,10 +141,10 @@ impl Expr {
       _ => return Ok((tokens, factor)),
     }
 
-    enum Access {
-      Fn(Vec<Expr>),
-      Field { field: Box<Expr>, deref: bool },
-      Array { index: Box<Expr> },
+    enum Access<'t> {
+      Fn(Vec<Expr<'t>>),
+      Field { field: Box<Expr<'t>>, deref: bool },
+      Array { index: Box<Expr<'t>> },
       UnaryOp(UnaryOp),
     }
 
@@ -200,7 +200,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec2<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec2<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
       map(pair(parenthesized(Type::parse), Self::parse_term_prec2), |(ty, term)| Self::Cast {
         expr: Box::new(term),
@@ -229,7 +229,7 @@ impl Expr {
     ))(tokens)
   }
 
-  fn parse_term_prec3<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec3<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec2(tokens)?;
 
     fold_many0(
@@ -246,7 +246,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec4<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec4<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec3(tokens)?;
 
     fold_many0(
@@ -259,7 +259,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec5<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec5<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec4(tokens)?;
 
     fold_many0(
@@ -272,7 +272,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec6<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec6<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec5(tokens)?;
 
     fold_many0(
@@ -294,7 +294,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec7<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec7<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec6(tokens)?;
 
     fold_many0(
@@ -307,7 +307,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec8<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec8<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec7(tokens)?;
 
     fold_many0(
@@ -317,7 +317,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec9<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec9<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec8(tokens)?;
 
     fold_many0(
@@ -327,7 +327,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec10<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec10<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec9(tokens)?;
 
     fold_many0(
@@ -337,7 +337,7 @@ impl Expr {
     )(tokens)
   }
 
-  fn parse_term_prec13<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec13<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec10(tokens)?;
 
     // Parse ternary.
@@ -351,7 +351,7 @@ impl Expr {
     Ok((tokens, term))
   }
 
-  fn parse_term_prec14<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  fn parse_term_prec14<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, term) = Self::parse_term_prec13(tokens)?;
 
     fold_many0(
@@ -381,11 +381,11 @@ impl Expr {
   }
 
   /// Parse an expression.
-  pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     Self::parse_term_prec14(tokens)
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -507,7 +507,7 @@ impl Expr {
             },
             Self::Variable { name } => {
               if let Some(Self::Variable { name: last_id }) = new_ids.last_mut() {
-                last_id.id.push_str(&name.id)
+                last_id.id.to_mut().push_str(name.as_str())
               } else {
                 new_ids.push(Self::Variable { name });
               }
@@ -727,7 +727,7 @@ impl Expr {
     }
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     match self {
       Self::Cast { ref expr, ref ty } => tokens.append_all(match (ty, &**expr) {
         (Type::Ptr { mutable, .. }, Expr::Literal(Lit::Int(LitInt { value: 0, .. }))) => {
@@ -899,7 +899,7 @@ impl Expr {
     }
   }
 
-  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>) -> TokenStream {
     let mut tokens = TokenStream::new();
     self.to_tokens(ctx, &mut tokens);
     tokens

@@ -11,7 +11,7 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use crate::{
-  identifier_lit, is_identifier, meta, token, CodegenContext, LocalContext, MacroArgType, MacroBody, MacroToken,
+  identifier_lit, is_identifier, meta, token, CodegenContext, LocalContext, MacroArgType, MacroBody, MacroToken, Type,
 };
 
 /// A function-like macro.
@@ -96,21 +96,21 @@ use crate::{
 /// # }
 /// ```
 #[derive(Debug, Clone)]
-pub struct FnMacro {
+pub struct FnMacro<'t> {
   name: String,
   args: Vec<String>,
-  body: MacroBody,
+  body: MacroBody<'t>,
 }
 
-impl FnMacro {
-  fn parse_args<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Vec<String>> {
+impl<'t> FnMacro<'t> {
+  fn parse_args<'i>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Vec<String>> {
     all_consuming(terminated(
       alt((
         map(preceded(meta, token("...")), |var_arg| vec![var_arg.to_owned()]),
         map(
           tuple((
             fold_many0(preceded(meta, identifier_lit), Vec::new, |mut acc, arg| {
-              acc.push(arg.id);
+              acc.push(arg.id.into_owned());
               acc
             }),
             preceded(meta, opt(map(token("..."), |var_arg| var_arg.to_owned()))),
@@ -131,7 +131,7 @@ impl FnMacro {
   }
 
   /// Parse a function-like macro from a name, arguments and body tokens.
-  pub fn parse(name: &str, args: &[MacroToken<'_>], body: &[MacroToken<'_>]) -> Result<Self, crate::ParserError> {
+  pub fn parse(name: &str, args: &[MacroToken<'t>], body: &[MacroToken<'t>]) -> Result<Self, crate::ParserError> {
     let name = if is_identifier(name) { name.to_owned() } else { return Err(crate::ParserError::InvalidMacroName) };
 
     let (_, args) = Self::parse_args(args).map_err(|_| crate::ParserError::InvalidMacroArgs)?;
@@ -153,7 +153,7 @@ impl FnMacro {
       .iter()
       .map(|arg| {
         let ty = if let Some(arg_ty) = cx.macro_arg_ty(&self.name, arg) {
-          MacroArgType::Known(arg_ty.parse()?)
+          MacroArgType::Known(Type::from_rust_ty(&arg_ty, cx.ffi_prefix().as_ref())?)
         } else {
           MacroArgType::Unknown
         };

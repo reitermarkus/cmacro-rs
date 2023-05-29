@@ -96,7 +96,10 @@ impl LitChar {
   }
 
   #[allow(unused_variables)]
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<'t, C>(
+    &mut self,
+    ctx: &mut LocalContext<'_, 't, C>,
+  ) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -107,7 +110,7 @@ impl LitChar {
       LitChar::Utf32(_) => Some(Type::BuiltIn(BuiltInType::Char32T)),
       LitChar::Wide(_) => {
         let mut ty = Type::Identifier {
-          name: Box::new(Expr::Variable { name: LitIdent { id: "wchar_t".to_owned() } }),
+          name: Box::new(Expr::Variable { name: LitIdent { id: "wchar_t".to_owned().into() } }),
           is_struct: false,
         };
         ty.finish(ctx)?;
@@ -117,7 +120,7 @@ impl LitChar {
   }
 
   #[allow(unused_variables)]
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     let c = match *self {
       Self::Ordinary(c) => {
         if let Some(c) = char::from_u32(c as u32) {

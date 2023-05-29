@@ -48,20 +48,20 @@ impl UnaryOp {
 /// #define UNARY_EXPR !cond
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnaryExpr {
+pub struct UnaryExpr<'t> {
   /// Expression operator.
   pub op: UnaryOp,
   /// Expression.
-  pub expr: Expr,
+  pub expr: Expr<'t>,
 }
 
-impl UnaryExpr {
+impl<'t> UnaryExpr<'t> {
   #[inline]
   pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
     self.op.precedence()
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -86,10 +86,10 @@ impl UnaryExpr {
     }
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     tokens.append_all(self.to_token_stream(ctx))
   }
-  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>) -> TokenStream {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>) -> TokenStream {
     let (prec, _) = self.precedence();
     let (expr_prec, _) = self.expr.precedence();
 

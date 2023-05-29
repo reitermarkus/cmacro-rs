@@ -12,15 +12,15 @@ use crate::{CodegenContext, LocalContext, MacroArgType};
 /// #define FUNC f(1, 2, 3)
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionCall {
+pub struct FunctionCall<'t> {
   /// The function name identifier.
-  pub(crate) name: Box<Expr>,
+  pub(crate) name: Box<Expr<'t>>,
   /// The function arguments.
-  pub(crate) args: Vec<Expr>,
+  pub(crate) args: Vec<Expr<'t>>,
 }
 
-impl FunctionCall {
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+impl<'t> FunctionCall<'t> {
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -63,7 +63,7 @@ impl FunctionCall {
     Ok(ty)
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     let mut name = TokenStream::new();
     self.name.to_tokens(ctx, &mut name);
 

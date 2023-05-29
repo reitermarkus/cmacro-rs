@@ -19,15 +19,15 @@ use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken};
 /// #define FUNC_DECL void f(int a, int b, int c)
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionDecl {
-  ret_ty: Type,
-  name: Expr,
-  args: Vec<(Type, Expr)>,
+pub struct FunctionDecl<'t> {
+  ret_ty: Type<'t>,
+  name: Expr<'t>,
+  args: Vec<(Type<'t>, Expr<'t>)>,
 }
 
-impl FunctionDecl {
+impl<'t> FunctionDecl<'t> {
   /// Parse a function declaration.
-  pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, ((_, ret_ty), name, args)) = tuple((
       permutation((opt(token("static")), Type::parse)),
       Expr::parse_concat_ident,
@@ -37,7 +37,7 @@ impl FunctionDecl {
     Ok((tokens, Self { ret_ty, name, args }))
   }
 
-  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, C>) -> Result<Option<Type>, crate::CodegenError>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -57,7 +57,7 @@ impl FunctionDecl {
     Ok(None)
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     let name = self.name.to_token_stream(ctx);
     let args = self
       .args
