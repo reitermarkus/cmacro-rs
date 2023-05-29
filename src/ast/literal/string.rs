@@ -175,19 +175,31 @@ impl LitString {
     delimited(char('\"'), many0(alt((escaped_char, map(none_of("\\\"\n"), u32::from)))), char('\"'))(input)
   }
 
-  fn parse_inner<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    map_token(alt((
+  fn parse_str<I, C>(input: I) -> IResult<I, Self>
+  where
+    I: Debug
+      + InputTake
+      + InputLength
+      + Slice<RangeFrom<usize>>
+      + InputIter<Item = C>
+      + Clone
+      + InputTakeAtPosition<Item = C>
+      + Compare<&'static str>,
+    C: AsChar + Copy,
+    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
+  {
+    alt((
       map(Self::parse_ordinary, Self::Ordinary),
       preceded(tag("u8"), map(Self::parse_utf8, Self::Utf8)),
       preceded(tag("u"), map(Self::parse_utf16, Self::Utf16)),
       preceded(tag("U"), map(Self::parse_utf32, Self::Utf32)),
       preceded(tag("L"), map(Self::parse_wide, Self::Wide)),
-    )))(input)
+    ))(input)
   }
 
   /// Parse a string literal.
   pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (input, s) = Self::parse_inner(input)?;
+    let (input, s) = map_token(Self::parse_str)(input)?;
 
     match s {
       Self::Ordinary(bytes) => map(
