@@ -48,7 +48,7 @@ impl<'t> Stringify<'t> {
           *arg_ty = MacroArgType::Expr;
         }
       },
-      Expr::Variable { name } if name.as_str() == "__LINE__" => (),
+      Expr::Variable { name } if matches!(name.as_str(), "__LINE__" | "__FILE__") => (),
       _ => return Err(crate::CodegenError::UnsupportedExpression),
     }
 
@@ -65,7 +65,19 @@ impl<'t> Stringify<'t> {
         let id = Ident::new(ctx.arg_name(arg.index()), Span::call_site());
         Some(quote! { $#id })
       },
-      Expr::Variable { name } if name.as_str() == "__LINE__" => Some(quote! { line!() }),
+      Expr::Variable { name } => match name.as_str() {
+        "__LINE__" => {
+          let trait_prefix = ctx.trait_prefix().into_iter();
+          Some(quote! { #(#trait_prefix::)*line!() })
+        },
+        "__FILE__" => {
+          let trait_prefix = ctx.trait_prefix().into_iter();
+          let file = quote! { #(#trait_prefix::)*file!() };
+          let trait_prefix = ctx.trait_prefix().into_iter();
+          return quote! { #(#trait_prefix::)*format!("{:?}", #file) }
+        },
+        _ => None,
+      },
       _ => None,
     }
     .into_iter();

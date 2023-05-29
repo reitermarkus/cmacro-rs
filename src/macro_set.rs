@@ -153,7 +153,6 @@ fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
       } else {
         match t.as_ref() {
           "__VA_ARGS__" => Token::VarArgs,
-          "__LINE__" => Token::Line,
           token if is_comment(token) => Token::Comment(token),
           token if is_punctuation(token) => Token::Punctuation(token),
           token if is_identifier(token) => Token::Identifier(Cow::Borrowed(token)),
@@ -190,17 +189,15 @@ fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
           continue
         }
       },
-      Token::Line => {
-        if !nested {
-          "__LINE__"
-        } else {
+      Token::Identifier(ref t) => match t.as_ref() {
+        "__LINE__" | "__FILE__" if nested => {
           tokens.extend(current_string.take().map(|s| Token::Plain(Cow::Owned(format!("{s:?}")))));
           tokens.push(Token::Punctuation("#"));
-          tokens.push(Token::Line);
+          tokens.push(token);
           continue
-        }
+        },
+        t => t,
       },
-      Token::Identifier(ref t) => t.as_ref(),
       Token::Plain(ref t) => t.as_ref(),
       Token::Punctuation(t) => t,
       Token::Placemarker => continue,
@@ -235,7 +232,6 @@ fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroT
       Some(match t {
         Token::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
         Token::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
-        Token::Line => MacroToken::Token(Cow::Borrowed("__LINE__")),
         Token::Identifier(t) | Token::Plain(t) => MacroToken::Token(t),
         Token::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
         Token::Comment(t) => MacroToken::Comment(Comment { comment: Cow::Borrowed(t) }),
@@ -264,7 +260,6 @@ enum Token<'t> {
   Plain(Cow<'t, str>),
   Punctuation(&'t str),
   Comment(&'t str),
-  Line,
   Placemarker,
 }
 
@@ -538,8 +533,8 @@ impl MacroSet {
     while let Some(token) = it.next() {
       match token {
         Token::Punctuation("##")
-          if !matches!(tokens.last(), Some(&Token::MacroArg(_) | &Token::VarArgs | &Token::Line))
-            && !matches!(it.peek(), Some(&Token::MacroArg(_) | &Token::VarArgs | &Token::Line)) =>
+          if !matches!(tokens.last(), Some(&Token::MacroArg(_) | &Token::VarArgs))
+            && !matches!(it.peek(), Some(&Token::MacroArg(_) | &Token::VarArgs)) =>
         {
           macro_rules! until_no_whitespace {
             ($expr:expr, $error:ident) => {{
@@ -623,8 +618,8 @@ impl MacroSet {
                 }
               }
             },
-            (Token::MacroArg(_) | Token::VarArgs | Token::Line | Token::Comment(_), _)
-            | (_, Token::MacroArg(_) | Token::VarArgs | Token::Line | Token::Comment(_)) => unreachable!(),
+            (Token::MacroArg(_) | Token::VarArgs | Token::Comment(_), _)
+            | (_, Token::MacroArg(_) | Token::VarArgs | Token::Comment(_)) => unreachable!(),
           })
         },
         token => tokens.push(token),
