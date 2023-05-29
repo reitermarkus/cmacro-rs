@@ -136,7 +136,7 @@ impl<'t> FnMacro<'t> {
 
     let (_, args) = Self::parse_args(args).map_err(|_| crate::ParserError::InvalidMacroArgs)?;
 
-    let (_, body) = MacroBody::parse(body).map_err(|_| crate::ParserError::InvalidMacroBody)?;
+    let (_, body) = MacroBody::parse(body).map_err(|_err| crate::ParserError::InvalidMacroBody)?;
 
     Ok(Self { name, args, body })
   }

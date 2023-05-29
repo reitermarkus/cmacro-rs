@@ -24,7 +24,7 @@ pub enum Expr<'t> {
   Literal(Lit),
   FieldAccess { expr: Box<Self>, field: Box<Self> },
   ArrayAccess { expr: Box<Self>, index: Box<Self> },
-  Stringify(Stringify),
+  Stringify(Stringify<'t>),
   ConcatIdent(Vec<Self>),
   ConcatString(Vec<Self>),
   Unary(Box<UnaryExpr<'t>>),
@@ -479,6 +479,20 @@ impl<'t> Expr<'t> {
       Self::Variable { ref mut name } => {
         // Built-in macros.
         match name.as_str() {
+          "__LINE__" => {
+            ctx.export_as_macro = true;
+
+            *self = Self::Cast {
+              ty: Type::BuiltIn(BuiltInType::UInt),
+              expr: Box::new(Self::Variable { name: name.clone() }),
+            };
+
+            Ok(Some(Type::BuiltIn(BuiltInType::UInt)))
+          },
+          "__FILE__" => {
+            ctx.export_as_macro = true;
+            Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
+          },
           "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
           "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
           "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
@@ -824,17 +838,29 @@ impl<'t> Expr<'t> {
       Self::Variable { ref name } => {
         let prefix = ctx.ffi_prefix().into_iter();
 
-        match name.as_str() {
-          "__SCHAR_MAX__" => tokens.append_all(quote! { #(#prefix::)*c_schar::MAX }),
-          "__SHRT_MAX__" => tokens.append_all(quote! { #(#prefix::)*c_short::MAX }),
-          "__INT_MAX__" => tokens.append_all(quote! { #(#prefix::)*c_int::MAX }),
-          "__LONG_MAX__" => tokens.append_all(quote! { #(#prefix::)*c_long::MAX }),
-          "__LONG_LONG_MAX__" => tokens.append_all(quote! { #(#prefix::)*c_longlong::MAX }),
+        tokens.append_all(match name.as_str() {
+          "__LINE__" => quote! { line!() },
+          "__FILE__" => {
+            let ffi_prefix = ctx.ffi_prefix().into_iter();
+            let trait_prefix = ctx.trait_prefix().into_iter();
+
+            quote! {
+              {
+                const BYTES: &[u8] = #(#trait_prefix::)*concat!(file!(), '\0').as_bytes();
+                BYTES.as_ptr() as *const #(#ffi_prefix::)*c_char
+              }
+            }
+          },
+          "__SCHAR_MAX__" => quote! { #(#prefix::)*c_schar::MAX },
+          "__SHRT_MAX__" => quote! { #(#prefix::)*c_short::MAX },
+          "__INT_MAX__" => quote! { #(#prefix::)*c_int::MAX },
+          "__LONG_MAX__" => quote! { #(#prefix::)*c_long::MAX },
+          "__LONG_LONG_MAX__" => quote! { #(#prefix::)*c_longlong::MAX },
           name => {
             let name = Ident::new(name, Span::call_site());
-            tokens.append_all(quote! { #name })
+            quote! { #name }
           },
-        }
+        })
       },
       Self::FunctionCall(ref call) => {
         call.to_tokens(ctx, tokens);
@@ -881,12 +907,11 @@ impl<'t> Expr<'t> {
         let names = names
           .iter()
           .map(|e| match e {
-            Self::Stringify(s) => {
-              let id = Ident::new(ctx.arg_name(s.arg.index()), Span::call_site());
-              let trait_prefix = trait_prefix.clone();
-
-              quote! { #(#trait_prefix::)*stringify!($#id) }
+            Self::Variable { name } => match name.as_str() {
+              "__FILE__" => quote! { file!() },
+              _ => e.to_token_stream(ctx),
             },
+            Self::Stringify(stringify) => stringify.to_token_stream_inner(ctx),
             e => e.to_token_stream(ctx),
           })
           .collect::<Vec<_>>();
@@ -942,7 +967,7 @@ mod tests {
   #[test]
   fn parse_stringify() {
     let (_, expr) = Expr::parse(tokens!["#", macro_arg!(0)]).unwrap();
-    assert_eq!(expr, Expr::Stringify(Stringify { arg: MacroArg { index: 0 } }));
+    assert_eq!(expr, Expr::Stringify(Stringify { arg: Box::new(arg!(0)) }));
   }
 
   #[test]
@@ -955,7 +980,7 @@ mod tests {
       expr,
       Expr::ConcatString(vec![
         Expr::Literal(Lit::String(LitString::Ordinary("def".into()))),
-        Expr::Stringify(Stringify { arg: MacroArg { index: 0 } }),
+        Expr::Stringify(Stringify { arg: Box::new(arg!(0)) }),
       ])
     );
   }

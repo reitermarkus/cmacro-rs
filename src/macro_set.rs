@@ -153,6 +153,7 @@ fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
       } else {
         match t.as_ref() {
           "__VA_ARGS__" => Token::VarArgs,
+          "__LINE__" => Token::Line,
           token if is_comment(token) => Token::Comment(token),
           token if is_punctuation(token) => Token::Punctuation(token),
           token if is_identifier(token) => Token::Identifier(Cow::Borrowed(token)),
@@ -163,21 +164,50 @@ fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
     .collect()
 }
 
-fn stringify(tokens: Vec<Token<'_>>) -> String {
-  let mut s = String::new();
+fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
+  let it = tokens.into_iter().peekable();
+  let mut tokens = vec![];
 
   let mut space_before_next = false;
 
-  for token in tokens {
-    let token = match &token {
-      Token::VarArgs => "__VA_ARGS__",
-      Token::Identifier(t) | Token::Plain(t) => t.as_ref(),
-      Token::Punctuation(t) => t,
-      _ => {
-        // At the point where `stringify` is called, macro arguments are already replaced and placemarkers removed.
-        unreachable!()
+  let mut current_string = None;
+
+  for token in it {
+    let token = match token {
+      Token::MacroArg(index) => {
+        tokens.extend(current_string.take().map(|s| Token::Plain(Cow::Owned(format!("{s:?}")))));
+        tokens.push(Token::Punctuation("#"));
+        tokens.push(Token::MacroArg(index));
+        continue
       },
+      Token::VarArgs => {
+        if !nested {
+          "__VA_ARGS__"
+        } else {
+          tokens.extend(current_string.take().map(|s| Token::Plain(Cow::Owned(format!("{s:?}")))));
+          tokens.push(Token::Punctuation("#"));
+          tokens.push(Token::VarArgs);
+          continue
+        }
+      },
+      Token::Line => {
+        if !nested {
+          "__LINE__"
+        } else {
+          tokens.extend(current_string.take().map(|s| Token::Plain(Cow::Owned(format!("{s:?}")))));
+          tokens.push(Token::Punctuation("#"));
+          tokens.push(Token::Line);
+          continue
+        }
+      },
+      Token::Identifier(ref t) => t.as_ref(),
+      Token::Plain(ref t) => t.as_ref(),
+      Token::Punctuation(t) => t,
+      Token::Placemarker => continue,
+      Token::Comment(_) => continue,
     };
+
+    let s = current_string.get_or_insert(String::new());
 
     if token != ")" && token != "]" && token != "}" && token != "." && token != "," && token != "(" && space_before_next
     {
@@ -189,7 +219,13 @@ fn stringify(tokens: Vec<Token<'_>>) -> String {
     s.push_str(token)
   }
 
-  format!("{s:?}")
+  tokens.extend(current_string.take().map(|s| Token::Plain(Cow::Owned(format!("{s:?}")))));
+
+  if tokens.is_empty() {
+    return vec![Token::Plain(Cow::Borrowed("\"\""))]
+  }
+
+  tokens
 }
 
 fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroToken<'t>> {
@@ -199,6 +235,7 @@ fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroT
       Some(match t {
         Token::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
         Token::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
+        Token::Line => MacroToken::Token(Cow::Borrowed("__LINE__")),
         Token::Identifier(t) | Token::Plain(t) => MacroToken::Token(t),
         Token::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
         Token::Comment(t) => MacroToken::Comment(Comment { comment: Cow::Borrowed(t) }),
@@ -227,6 +264,7 @@ enum Token<'t> {
   Plain(Cow<'t, str>),
   Punctuation(&'t str),
   Comment(&'t str),
+  Line,
   Placemarker,
 }
 
@@ -463,7 +501,7 @@ impl MacroSet {
           match tokens.last() {
             Some(Token::Punctuation("#")) => {
               tokens.pop();
-              tokens.push(Token::Plain(Cow::Owned(stringify(arg))));
+              tokens.extend(stringify(arg, non_replaced_names.len() > 1));
             },
             Some(Token::Punctuation("##")) => {
               let arg = self.expand_macro_body(non_replaced_names.clone(), &arg)?;
@@ -500,8 +538,8 @@ impl MacroSet {
     while let Some(token) = it.next() {
       match token {
         Token::Punctuation("##")
-          if !matches!(tokens.last(), Some(&Token::MacroArg(_) | &Token::VarArgs))
-            && !matches!(it.peek(), Some(&Token::MacroArg(_) | &Token::VarArgs)) =>
+          if !matches!(tokens.last(), Some(&Token::MacroArg(_) | &Token::VarArgs | &Token::Line))
+            && !matches!(it.peek(), Some(&Token::MacroArg(_) | &Token::VarArgs | &Token::Line)) =>
         {
           macro_rules! until_no_whitespace {
             ($expr:expr, $error:ident) => {{
@@ -585,8 +623,8 @@ impl MacroSet {
                 }
               }
             },
-            (Token::MacroArg(_) | Token::VarArgs | Token::Comment(_), _)
-            | (_, Token::MacroArg(_) | Token::VarArgs | Token::Comment(_)) => unreachable!(),
+            (Token::MacroArg(_) | Token::VarArgs | Token::Line | Token::Comment(_), _)
+            | (_, Token::MacroArg(_) | Token::VarArgs | Token::Line | Token::Comment(_)) => unreachable!(),
           })
         },
         token => tokens.push(token),
@@ -867,6 +905,24 @@ mod tests {
     macro_set.define_var_macro("e", ["STRINGIFY", "(", "a", "+", "b", ")"]);
     assert_eq!(macro_set.expand_var_macro("s"), Ok(token_vec!["\"asdf\""]));
     assert_eq!(macro_set.expand_var_macro("e"), Ok(token_vec!["\"a + b\""]));
+  }
+
+  #[test]
+  fn parse_stringify_double_nested() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.define_fn_macro("STRINGIFY1", ["s"], ["#", "s"]);
+    macro_set.define_fn_macro("STRINGIFY2", ["s"], ["STRINGIFY1", "(", "s", ")"]);
+    macro_set.define_var_macro("LINE_STRING1", ["STRINGIFY1", "(", "__LINE__", ")"]);
+    macro_set.define_var_macro("LINE_STRING2", ["STRINGIFY2", "(", "__LINE__", ")"]);
+    eprintln!("STRINGIFY1");
+    assert_eq!(macro_set.expand_fn_macro("STRINGIFY1"), Ok((token_vec!["s"], token_vec!["#", arg!(0)])));
+    eprintln!("STRINGIFY2");
+    assert_eq!(macro_set.expand_fn_macro("STRINGIFY2"), Ok((token_vec!["s"], token_vec!["#", arg!(0)])));
+    eprintln!("LINE_STRING1");
+    assert_eq!(macro_set.expand_var_macro("LINE_STRING1"), Ok(token_vec!["\"__LINE__\""]));
+    eprintln!("LINE_STRING2");
+    assert_eq!(macro_set.expand_var_macro("LINE_STRING2"), Ok(token_vec!["#", "__LINE__"]));
   }
 
   #[test]
