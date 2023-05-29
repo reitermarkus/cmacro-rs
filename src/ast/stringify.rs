@@ -83,7 +83,6 @@ impl<'t> Stringify<'t> {
     .into_iter();
 
     let trait_prefix = ctx.trait_prefix().into_iter();
-
     quote! { #(#trait_prefix::)*stringify!(#(#expr),*) }
   }
 
