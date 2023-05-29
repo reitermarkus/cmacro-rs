@@ -6,7 +6,10 @@ use std::{
   mem,
 };
 
-use crate::{ast::is_identifier, token::Comment};
+use crate::{
+  ast::is_identifier,
+  token::{Comment, MacroArg},
+};
 
 fn is_punctuation(s: &str) -> bool {
   matches!(
@@ -194,8 +197,8 @@ fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroT
     .into_iter()
     .filter_map(|t| {
       Some(match t {
-        Token::MacroArg(arg_index) => MacroToken::Arg(arg_index),
-        Token::VarArgs => MacroToken::Arg(arg_names.len() - 1),
+        Token::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
+        Token::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
         Token::Identifier(t) | Token::Plain(t) => MacroToken::Token(t),
         Token::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
         Token::Comment(t) => MacroToken::Comment(Comment { comment: Cow::Borrowed(t) }),
@@ -209,10 +212,9 @@ fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroT
 #[derive(Debug, Clone, PartialEq)]
 pub enum MacroToken<'t> {
   /// A macro parameter for the argument at the given position.
-  Arg(usize),
+  Arg(MacroArg),
   /// A macro token.
   Token(Cow<'t, str>),
-  /// An identifier.
   /// A comment.
   Comment(Comment<'t>),
 }
@@ -710,7 +712,7 @@ impl<'t> ToMacroToken<'t> for &'t str {
 #[cfg(test)]
 macro_rules! arg {
   ($index:expr) => {{
-    MacroToken::Arg($index)
+    MacroToken::Arg($crate::token::MacroArg { index: $index })
   }};
 }
 #[cfg(test)]

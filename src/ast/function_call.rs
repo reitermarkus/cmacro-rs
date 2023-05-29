@@ -47,8 +47,8 @@ impl<'t> FunctionCall<'t> {
           for (arg, known_arg_type) in self.args.iter_mut().zip(known_args.iter()) {
             // If the current argument to this function is a macro argument,
             // we can infer the type of the macro argument.
-            if let Expr::Arg { index } = arg {
-              let arg_type = ctx.arg_type_mut(*index);
+            if let Expr::Arg(arg) = arg {
+              let arg_type = ctx.arg_type_mut(arg.index());
               if *arg_type == MacroArgType::Unknown {
                 *arg_type = MacroArgType::Known(Type::from_rust_ty(known_arg_type, ffi_prefix.as_ref())?);
               }
@@ -87,13 +87,13 @@ impl<'t> FunctionCall<'t> {
         let arg = arg.to_token_stream(ctx);
         quote! { #arg }
       },
-      arg @ Expr::Arg { index } if ctx.arg_name(*index) == "..." => {
+      arg @ Expr::Arg(arg2) if ctx.arg_name(arg2.index()) == "..." => {
         let arg = arg.to_token_stream(ctx);
         quote! { #arg }
       },
       // Exporting as a function means we inferred the types of the macro arguments,
       // so no `.into()` is needed in this case.
-      arg @ Expr::Arg { .. } if !ctx.export_as_macro => {
+      arg @ Expr::Arg(_) if !ctx.export_as_macro => {
         let arg = arg.to_token_stream(ctx);
         quote! { #arg }
       },

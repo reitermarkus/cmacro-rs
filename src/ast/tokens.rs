@@ -6,10 +6,13 @@ use nom::{
   IResult, Parser,
 };
 
-use crate::{token::Comment, MacroToken};
+use crate::{
+  token::{Comment, MacroArg},
+  MacroToken,
+};
 
-pub(crate) fn macro_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], usize> {
-  map_opt(take_one, |token| if let MacroToken::Arg(index) = token { Some(*index) } else { None })(tokens)
+pub(crate) fn macro_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], MacroArg> {
+  map_opt(take_one, |token| if let MacroToken::Arg(macro_arg) = token { Some(macro_arg.clone()) } else { None })(tokens)
 }
 
 pub(crate) fn macro_token<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'i str> {

@@ -6,6 +6,18 @@ use nom::{
   sequence::delimited,
 };
 
+/// A macro argument.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MacroArg {
+  pub(crate) index: usize,
+}
+
+impl MacroArg {
+  pub(crate) fn index(&self) -> usize {
+    self.index
+  }
+}
+
 /// A comment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Comment<'t> {

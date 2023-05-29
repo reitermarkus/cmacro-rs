@@ -44,8 +44,8 @@ impl<'t> FunctionDecl<'t> {
     self.ret_ty.finish(ctx)?;
     self.name.finish(ctx)?;
 
-    if let Expr::Arg { index } = &self.name {
-      *ctx.arg_type_mut(*index) = MacroArgType::Ident;
+    if let Expr::Arg(arg) = &self.name {
+      *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
     }
 
     for (ty, arg) in self.args.iter_mut() {

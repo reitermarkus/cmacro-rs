@@ -11,13 +11,13 @@ use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{ast::tokens::macro_arg, CodegenContext, LocalContext, MacroArgType, MacroToken, UnaryOp};
+use crate::{ast::tokens::macro_arg, token::MacroArg, CodegenContext, LocalContext, MacroArgType, MacroToken, UnaryOp};
 
 /// An expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum Expr<'t> {
-  Arg { index: usize },
+  Arg(MacroArg),
   Variable { name: LitIdent<'t> },
   FunctionCall(FunctionCall<'t>),
   Cast { expr: Box<Self>, ty: Type<'t> },
@@ -36,7 +36,7 @@ pub enum Expr<'t> {
 impl<'t> Expr<'t> {
   pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
     match self {
-      Self::Asm(_) | Self::Literal(_) | Self::Arg { .. } | Self::Variable { .. } | Self::ConcatIdent(_) => (0, None),
+      Self::Asm(_) | Self::Literal(_) | Self::Arg(_) | Self::Variable { .. } | Self::ConcatIdent(_) => (0, None),
       Self::FunctionCall(_) | Self::FieldAccess { .. } => (1, Some(true)),
       Self::Cast { .. } | Self::Stringify(_) | Self::ConcatString(_) => (3, Some(true)),
       Self::Ternary(..) => (0, None),
@@ -49,18 +49,13 @@ impl<'t> Expr<'t> {
 
   /// Parse identifier concatenation, e.g. `arg ## 2`.
   pub(crate) fn parse_concat_ident<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, id) = alt((
-      map(macro_arg, |index| Self::Arg { index }),
-      map(LitIdent::parse, |id| Self::Variable { name: id }),
-    ))(tokens)?;
+    let (tokens, id) =
+      alt((map(macro_arg, Self::Arg), map(LitIdent::parse, |id| Self::Variable { name: id })))(tokens)?;
 
     fold_many0(
       preceded(
         delimited(meta, token("##"), meta),
-        alt((
-          map(macro_arg, |index| Self::Arg { index }),
-          map(LitIdent::parse_concat, |id| Self::Variable { name: id }),
-        )),
+        alt((map(macro_arg, Self::Arg), map(LitIdent::parse_concat, |id| Self::Variable { name: id }))),
       ),
       move || id.clone(),
       |acc, item| match acc {
@@ -132,7 +127,7 @@ impl<'t> Expr<'t> {
           return Ok((tokens, Self::Asm(asm)))
         }
       },
-      Self::Arg { .. }
+      Self::Arg(_)
       | Self::Variable { .. }
       | Self::FunctionCall(..)
       | Self::FieldAccess { .. }
@@ -180,7 +175,7 @@ impl<'t> Expr<'t> {
               // Postfix `++`/`--` cannot be chained.
               (expr, Access::UnaryOp(op)) if !was_unary_op => Self::Unary(Box::new(UnaryExpr { expr, op })),
               // TODO: Support calling expressions as functions.
-              (name @ Self::Arg { .. } | name @ Self::Variable { .. }, Access::Fn(args)) => {
+              (name @ Self::Arg(_) | name @ Self::Variable { .. }, Access::Fn(args)) => {
                 Self::FunctionCall(FunctionCall { name: Box::new(name), args })
               },
               // Field access cannot be chained after postfix `++`/`--`.
@@ -396,7 +391,7 @@ impl<'t> Expr<'t> {
         // Handle ambiguous cast vs. binary operation, e.g. `(ty)&var` vs `(var1) & var2`.
         if let (Self::Unary(expr), Type::Identifier { name, is_struct: false }) = (&**expr, &ty) {
           let treat_as_binop = match **name {
-            Self::Arg { .. } => {
+            Self::Arg(_) => {
               // Arguments cannot be resolved as a type.
               true
             },
@@ -438,8 +433,8 @@ impl<'t> Expr<'t> {
         ty.finish(ctx)?;
         Ok(Some(ty.clone()))
       },
-      Self::Arg { index } => {
-        if let MacroArgType::Known(arg_ty) = ctx.arg_type_mut(*index) {
+      Self::Arg(arg) => {
+        if let MacroArgType::Known(arg_ty) = ctx.arg_type_mut(arg.index()) {
           return Ok(Some(arg_ty.clone()))
         }
 
@@ -478,8 +473,8 @@ impl<'t> Expr<'t> {
         expr.finish(ctx)?;
         field.finish(ctx)?;
 
-        if let Self::Arg { index } = **field {
-          *ctx.arg_type_mut(index) = MacroArgType::Ident;
+        if let Self::Arg(ref arg) = **field {
+          *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
         }
 
         Ok(None)
@@ -501,9 +496,9 @@ impl<'t> Expr<'t> {
 
         for id in ids.drain(..) {
           match id {
-            Self::Arg { index } => {
-              *ctx.arg_type_mut(index) = MacroArgType::Ident;
-              new_ids.push(Self::Arg { index });
+            Self::Arg(arg) => {
+              *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
+              new_ids.push(Self::Arg(arg));
             },
             Self::Variable { name } => {
               if let Some(Self::Variable { name: last_id }) = new_ids.last_mut() {
@@ -791,7 +786,7 @@ impl<'t> Expr<'t> {
           }
         },
       }),
-      Self::Arg { index } => tokens.append_all(match ctx.arg_name(*index) {
+      Self::Arg(arg) => tokens.append_all(match ctx.arg_name(arg.index()) {
         "..." => quote! { $($__VA_ARGS__),* },
         name => {
           let name = Ident::new(name, Span::call_site());
@@ -864,7 +859,7 @@ impl<'t> Expr<'t> {
           .iter()
           .map(|e| match e {
             Self::Stringify(s) => {
-              let id = Ident::new(ctx.arg_name(s.index), Span::call_site());
+              let id = Ident::new(ctx.arg_name(s.arg.index()), Span::call_site());
               let trait_prefix = trait_prefix.clone();
 
               quote! { #(#trait_prefix::)*stringify!($#id) }
@@ -924,7 +919,7 @@ mod tests {
   #[test]
   fn parse_stringify() {
     let (_, expr) = Expr::parse(tokens!["#", macro_arg!(0)]).unwrap();
-    assert_eq!(expr, Expr::Stringify(Stringify { index: 0 }));
+    assert_eq!(expr, Expr::Stringify(Stringify { arg: MacroArg { index: 0} }));
   }
 
   #[test]
@@ -937,7 +932,7 @@ mod tests {
       expr,
       Expr::ConcatString(vec![
         Expr::Literal(Lit::String(LitString::Ordinary("def".into()))),
-        Expr::Stringify(Stringify { index: 0 }),
+        Expr::Stringify(Stringify { arg: MacroArg { index: 0 } }),
       ])
     );
   }

@@ -12,7 +12,7 @@ use super::{
   tokens::{macro_arg, meta, token},
   BuiltInType, Type,
 };
-use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken};
+use crate::{token::MacroArg, CodegenContext, LocalContext, MacroArgType, MacroToken};
 
 /// Stringification of a macro argument.
 ///
@@ -21,13 +21,13 @@ use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken};
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stringify {
-  pub(crate) index: usize,
+  pub(crate) arg: MacroArg,
 }
 
 impl Stringify {
   /// Parse a stringification expression.
   pub(crate) fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    map(preceded(terminated(token("#"), meta), macro_arg), |index| Self { index })(tokens)
+    map(preceded(terminated(token("#"), meta), macro_arg), |arg| Self { arg })(tokens)
   }
 
   pub(crate) fn finish<'t, C>(
@@ -37,7 +37,7 @@ impl Stringify {
   where
     C: CodegenContext,
   {
-    let arg_ty = ctx.arg_type_mut(self.index);
+    let arg_ty = ctx.arg_type_mut(self.arg.index());
     if *arg_ty != MacroArgType::Ident {
       *arg_ty = MacroArgType::Expr;
     }
@@ -50,7 +50,7 @@ impl Stringify {
   }
 
   pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>) -> TokenStream {
-    let id = Ident::new(ctx.arg_name(self.index), Span::call_site());
+    let id = Ident::new(ctx.arg_name(self.arg.index()), Span::call_site());
 
     let ffi_prefix = ctx.ffi_prefix().into_iter();
     let trait_prefix = ctx.trait_prefix().into_iter();
@@ -78,6 +78,6 @@ mod tests {
   #[test]
   fn parse_stringify() {
     let (_, ty) = Stringify::parse(tokens!["#", macro_arg!(0)]).unwrap();
-    assert_eq!(ty, Stringify { index: 0 });
+    assert_eq!(ty, Stringify { arg: MacroArg { index: 0 } });
   }
 }
