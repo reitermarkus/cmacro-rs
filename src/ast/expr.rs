@@ -528,40 +528,27 @@ impl<'t> Expr<'t> {
       },
       Self::Stringify(stringify) => stringify.finish(ctx),
       Self::ConcatIdent(ref mut ids) => {
-        let mut new_ids = vec![];
+        for id in ids {
+          id.finish(ctx)?;
 
-        for id in ids.drain(..) {
           match id {
             Self::Arg(arg) => {
+              // `concat_idents!` arguments must be `ident`.
               *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
-              new_ids.push(Self::Arg(arg));
             },
-            Self::Variable { name } => {
-              if let Some(Self::Variable { name: last_id }) = new_ids.last_mut() {
-                last_id.id.to_mut().push_str(name.as_str())
-              } else {
-                new_ids.push(Self::Variable { name });
-              }
-            },
-            _ => {
-              // This should be unreachable, since only `Arg` and `Variable` are ever added to `ConcatIdent`.
+            Self::Variable { .. } => (),
+            Self::Literal(Lit::Int(LitInt { suffix: None, value })) if *value >= 0 => {
+              // NOTE: Not yet supported by the `concat_idents!` macro.
               return Err(crate::CodegenError::UnsupportedExpression)
             },
+            _ => {
+              // Only `Arg`, `Variable`, and `Literal` are ever added to `ConcatIdent`.
+              unreachable!()
+            },
           }
         }
 
-        if new_ids.len() == 1 {
-          *self = new_ids.remove(0);
-          self.finish(ctx)
-        } else {
-          *ids = new_ids;
-
-          for id in ids.iter_mut() {
-            id.finish(ctx)?;
-          }
-
-          Ok(None)
-        }
+        Ok(None)
       },
       Self::ConcatString(names) => {
         let mut new_names = vec![];
@@ -989,6 +976,9 @@ mod tests {
 
     let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "123def"]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def)]));
+
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "123def456ghi"]).unwrap();
+    assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def456ghi)]));
 
     let (_, id) = Expr::parse(tokens!["__INT", "##", "_MAX__"]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![var!(__INT), var!(_MAX__)]));
