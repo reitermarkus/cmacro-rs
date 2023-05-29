@@ -1,9 +1,9 @@
-use std::fmt::Debug;
+use std::{borrow::Cow, fmt::Debug};
 
 use nom::{
   branch::alt,
-  combinator::{map, map_res, value},
-  multi::{fold_many0, separated_list0},
+  combinator::{map, map_opt, map_res, value},
+  multi::{fold_many0, many1, separated_list0},
   sequence::{delimited, pair, preceded, terminated, tuple},
   IResult,
 };
@@ -55,15 +55,51 @@ impl<'t> Expr<'t> {
     fold_many0(
       preceded(
         delimited(meta, token("##"), meta),
-        alt((map(macro_arg, Self::Arg), map(LitIdent::parse_concat, |id| Self::Variable { name: id }))),
+        alt((
+          map(macro_arg, Self::Arg),
+          map(LitIdent::parse, |id| Self::Variable { name: id }),
+          // Split non-identifiers, e.g. `123def` into integer literals and identifiers.
+          map_opt(take_one, |token| {
+            fn unsuffixed_int<'e>(input: &str) -> IResult<&str, Expr<'e>> {
+              let map_lit_int = |i: u64| Expr::Literal(Lit::Int(LitInt { value: i.into(), suffix: None }));
+              map(nom::character::complete::u64, map_lit_int)(input)
+            }
+
+            let (_, ids) = match token {
+              MacroToken::Token(Cow::Borrowed(token2)) => many1(alt((
+                unsuffixed_int,
+                map_opt(LitIdent::parse_str, |id| Some(Self::Variable { name: id })),
+              )))(token2)
+              .ok()?,
+              MacroToken::Token(Cow::Owned(token2)) => many1(alt((
+                unsuffixed_int,
+                map_opt(LitIdent::parse_str, |id| Some(Self::Variable { name: id.to_static() })),
+              )))(token2.as_ref())
+              .ok()?,
+              _ => return None,
+            };
+
+            Some(Self::ConcatIdent(ids))
+          }),
+        )),
       ),
       move || id.clone(),
-      |acc, item| match acc {
-        Self::ConcatIdent(mut ids) => {
+      |acc, item| match (acc, item) {
+        (Self::ConcatIdent(mut ids), Self::ConcatIdent(ids2)) => {
+          ids.extend(ids2);
+          Self::ConcatIdent(ids)
+        },
+        (Self::ConcatIdent(mut ids), item) => {
           ids.push(item);
           Self::ConcatIdent(ids)
         },
-        expr => Self::ConcatIdent(vec![expr, item]),
+        (expr, item) => match item {
+          Self::ConcatIdent(mut ids) => {
+            ids.insert(0, expr);
+            Self::ConcatIdent(ids)
+          },
+          item => Self::ConcatIdent(vec![expr, item]),
+        },
       },
     )(tokens)
   }
@@ -949,7 +985,10 @@ mod tests {
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(_def)]));
 
     let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "123"]).unwrap();
-    assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), Expr::Variable { name: LitIdent { id: "123".into() } }]));
+    assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123)]));
+
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "123def"]).unwrap();
+    assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def)]));
 
     let (_, id) = Expr::parse(tokens!["__INT", "##", "_MAX__"]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![var!(__INT), var!(_MAX__)]));

@@ -15,10 +15,7 @@ use nom::{
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 
-use crate::{
-  ast::tokens::{map_token},
-  BuiltInType, CodegenContext, LocalContext, MacroToken, Type,
-};
+use crate::{ast::tokens::map_token, BuiltInType, CodegenContext, LocalContext, MacroToken, Type};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct LitIntUnsignedSuffix;

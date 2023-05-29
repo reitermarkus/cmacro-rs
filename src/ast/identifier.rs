@@ -2,22 +2,25 @@ use std::{borrow::Cow, fmt::Debug};
 
 use nom::{
   branch::alt,
-  character::complete::{anychar, char},
-  combinator::map_opt,
-  multi::fold_many1,
-  sequence::preceded,
+  character::complete::{anychar, char, satisfy},
+  combinator::{map, map_opt, recognize},
+  multi::{fold_many0, fold_many1},
+  sequence::{pair, preceded},
   IResult,
 };
 
 use super::{literal::universal_char, tokens::map_token};
 use crate::MacroToken;
 
+fn is_identifier_start(c: char) -> bool {
+  unicode_ident::is_xid_start(c) || c == '_'
+}
+
 pub(crate) fn is_identifier(s: &str) -> bool {
   let mut chars = s.chars();
 
   if let Some(first_character) = chars.next() {
-    return (unicode_ident::is_xid_start(first_character) || first_character == '_')
-      && chars.all(unicode_ident::is_xid_continue)
+    return is_identifier_start(first_character) && chars.all(unicode_ident::is_xid_continue)
   }
 
   false
@@ -35,6 +38,16 @@ impl<'t> LitIdent<'t> {
     self.id.as_ref()
   }
 
+  pub(crate) fn parse_str(input: &'t str) -> IResult<&'t str, Self> {
+    map(
+      recognize(pair(
+        satisfy(is_identifier_start),
+        fold_many0(satisfy(unicode_ident::is_xid_continue), || (), |_, _| ()),
+      )),
+      |s| Self { id: Cow::Borrowed(s) },
+    )(input)
+  }
+
   /// Parse an identifier.
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     map_token(map_opt(
@@ -50,27 +63,6 @@ impl<'t> LitIdent<'t> {
       },
       |s| {
         if is_identifier(&s) {
-          Some(LitIdent { id: Cow::Owned(s) })
-        } else {
-          None
-        }
-      },
-    ))(tokens)
-  }
-
-  /// Parse an identifier.
-  pub(crate) fn parse_concat<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    map_token(map_opt(
-      fold_many1(
-        alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
-        String::new,
-        |mut acc, c| {
-          acc.push(c);
-          acc
-        },
-      ),
-      |s| {
-        if s.chars().all(unicode_ident::is_xid_continue) {
           Some(LitIdent { id: Cow::Owned(s) })
         } else {
           None
