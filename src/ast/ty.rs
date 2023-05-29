@@ -413,7 +413,7 @@ impl<'t> Type<'t> {
 
   pub(crate) fn to_static(&self) -> Option<Type<'static>> {
     match self {
-      Self::BuiltIn(ty) => Some(Type::BuiltIn(ty.clone())),
+      Self::BuiltIn(ty) => Some(Type::BuiltIn(*ty)),
       Self::Identifier { name, is_struct } => {
         if let Expr::Variable { name } = &**name {
           Some(Type::Identifier { name: Box::new(Expr::Variable { name: name.to_static() }), is_struct: *is_struct })
