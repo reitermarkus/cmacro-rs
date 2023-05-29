@@ -6,7 +6,7 @@ use std::{
   mem,
 };
 
-use crate::ast::is_identifier;
+use crate::{ast::is_identifier, token::Comment};
 
 fn is_punctuation(s: &str) -> bool {
   matches!(
@@ -198,7 +198,7 @@ fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroT
         Token::VarArgs => MacroToken::Arg(arg_names.len() - 1),
         Token::Identifier(t) | Token::Plain(t) => MacroToken::Token(t),
         Token::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
-        Token::Comment(t) => MacroToken::Token(Cow::Borrowed(t)),
+        Token::Comment(t) => MacroToken::Comment(Comment { comment: Cow::Borrowed(t) }),
         Token::Placemarker => return None,
       })
     })
@@ -212,6 +212,9 @@ pub enum MacroToken<'t> {
   Arg(usize),
   /// A macro token.
   Token(Cow<'t, str>),
+  /// An identifier.
+  /// A comment.
+  Comment(Comment<'t>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

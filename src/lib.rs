@@ -27,3 +27,6 @@ pub use fn_macro::FnMacro;
 
 mod macro_set;
 pub use macro_set::{ExpansionError, MacroSet, MacroToken};
+
+mod token;
+pub use token::*;

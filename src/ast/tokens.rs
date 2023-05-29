@@ -1,12 +1,12 @@
 use nom::{
-  bytes::complete::{tag, take_until},
+  bytes::complete::tag,
   combinator::{all_consuming, map_opt, value},
   multi::many0,
   sequence::{delimited, pair},
   IResult, Parser,
 };
 
-use crate::MacroToken;
+use crate::{token::Comment, MacroToken};
 
 pub(crate) fn macro_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], usize> {
   map_opt(take_one, |token| if let MacroToken::Arg(index) = token { Some(*index) } else { None })(tokens)
@@ -30,15 +30,14 @@ where
   Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Eof)))
 }
 
-pub(crate) fn comment_str(s: &str) -> IResult<&str, &str> {
-  all_consuming(delimited(tag("/*"), take_until("*/"), tag("*/")))(s)
+pub(crate) fn comment<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'i Comment<'t>> {
+  map_opt(take_one, |token| match token {
+    MacroToken::Comment(comment) => Some(comment),
+    _ => None,
+  })(tokens)
 }
 
-pub(crate) fn comment<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'i str> {
-  map_token(comment_str)(tokens)
-}
-
-pub(crate) fn meta<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Vec<&'i str>> {
+pub(crate) fn meta<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Vec<&'i Comment<'t>>> {
   many0(comment)(input)
 }
 

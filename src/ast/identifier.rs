@@ -23,50 +23,6 @@ pub(crate) fn is_identifier(s: &str) -> bool {
   false
 }
 
-pub(crate) fn identifier_lit<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent<'t>> {
-  map_token(map_opt(
-    |token| {
-      fold_many1(
-        alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
-        String::new,
-        |mut acc, c| {
-          acc.push(c);
-          acc
-        },
-      )(token)
-    },
-    |s| {
-      if is_identifier(&s) {
-        Some(LitIdent { id: Cow::Owned(s) })
-      } else {
-        None
-      }
-    },
-  ))(tokens)
-}
-
-fn concat_identifier<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent<'t>> {
-  map_token(map_opt(
-    fold_many1(
-      alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
-      String::new,
-      |mut acc, c| {
-        acc.push(c);
-        acc
-      },
-    ),
-    |s| {
-      let mut chars = s.chars();
-
-      if chars.all(unicode_ident::is_xid_continue) {
-        Some(LitIdent { id: Cow::Owned(s) })
-      } else {
-        None
-      }
-    },
-  ))(tokens)
-}
-
 /// A literal identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitIdent<'t> {
@@ -81,12 +37,46 @@ impl<'t> LitIdent<'t> {
 
   /// Parse an identifier.
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    identifier_lit(tokens)
+    map_token(map_opt(
+      |token| {
+        fold_many1(
+          alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
+          String::new,
+          |mut acc, c| {
+            acc.push(c);
+            acc
+          },
+        )(token)
+      },
+      |s| {
+        if is_identifier(&s) {
+          Some(LitIdent { id: Cow::Owned(s) })
+        } else {
+          None
+        }
+      },
+    ))(tokens)
   }
 
   /// Parse an identifier.
   pub(crate) fn parse_concat<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    concat_identifier(tokens)
+    map_token(map_opt(
+      fold_many1(
+        alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
+        String::new,
+        |mut acc, c| {
+          acc.push(c);
+          acc
+        },
+      ),
+      |s| {
+        if s.chars().all(unicode_ident::is_xid_continue) {
+          Some(LitIdent { id: Cow::Owned(s) })
+        } else {
+          None
+        }
+      },
+    ))(tokens)
   }
 
   pub(crate) fn to_static(&self) -> LitIdent<'static> {
