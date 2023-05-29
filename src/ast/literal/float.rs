@@ -8,7 +8,7 @@ use nom::{
   branch::alt,
   bytes::complete::tag_no_case,
   character::complete::{char, digit1},
-  combinator::{all_consuming, opt, recognize, value},
+  combinator::{map_opt, opt, recognize, value},
   sequence::{pair, tuple},
   AsChar, Compare, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, ParseTo, Slice,
 };
@@ -54,7 +54,7 @@ pub enum LitFloat {
 impl Eq for LitFloat {}
 
 impl LitFloat {
-  fn from_str<I, C>(input: I) -> IResult<I, (I, Option<LitFloatSuffix>)>
+  fn parse_str<I, C>(input: I) -> IResult<I, Self>
   where
     I: Debug
       + InputTake
@@ -65,46 +65,42 @@ impl LitFloat {
       + InputTakeAtPosition<Item = C>
       + Compare<&'static str>
       + Offset
+      + ParseTo<f32>
+      + ParseTo<f64>
       + Clone,
-
     C: AsChar,
   {
-    let decimal = |input| recognize(pair(char('.'), digit1))(input);
-    let scientific = |input| recognize(tuple((tag_no_case("e"), opt(alt((char('+'), char('-')))), digit1)))(input);
+    let decimal = |input: I| recognize(pair(char('.'), digit1))(input);
+    let scientific = |input: I| recognize(tuple((tag_no_case("e"), opt(alt((char('+'), char('-')))), digit1)))(input);
 
-    all_consuming(pair(
-      alt((
-        recognize(pair(
-          alt((
-            // 1.1 | .1
-            recognize(pair(opt(digit1), decimal)),
-            // 1.
-            recognize(pair(digit1, char('.'))),
+    map_opt(
+      pair(
+        alt((
+          recognize(pair(
+            alt((
+              // 1.1 | .1
+              recognize(pair(opt(digit1), decimal)),
+              // 1.
+              recognize(pair(digit1, char('.'))),
+            )),
+            opt(scientific),
           )),
-          opt(scientific),
+          // 1e1
+          recognize(pair(digit1, scientific)),
         )),
-        // 1e1
-        recognize(pair(digit1, scientific)),
-      )),
-      opt(LitFloatSuffix::parse),
-    ))(input)
+        opt(LitFloatSuffix::parse),
+      ),
+      |(repr, size)| match size {
+        Some(LitFloatSuffix::Float) => repr.parse_to().map(Self::Float),
+        Some(LitFloatSuffix::LongDouble) => repr.parse_to().map(Self::LongDouble),
+        _ => repr.parse_to().map(Self::Double),
+      },
+    )(input)
   }
 
   /// Parse a floating-point literal.
   pub fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, (repr, size)) = map_token(Self::from_str)(tokens)?;
-
-    let lit = match size {
-      Some(LitFloatSuffix::Float) => repr.parse_to().map(Self::Float),
-      Some(LitFloatSuffix::LongDouble) => repr.parse_to().map(Self::LongDouble),
-      _ => repr.parse_to().map(Self::Double),
-    };
-
-    if let Some(lit) = lit {
-      return Ok((tokens, lit))
-    }
-
-    Err(nom::Err::Error(nom::error::Error::new(tokens, nom::error::ErrorKind::Float)))
+    map_token(Self::parse_str)(tokens)
   }
 
   #[allow(unused_variables)]
