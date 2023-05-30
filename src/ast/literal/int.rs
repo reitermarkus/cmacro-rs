@@ -85,30 +85,6 @@ impl LitInt {
     }
   }
 
-  fn from_str<I, C>(input: I) -> IResult<I, (i128, Option<LitIntUnsignedSuffix>, Option<LitIntSizeSuffix>)>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<std::ops::RangeFrom<usize>>
-      + Compare<&'static str>
-      + InputIter<Item = C>
-      + InputTakeAtPosition<Item = C>
-      + Clone,
-    C: AsChar,
-    &'static str: FindToken<<I as InputIter>::Item>,
-  {
-    let digits = alt((
-      map_opt(preceded(tag_no_case("0x"), hex_digit1), Self::parse_i128(16)),
-      map_opt(preceded(tag_no_case("0b"), is_a("01")), Self::parse_i128(2)),
-      map_opt(preceded(tag("0"), oct_digit1), Self::parse_i128(8)),
-      map_opt(digit1, Self::parse_i128(10)),
-    ));
-
-    let (input, (n, (unsigned, size))) = pair(digits, Self::parse_suffix)(input)?;
-    Ok((input, (n, unsigned, size)))
-  }
-
   fn parse_suffix<I, C>(input: I) -> IResult<I, (Option<LitIntUnsignedSuffix>, Option<LitIntSizeSuffix>)>
   where
     I: Debug
@@ -129,9 +105,27 @@ impl LitInt {
     )))(input)
   }
 
-  /// Parse an integer literal.
-  pub fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, (value, unsigned, size)) = map_token(Self::from_str)(tokens)?;
+  pub(crate) fn parse_str<I, C>(input: I) -> IResult<I, Self>
+  where
+    I: Debug
+      + InputTake
+      + InputLength
+      + Slice<std::ops::RangeFrom<usize>>
+      + Compare<&'static str>
+      + InputIter<Item = C>
+      + InputTakeAtPosition<Item = C>
+      + Clone,
+    C: AsChar,
+    &'static str: FindToken<<I as InputIter>::Item>,
+  {
+    let digits = alt((
+      map_opt(preceded(tag_no_case("0x"), hex_digit1), Self::parse_i128(16)),
+      map_opt(preceded(tag_no_case("0b"), is_a("01")), Self::parse_i128(2)),
+      map_opt(preceded(tag("0"), oct_digit1), Self::parse_i128(8)),
+      map_opt(digit1, Self::parse_i128(10)),
+    ));
+
+    let (input, (value, (unsigned, size))) = pair(digits, Self::parse_suffix)(input)?;
 
     let suffix = match (unsigned, size) {
       (None, None) => None,
@@ -144,8 +138,12 @@ impl LitInt {
       (None, Some(LitIntSizeSuffix::SizeT)) => Some(BuiltInType::SSizeT),
     };
 
-    // TODO: Handle suffix.
-    Ok((tokens, Self { value, suffix }))
+    Ok((input, Self { value, suffix }))
+  }
+
+  /// Parse an integer literal.
+  pub fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+    map_token(Self::parse_str)(tokens)
   }
 
   #[allow(unused_variables)]

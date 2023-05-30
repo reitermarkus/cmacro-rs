@@ -2,6 +2,7 @@ use std::{borrow::Cow, fmt::Debug};
 
 use nom::{
   branch::alt,
+  character::complete::char,
   combinator::{map, map_opt, map_res, value},
   multi::{fold_many0, many1, separated_list0},
   sequence::{delimited, pair, preceded, terminated, tuple},
@@ -65,7 +66,11 @@ impl<'t> Expr<'t> {
           map_opt(take_one, |token| {
             fn unsuffixed_int<'e>(input: &str) -> IResult<&str, Expr<'e>> {
               let map_lit_int = |i: u64| Expr::Literal(Lit::Int(LitInt { value: i.into(), suffix: None }));
-              map(nom::character::complete::u64, map_lit_int)(input)
+              alt((
+                // Keep leading zeros.
+                map(value(0, char('0')), map_lit_int),
+                map(nom::character::complete::u64, map_lit_int),
+              ))(input)
             }
 
             let (_, ids) = match token {

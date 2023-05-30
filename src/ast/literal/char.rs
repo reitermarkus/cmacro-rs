@@ -76,7 +76,7 @@ pub enum LitChar {
 }
 
 impl LitChar {
-  fn parse_str(input: &str) -> IResult<&str, Self> {
+  pub(crate) fn parse_str(input: &str) -> IResult<&str, Self> {
     map_opt(pair(opt(LitCharPrefix::parse), Self::parse_unprefixed), |(prefix, c)| Self::with_prefix(prefix, c))(input)
   }
 

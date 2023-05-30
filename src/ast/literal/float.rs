@@ -54,7 +54,7 @@ pub enum LitFloat {
 impl Eq for LitFloat {}
 
 impl LitFloat {
-  fn parse_str<I, C>(input: I) -> IResult<I, Self>
+  pub(crate) fn parse_str<I, C>(input: I) -> IResult<I, Self>
   where
     I: Debug
       + InputTake
