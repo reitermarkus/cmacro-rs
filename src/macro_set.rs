@@ -156,9 +156,8 @@ fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
           token if is_comment(token) => Token::Comment(token),
           token if is_punctuation(token) => Token::Punctuation(token),
           token => {
-            if let Ok(_identifier) = LitIdent::try_from(token) {
-              // TODO: Change to `LitIdent`.
-              Token::Identifier(Cow::Borrowed(token))
+            if let Ok(identifier) = LitIdent::try_from(token) {
+              Token::Identifier(identifier)
             } else {
               Token::Plain(Cow::Borrowed(token))
             }
@@ -191,7 +190,7 @@ impl<'t> Token<'t> {
           Append("__VA_ARGS__")
         }
       },
-      Token::Identifier(ref t) => match t.as_ref() {
+      Token::Identifier(id) => match id.id.as_ref() {
         "__LINE__" | "__FILE__" if nested => Keep,
         t => Append(t),
       },
@@ -207,7 +206,7 @@ impl<'t> Token<'t> {
     Some(match self {
       Token::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
       Token::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
-      Token::Identifier(t) => MacroToken::Id(LitIdent::try_from(t.as_ref()).unwrap().to_static()),
+      Token::Identifier(id) => MacroToken::Id(id),
       Token::Plain(t) => MacroToken::Token(t),
       Token::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
       Token::Comment(t) => MacroToken::Comment(Comment { comment: Cow::Borrowed(t) }),
@@ -225,22 +224,24 @@ impl<'t> Token<'t> {
         token.to_mut().push_str(rhs.as_ref());
         Token::Plain(token)
       },
-      (Token::Punctuation(lhs), Token::Identifier(rhs) | Token::Plain(rhs)) => {
+      (Token::Punctuation(lhs), Token::Identifier(LitIdent { id: rhs }) | Token::Plain(rhs)) => {
         let mut token = Cow::Borrowed(lhs);
         token.to_mut().push_str(rhs.as_ref());
         Token::Plain(token)
       },
-      (Token::Identifier(lhs) | Token::Plain(lhs), Token::Punctuation(rhs)) => {
+      (Token::Identifier(LitIdent { id: lhs }) | Token::Plain(lhs), Token::Punctuation(rhs)) => {
         let mut token = lhs;
         token.to_mut().push_str(rhs.as_ref());
         Token::Plain(token)
       },
-      (Token::Identifier(lhs), Token::Identifier(rhs)) => {
-        let mut id = lhs;
-        id.to_mut().push_str(rhs.as_ref());
-        Token::Identifier(id)
+      (Token::Identifier(mut lhs), Token::Identifier(rhs)) => {
+        lhs.id.to_mut().push_str(rhs.id.as_ref());
+        Token::Identifier(lhs)
       },
-      (Token::Identifier(lhs) | Token::Plain(lhs), Token::Identifier(rhs) | Token::Plain(rhs)) => {
+      (
+        Token::Identifier(LitIdent { id: lhs }) | Token::Plain(lhs),
+        Token::Identifier(LitIdent { id: rhs }) | Token::Plain(rhs),
+      ) => {
         let lhs_is_string_or_char_prefix = match lhs.as_ref() {
           "u8" => true,
           "u" => true,
@@ -270,8 +271,8 @@ impl<'t> Token<'t> {
           let mut token = lhs;
           token.to_mut().push_str(rhs.as_ref());
 
-          if let Ok(_identifier) = LitIdent::try_from(token.as_ref()) {
-            Token::Identifier(token)
+          if let Ok(identifier) = LitIdent::try_from(token.as_ref()) {
+            Token::Identifier(LitIdent { id: token })
           } else {
             Token::Plain(token)
           }
@@ -346,7 +347,7 @@ pub enum MacroToken<'t> {
 enum Token<'t> {
   MacroArg(usize),
   VarArgs,
-  Identifier(Cow<'t, str>),
+  Identifier(LitIdent<'t>),
   Plain(Cow<'t, str>),
   Punctuation(&'t str),
   Comment(&'t str),
@@ -374,18 +375,18 @@ impl MacroSet {
 
     while let Some(token) = it.next() {
       match token {
-        Token::Identifier(id) => {
-          if non_replaced_names.contains(id.as_ref()) {
-            tokens.push(Token::NonReplacable(Box::new(Token::Identifier(id))));
+        Token::Identifier(ref id) => {
+          if non_replaced_names.contains(id.id.as_ref()) {
+            tokens.push(Token::NonReplacable(Box::new(token)));
           } else {
             // Treat as function-like macro call if immediately followed by `(`.
             if it.peek() == Some(&Token::Punctuation("(")) {
-              if let Some((arg_names, body)) = self.fn_macros.get(id.as_ref()) {
+              if let Some((arg_names, body)) = self.fn_macros.get(id.id.as_ref()) {
                 if let Ok(args) = self.collect_args(&mut it) {
                   let body = tokenize(arg_names, body);
                   let expanded_tokens = self.expand_fn_macro_body(
                     non_replaced_names.clone(),
-                    id.as_ref(),
+                    id.id.as_ref(),
                     arg_names,
                     Some(&args),
                     &body,
@@ -398,14 +399,14 @@ impl MacroSet {
             }
 
             // If it's not a macro call, check if it is a variable-like macro.
-            if let Some(body) = self.var_macros.get(id.as_ref()) {
+            if let Some(body) = self.var_macros.get(id.id.as_ref()) {
               let body = tokenize(&[], body);
-              tokens.extend(self.expand_var_macro_body(non_replaced_names.clone(), id.as_ref(), &body)?);
+              tokens.extend(self.expand_var_macro_body(non_replaced_names.clone(), id.id.as_ref(), &body)?);
               tokens.extend(it);
               return self.expand_macro_body(non_replaced_names, &tokens)
             }
 
-            tokens.push(Token::Identifier(id))
+            tokens.push(token)
           }
         },
         token => tokens.push(token),
