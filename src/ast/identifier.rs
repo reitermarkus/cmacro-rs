@@ -87,6 +87,9 @@ mod tests {
     let (_, id) = LitIdent::parse(tokens!["asdf"]).unwrap();
     assert_eq!(id, lit_id!(asdf));
 
+    let (_, id) = LitIdent::parse(tokens!("\\u0401")).unwrap();
+    assert_eq!(id, lit_id!(Ё));
+
     let (_, id) = LitIdent::parse(tokens!["Δx"]).unwrap();
     assert_eq!(id, lit_id!(Δx));
 
