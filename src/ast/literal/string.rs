@@ -175,7 +175,7 @@ impl LitString {
     delimited(char('\"'), many0(alt((escaped_char, map(none_of("\\\"\n"), u32::from)))), char('\"'))(input)
   }
 
-  fn parse_str<I, C>(input: I) -> IResult<I, Self>
+  pub(crate) fn parse_str<I, C>(input: I) -> IResult<I, Self>
   where
     I: Debug
       + InputTake

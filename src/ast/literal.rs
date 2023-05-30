@@ -1,4 +1,8 @@
-use std::{fmt::Debug, ops::RangeFrom, str};
+use std::{
+  fmt::Debug,
+  ops::{RangeFrom},
+  str,
+};
 
 use nom::{
   branch::alt,
@@ -15,7 +19,7 @@ use nom::{
 use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
 
-use crate::{CodegenContext, LocalContext, MacroToken, Type};
+use crate::{ast::map_token, CodegenContext, LocalContext, MacroToken, Type};
 
 mod char;
 pub use self::char::*;
@@ -70,14 +74,18 @@ impl From<i32> for Lit {
 }
 
 impl Lit {
+  pub(crate) fn parse_str(input: &str) -> IResult<&str, Self> {
+    alt((
+      map(LitChar::parse_str, Self::Char),
+      map(LitString::parse_str, Self::String),
+      map(LitFloat::parse_str, Self::Float),
+      map(LitInt::parse_str, Self::Int),
+    ))(input)
+  }
+
   /// Parse a literal.
   pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    alt((
-      map(LitChar::parse, Self::Char),
-      map(LitString::parse, Self::String),
-      map(LitFloat::parse, Self::Float),
-      map(LitInt::parse, Self::Int),
-    ))(input)
+    map_token(Self::parse_str)(input)
   }
 
   pub(crate) fn finish<'t, C>(
