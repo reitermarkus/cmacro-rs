@@ -165,7 +165,7 @@ enum StringifyAction<'s> {
   Keep,
   /// Skip the token.
   Skip,
-  ///
+  /// Append the given string.
   Append(&'s str),
 }
 
@@ -396,15 +396,24 @@ pub enum MacroToken<'t> {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Token<'t> {
-  MacroArg(usize),
-  VarArgs,
-  Identifier(LitIdent<'t>),
-  Plain(Cow<'t, str>),
-  Punctuation(&'t str),
-  Comment(&'t str),
-  Literal(Lit, Cow<'t, str>),
-  Placemarker,
+  /// A token that will not be considered for replacement again.
   NonReplacable(Box<Self>),
+  /// A macro argument.
+  MacroArg(usize),
+  /// Variable macro arguments.
+  VarArgs,
+  /// Punctuation.
+  Punctuation(&'t str),
+  /// An identifier.
+  Identifier(LitIdent<'t>),
+  /// A literal.
+  Literal(Lit, Cow<'t, str>),
+  /// An intermediary token which cannot be parsed yet.
+  Plain(Cow<'t, str>),
+  /// A comment token.
+  Comment(&'t str),
+  /// A placeholder token.
+  Placemarker,
 }
 
 impl MacroSet {
@@ -474,7 +483,7 @@ impl MacroSet {
     name: &'n str,
     body: &[Token<'s>],
   ) -> Result<Vec<Token<'s>>, ExpansionError> {
-    // Variable-like macros shall not contain `__VA_ARGS__`.
+    // A variable-like macro shall not contain `__VA_ARGS__`.
     if Self::contains_var_args(body) {
       return Err(ExpansionError::NonVariadicVarArgs)
     }
@@ -498,7 +507,7 @@ impl MacroSet {
     let is_variadic = arg_names.last().map(|arg_name| *arg_name == "...").unwrap_or(false);
 
     if !is_variadic {
-      // Function-like macros shall only contain `__VA_ARGS__` if it uses ellipsis notation in the parameters.
+      // A function-like macro shall only contain `__VA_ARGS__` if it uses ellipsis notation in the parameters.
       if Self::contains_var_args(body) {
         return Err(ExpansionError::NonVariadicVarArgs)
       }
