@@ -152,7 +152,6 @@ fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
         Token::MacroArg(arg_index)
       } else {
         match t.as_ref() {
-          "__VA_ARGS__" => Token::VarArgs,
           token => Token::from_str(token),
         }
       }
@@ -171,14 +170,16 @@ enum StringifyAction<'s> {
 
 impl<'t> Token<'t> {
   pub fn from_str(token: &'t str) -> Self {
-    if let Ok(identifier) = LitIdent::try_from(token) {
+    if token == "__VA_ARGS__" {
+      Token::VarArgs
+    } else if let Ok(identifier) = LitIdent::try_from(token) {
       Self::Identifier(identifier)
     } else if let Ok(literal) = Lit::try_from(token) {
       Self::Literal(literal, Cow::Borrowed(token))
     } else if is_punctuation(token) {
       Self::Punctuation(token)
-    } else if is_comment(token) {
-      Self::Comment(token)
+    } else if let Ok(comment) = Comment::try_from(token) {
+      Self::Comment(comment)
     } else {
       Self::Plain(Cow::Borrowed(token))
     }
@@ -217,7 +218,7 @@ impl<'t> Token<'t> {
       Self::Literal(_, t) => MacroToken::Token(t),
       Self::Plain(t) => MacroToken::Token(t),
       Self::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
-      Self::Comment(t) => MacroToken::Comment(Comment { comment: Cow::Borrowed(t) }),
+      Self::Comment(t) => MacroToken::Comment(t),
       Self::NonReplacable(t) => return t.detokenize(arg_names),
       Self::Placemarker => return None,
     })
@@ -411,7 +412,7 @@ enum Token<'t> {
   /// An intermediary token which cannot be parsed yet.
   Plain(Cow<'t, str>),
   /// A comment token.
-  Comment(&'t str),
+  Comment(Comment<'t>),
   /// A placeholder token.
   Placemarker,
 }
@@ -915,6 +916,16 @@ mod tests {
     assert_eq!(macro_set.expand_var_macro("PLUS_VAR"), Ok(token_vec!["7", "+", "8"]));
     assert_eq!(macro_set.expand_var_macro("PLUS_PLUS_VAR"), Ok(token_vec!["3", "+", "1", "+", "8"]));
     assert_eq!(macro_set.expand_var_macro("PLUS_VAR_VAR"), Ok(token_vec!["7", "+", "2", "+", "3"]));
+  }
+
+  #[test]
+  fn parse_concat_var_args() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.define_fn_macro("CONCAT_VAR_ARGS", ["..."], ["__VA_", "##", "ARGS__"]);
+    macro_set.define_var_macro("CALL_CONCAT_VAR_ARGS", ["CONCAT_VAR_ARGS", "(", ")"]);
+    assert_eq!(macro_set.expand_fn_macro("CONCAT_VAR_ARGS"), Ok((token_vec!["..."], token_vec![id!(__VA_ARGS__)])));
+    assert_eq!(macro_set.expand_var_macro("CALL_CONCAT_VAR_ARGS"), Ok(token_vec![id!(__VA_ARGS__)]));
   }
 
   #[test]
