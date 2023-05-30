@@ -11,7 +11,11 @@ use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{tokens::parenthesized, *};
-use crate::{ast::tokens::macro_arg, token::MacroArg, CodegenContext, LocalContext, MacroArgType, MacroToken, UnaryOp};
+use crate::{
+  ast::tokens::{macro_arg, macro_id},
+  token::MacroArg,
+  CodegenContext, LocalContext, MacroArgType, MacroToken, UnaryOp,
+};
 
 /// An expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,15 +53,14 @@ impl<'t> Expr<'t> {
 
   /// Parse identifier concatenation, e.g. `arg ## 2`.
   pub(crate) fn parse_concat_ident<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, id) =
-      alt((map(macro_arg, Self::Arg), map(LitIdent::parse, |id| Self::Variable { name: id })))(tokens)?;
+    let (tokens, id) = alt((map(macro_arg, Self::Arg), map(macro_id, |id| Self::Variable { name: id })))(tokens)?;
 
     fold_many0(
       preceded(
         delimited(meta, token("##"), meta),
         alt((
           map(macro_arg, Self::Arg),
-          map(LitIdent::parse, |id| Self::Variable { name: id }),
+          map(macro_id, |id| Self::Variable { name: id }),
           // Split non-identifiers, e.g. `123def` into integer literals and identifiers.
           map_opt(take_one, |token| {
             fn unsuffixed_int<'e>(input: &str) -> IResult<&str, Expr<'e>> {
@@ -953,11 +956,11 @@ impl<'t> Expr<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_set::{arg as macro_arg, tokens};
+  use crate::macro_set::{arg as macro_arg, id as macro_id, tokens};
 
   #[test]
   fn parse_literal() {
-    let (_, expr) = Expr::parse(tokens!["u8", "'a'"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(u8), "'a'"]).unwrap();
     assert_eq!(expr, lit!(u8 'a'));
 
     let (_, expr) = Expr::parse(tokens!["U'🍩'"]).unwrap();
@@ -987,13 +990,13 @@ mod tests {
 
   #[test]
   fn parse_concat_ident() {
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "def"]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", macro_id!(def)]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(def)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "def", "##", "ghi"]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", macro_id!(def), "##", macro_id!(ghi)]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(def), var!(ghi)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "_def"]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", macro_id!(_def)]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(_def)]));
 
     let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "123"]).unwrap();
@@ -1005,19 +1008,19 @@ mod tests {
     let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "123def456ghi"]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def456ghi)]));
 
-    let (_, id) = Expr::parse(tokens!["__INT", "##", "_MAX__"]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_id!(__INT), "##", macro_id!(_MAX__)]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![var!(__INT), var!(_MAX__)]));
   }
 
   #[test]
   fn parse_field_access() {
-    let (_, expr) = Expr::parse(tokens!["a", ".", "b"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), ".", macro_id!(b)]).unwrap();
     assert_eq!(expr, Expr::FieldAccess { expr: Box::new(var!(a)), field: Box::new(var!(b)) });
   }
 
   #[test]
   fn parse_pointer_access() {
-    let (_, expr) = Expr::parse(tokens!["a", "->", "b"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), "->", macro_id!(b)]).unwrap();
     assert_eq!(
       expr,
       Expr::FieldAccess {
@@ -1029,10 +1032,10 @@ mod tests {
 
   #[test]
   fn parse_array_access() {
-    let (_, expr) = Expr::parse(tokens!["a", "[", "0", "]"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), "[", "0", "]"]).unwrap();
     assert_eq!(expr, Expr::ArrayAccess { expr: Box::new(var!(a)), index: Box::new(lit!(0)) });
 
-    let (_, expr) = Expr::parse(tokens!["a", "[", "0", "]", "[", "1", "]"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), "[", "0", "]", "[", "1", "]"]).unwrap();
     assert_eq!(
       expr,
       Expr::ArrayAccess {
@@ -1041,13 +1044,13 @@ mod tests {
       }
     );
 
-    let (_, expr) = Expr::parse(tokens!["a", "[", "b", "]"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), "[", macro_id!(b), "]"]).unwrap();
     assert_eq!(expr, Expr::ArrayAccess { expr: Box::new(var!(a)), index: Box::new(var!(b)) });
   }
 
   #[test]
   fn parse_assignment() {
-    let (_, expr) = Expr::parse(tokens!["a", "=", "b", "=", "c"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), "=", macro_id!(b), "=", macro_id!(c)]).unwrap();
     assert_eq!(
       expr,
       Expr::Binary(Box::new(BinaryExpr {
@@ -1060,7 +1063,8 @@ mod tests {
 
   #[test]
   fn parse_function_call() {
-    let (_, expr) = Expr::parse(tokens!["my_function", "(", "arg1", ",", "arg2", ")"]).unwrap();
+    let (_, expr) =
+      Expr::parse(tokens![macro_id!(my_function), "(", macro_id!(arg1), ",", macro_id!(arg2), ")"]).unwrap();
     assert_eq!(
       expr,
       Expr::FunctionCall(FunctionCall { name: Box::new(var!(my_function)), args: vec![var!(arg1), var!(arg2)] })

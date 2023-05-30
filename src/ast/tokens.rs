@@ -1,6 +1,6 @@
 use nom::{
   bytes::complete::tag,
-  combinator::{all_consuming, map_opt, value},
+  combinator::{all_consuming, map_opt, value, verify},
   multi::many0,
   sequence::{delimited, pair},
   IResult, Parser,
@@ -75,7 +75,16 @@ where
   move |tokens| map_token(value(token, tag(token)))(tokens)
 }
 
-pub(crate) use token as keyword;
+pub(crate) fn id<'i, 't>(
+  token: &'static str,
+) -> impl Fn(&'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'static str>
+where
+  't: 'i,
+{
+  move |tokens| value(token, verify(macro_id, move |id| id.id.as_ref() == token))(tokens)
+}
+
+pub(crate) use id as keyword;
 
 pub(crate) fn parenthesized<'i, 't, O, F>(
   f: F,

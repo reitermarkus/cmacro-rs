@@ -10,10 +10,10 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{
-  tokens::{macro_arg, meta, token},
+  tokens::{macro_arg, macro_id, meta, token},
   BuiltInType, Type,
 };
-use crate::{CodegenContext, Expr, LitIdent, LocalContext, MacroArgType, MacroToken};
+use crate::{CodegenContext, Expr, LocalContext, MacroArgType, MacroToken};
 
 /// Stringification of a macro argument.
 ///
@@ -32,7 +32,7 @@ impl<'t> Stringify<'t> {
       terminated(token("#"), meta),
       alt((
         map(macro_arg, |arg| Self { arg: Box::new(Expr::Arg(arg)) }),
-        map(LitIdent::parse, |id| Self { arg: Box::new(Expr::Variable { name: id }) }),
+        map(macro_id, |id| Self { arg: Box::new(Expr::Variable { name: id }) }),
       )),
     )(tokens)
   }

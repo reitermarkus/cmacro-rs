@@ -25,7 +25,7 @@ impl<'t> Decl<'t> {
   /// Parse a variable declaration.
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, ((static_storage, ty), name, _, rhs)) =
-      tuple((permutation((opt(token("static")), Type::parse)), Expr::parse_concat_ident, token("="), Expr::parse))(
+      tuple((permutation((opt(id("static")), Type::parse)), Expr::parse_concat_ident, token("="), Expr::parse))(
         tokens,
       )?;
 
@@ -66,11 +66,11 @@ impl<'t> Decl<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_set::tokens;
+  use crate::macro_set::{id as macro_id, tokens};
 
   #[test]
   fn parse() {
-    let (_, id) = Decl::parse(tokens!["int", "*", "abc", "=", "123"]).unwrap();
+    let (_, id) = Decl::parse(tokens![macro_id!(int), "*", macro_id!(abc), "=", "123"]).unwrap();
     assert_eq!(
       id,
       Decl {

@@ -7,7 +7,6 @@ use std::{
 };
 
 use crate::{
-  ast::is_identifier,
   token::{Comment, MacroArg},
   LitIdent,
 };
@@ -156,12 +155,134 @@ fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
           "__VA_ARGS__" => Token::VarArgs,
           token if is_comment(token) => Token::Comment(token),
           token if is_punctuation(token) => Token::Punctuation(token),
-          token if is_identifier(token) => Token::Identifier(Cow::Borrowed(token)),
-          token => Token::Plain(Cow::Borrowed(token)),
+          token => {
+            if let Ok(_identifier) = LitIdent::try_from(token) {
+              // TODO: Change to `LitIdent`.
+              Token::Identifier(Cow::Borrowed(token))
+            } else {
+              Token::Plain(Cow::Borrowed(token))
+            }
+          },
         }
       }
     })
     .collect()
+}
+
+enum StringifyAction<'s> {
+  /// Keep the token and the preceding `#`.
+  Keep,
+  /// Skip the token.
+  Skip,
+  ///
+  Append(&'s str),
+}
+
+impl<'t> Token<'t> {
+  pub fn stringify(&self, nested: bool) -> StringifyAction<'_> {
+    use StringifyAction::*;
+
+    match self {
+      Token::MacroArg(_) => Keep,
+      Token::VarArgs => {
+        if nested {
+          Keep
+        } else {
+          Append("__VA_ARGS__")
+        }
+      },
+      Token::Identifier(ref t) => match t.as_ref() {
+        "__LINE__" | "__FILE__" if nested => Keep,
+        t => Append(t),
+      },
+      Token::NonReplacable(t) => t.stringify(nested),
+      Token::Plain(t) => Append(t.as_ref()),
+      Token::Punctuation(t) => Append(t),
+      Token::Comment(_) => Skip,
+      Token::Placemarker => Skip,
+    }
+  }
+
+  pub fn detokenize(self, arg_names: &'t [String]) -> Option<MacroToken<'t>> {
+    Some(match self {
+      Token::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
+      Token::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
+      Token::Identifier(t) => MacroToken::Id(LitIdent::try_from(t.as_ref()).unwrap().to_static()),
+      Token::Plain(t) => MacroToken::Token(t),
+      Token::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
+      Token::Comment(t) => MacroToken::Comment(Comment { comment: Cow::Borrowed(t) }),
+      Token::NonReplacable(t) => return t.detokenize(arg_names),
+      Token::Placemarker => return None,
+    })
+  }
+
+  pub fn concat(self, other: Self) -> Result<Self, ExpansionError> {
+    Ok(match (self, other) {
+      (Token::Placemarker, rhs) => rhs,
+      (lhs, Token::Placemarker) => lhs,
+      (Token::Punctuation(lhs), Token::Punctuation(rhs)) => {
+        let mut token = Cow::Borrowed(lhs);
+        token.to_mut().push_str(rhs.as_ref());
+        Token::Plain(token)
+      },
+      (Token::Punctuation(lhs), Token::Identifier(rhs) | Token::Plain(rhs)) => {
+        let mut token = Cow::Borrowed(lhs);
+        token.to_mut().push_str(rhs.as_ref());
+        Token::Plain(token)
+      },
+      (Token::Identifier(lhs) | Token::Plain(lhs), Token::Punctuation(rhs)) => {
+        let mut token = lhs;
+        token.to_mut().push_str(rhs.as_ref());
+        Token::Plain(token)
+      },
+      (Token::Identifier(lhs), Token::Identifier(rhs)) => {
+        let mut id = lhs;
+        id.to_mut().push_str(rhs.as_ref());
+        Token::Identifier(id)
+      },
+      (Token::Identifier(lhs) | Token::Plain(lhs), Token::Identifier(rhs) | Token::Plain(rhs)) => {
+        let lhs_is_string_or_char_prefix = match lhs.as_ref() {
+          "u8" => true,
+          "u" => true,
+          "U" => true,
+          "L" => true,
+          lhs => {
+            // Cannot concatenate anything with a string or character literal.
+            if lhs.ends_with('\"') || lhs.ends_with('\'') {
+              return Err(ExpansionError::InvalidConcat)
+            } else {
+              false
+            }
+          },
+        };
+
+        if rhs.ends_with('\"') || rhs.ends_with('\'') {
+          let rhs_is_unprefixed_string_or_char = rhs.starts_with('\"') || rhs.starts_with('\'');
+
+          // Can only concatenate a string or character literal with a
+          // string or character prefix if it isn't already prefixed.
+          if lhs_is_string_or_char_prefix && rhs_is_unprefixed_string_or_char {
+            Token::Plain(Cow::Owned(format!("{lhs}{rhs}")))
+          } else {
+            return Err(ExpansionError::InvalidConcat)
+          }
+        } else {
+          let mut token = lhs;
+          token.to_mut().push_str(rhs.as_ref());
+
+          if let Ok(_identifier) = LitIdent::try_from(token.as_ref()) {
+            Token::Identifier(token)
+          } else {
+            Token::Plain(token)
+          }
+        }
+      },
+      (Token::NonReplacable(lhs), rhs) => lhs.concat(rhs)?,
+      (lhs, Token::NonReplacable(rhs)) => lhs.concat(*rhs)?,
+      (Self::MacroArg(_) | Self::VarArgs | Self::Comment(_), _)
+      | (_, Self::MacroArg(_) | Self::VarArgs | Self::Comment(_)) => unreachable!(),
+    })
+  }
 }
 
 fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
@@ -173,36 +294,14 @@ fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
   let mut current_string = None;
 
   for token in it {
-    let token = match token {
-      Token::MacroArg(index) => {
-        tokens.extend(current_string.take().map(|s| Token::Plain(Cow::Owned(format!("{s:?}")))));
+    let token = match token.stringify(nested) {
+      StringifyAction::Keep => {
         tokens.push(Token::Punctuation("#"));
-        tokens.push(Token::MacroArg(index));
+        tokens.push(token);
         continue
       },
-      Token::VarArgs => {
-        if !nested {
-          "__VA_ARGS__"
-        } else {
-          tokens.extend(current_string.take().map(|s| Token::Plain(Cow::Owned(format!("{s:?}")))));
-          tokens.push(Token::Punctuation("#"));
-          tokens.push(Token::VarArgs);
-          continue
-        }
-      },
-      Token::Identifier(ref t) => match t.as_ref() {
-        "__LINE__" | "__FILE__" if nested => {
-          tokens.extend(current_string.take().map(|s| Token::Plain(Cow::Owned(format!("{s:?}")))));
-          tokens.push(Token::Punctuation("#"));
-          tokens.push(token);
-          continue
-        },
-        t => t,
-      },
-      Token::Plain(ref t) => t.as_ref(),
-      Token::Punctuation(t) => t,
-      Token::Placemarker => continue,
-      Token::Comment(_) => continue,
+      StringifyAction::Skip => continue,
+      StringifyAction::Append(s) => s,
     };
 
     let s = current_string.get_or_insert(String::new());
@@ -227,19 +326,7 @@ fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
 }
 
 fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroToken<'t>> {
-  tokens
-    .into_iter()
-    .filter_map(|t| {
-      Some(match t {
-        Token::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
-        Token::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
-        Token::Identifier(t) | Token::Plain(t) => MacroToken::Token(t),
-        Token::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
-        Token::Comment(t) => MacroToken::Comment(Comment { comment: Cow::Borrowed(t) }),
-        Token::Placemarker => return None,
-      })
-    })
-    .collect()
+  tokens.into_iter().filter_map(|t| t.detokenize(arg_names)).collect()
 }
 
 /// A macro token.
@@ -247,7 +334,7 @@ fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroT
 pub enum MacroToken<'t> {
   /// A macro parameter for the argument at the given position.
   Arg(MacroArg),
-  // An identifier.
+  /// An identifier.
   Id(LitIdent<'t>),
   /// A macro token.
   Token(Cow<'t, str>),
@@ -264,6 +351,7 @@ enum Token<'t> {
   Punctuation(&'t str),
   Comment(&'t str),
   Placemarker,
+  NonReplacable(Box<Self>),
 }
 
 impl MacroSet {
@@ -288,7 +376,7 @@ impl MacroSet {
       match token {
         Token::Identifier(id) => {
           if non_replaced_names.contains(id.as_ref()) {
-            tokens.push(Token::Plain(id));
+            tokens.push(Token::NonReplacable(Box::new(Token::Identifier(id))));
           } else {
             // Treat as function-like macro call if immediately followed by `(`.
             if it.peek() == Some(&Token::Punctuation("(")) {
@@ -561,69 +649,7 @@ impl MacroSet {
             // Ignore whitespace between this `##` and the next non-whitespace token.
             until_no_whitespace!(it.next(), ConcatEnd)
           };
-          tokens.push(match (lhs, rhs) {
-            (Token::Placemarker, rhs) => rhs,
-            (lhs, Token::Placemarker) => lhs,
-            (Token::Punctuation(lhs), Token::Punctuation(rhs)) => {
-              let mut token = Cow::Borrowed(lhs);
-              token.to_mut().push_str(rhs.as_ref());
-              Token::Plain(token)
-            },
-            (Token::Punctuation(lhs), Token::Identifier(rhs) | Token::Plain(rhs)) => {
-              let mut token = Cow::Borrowed(lhs);
-              token.to_mut().push_str(rhs.as_ref());
-              Token::Plain(token)
-            },
-            (Token::Identifier(lhs) | Token::Plain(lhs), Token::Punctuation(rhs)) => {
-              let mut token = lhs;
-              token.to_mut().push_str(rhs.as_ref());
-              Token::Plain(token)
-            },
-            (Token::Identifier(lhs), Token::Identifier(rhs)) => {
-              let mut id = lhs;
-              id.to_mut().push_str(rhs.as_ref());
-              Token::Identifier(id)
-            },
-            (Token::Identifier(lhs) | Token::Plain(lhs), Token::Identifier(rhs) | Token::Plain(rhs)) => {
-              let lhs_is_string_or_char_prefix = match lhs.as_ref() {
-                "u8" => true,
-                "u" => true,
-                "U" => true,
-                "L" => true,
-                lhs => {
-                  // Cannot concatenate anything with a string or character literal.
-                  if lhs.ends_with('\"') || lhs.ends_with('\'') {
-                    return Err(ExpansionError::InvalidConcat)
-                  } else {
-                    false
-                  }
-                },
-              };
-
-              if rhs.ends_with('\"') || rhs.ends_with('\'') {
-                let rhs_is_unprefixed_string_or_char = rhs.starts_with('\"') || rhs.starts_with('\'');
-
-                // Can only concatenate a string or character literal with a
-                // string or character prefix if it isn't already prefixed.
-                if lhs_is_string_or_char_prefix && rhs_is_unprefixed_string_or_char {
-                  Token::Plain(Cow::Owned(format!("{lhs}{rhs}")))
-                } else {
-                  return Err(ExpansionError::InvalidConcat)
-                }
-              } else {
-                let mut token = lhs;
-                token.to_mut().push_str(rhs.as_ref());
-
-                if is_identifier(token.as_ref()) {
-                  Token::Identifier(token)
-                } else {
-                  Token::Plain(token)
-                }
-              }
-            },
-            (Token::MacroArg(_) | Token::VarArgs | Token::Comment(_), _)
-            | (_, Token::MacroArg(_) | Token::VarArgs | Token::Comment(_)) => unreachable!(),
-          })
+          tokens.push(lhs.concat(rhs)?)
         },
         token => tokens.push(token),
       }
@@ -720,7 +746,16 @@ impl MacroSet {
     let body = tokenize(arg_names, body);
     let tokens = self.expand_fn_macro_body(HashSet::new(), name, arg_names, None, &body)?;
     Ok((
-      arg_names.iter().map(|arg_name| MacroToken::Token(Cow::Borrowed(arg_name.as_ref()))).collect(),
+      arg_names
+        .iter()
+        .map(|arg_name| {
+          if let Ok(identifier) = LitIdent::try_from(arg_name.as_ref()) {
+            MacroToken::Id(identifier)
+          } else {
+            MacroToken::Token(Cow::Borrowed(arg_name.as_ref()))
+          }
+        })
+        .collect(),
       detokenize(arg_names, tokens),
     ))
   }
@@ -748,11 +783,20 @@ impl<'t> ToMacroToken<'t> for &'t str {
 #[cfg(test)]
 macro_rules! arg {
   ($index:expr) => {{
-    MacroToken::Arg($crate::token::MacroArg { index: $index })
+    $crate::MacroToken::Arg($crate::token::MacroArg { index: $index })
   }};
 }
 #[cfg(test)]
 pub(crate) use arg;
+
+#[cfg(test)]
+macro_rules! id {
+  ($id:ident) => {{
+    $crate::MacroToken::Id($crate::LitIdent { id: ::std::borrow::Cow::Borrowed(stringify!($id)) })
+  }};
+}
+#[cfg(test)]
+pub(crate) use id;
 
 #[cfg(test)]
 macro_rules! tokens {
@@ -804,7 +848,7 @@ mod tests {
     assert_eq!(macro_set.expand_var_macro("VAR"), Ok(token_vec!["2", "+", "3"]));
     assert_eq!(
       macro_set.expand_fn_macro("F1"),
-      Ok((token_vec!["A", "B"], token_vec![arg!(0), "+", "2", "+", "3", "+", arg!(1)]))
+      Ok((token_vec![id!(A), id!(B)], token_vec![arg!(0), "+", "2", "+", "3", "+", arg!(1)]))
     );
     assert_eq!(macro_set.expand_var_macro("PLUS_VAR"), Ok(token_vec!["7", "+", "8"]));
     assert_eq!(macro_set.expand_var_macro("PLUS_PLUS_VAR"), Ok(token_vec!["3", "+", "1", "+", "8"]));
@@ -880,9 +924,15 @@ mod tests {
     macro_set.define_fn_macro("FUNC1", ["arg"], ["FUNC2", "(", "arg", ")"]);
     macro_set.define_fn_macro("FUNC2", ["arg"], ["FUNC1", "(", "arg", ")"]);
     macro_set.define_var_macro("VAR1", ["1", "+", "VAR1"]);
-    assert_eq!(macro_set.expand_fn_macro("FUNC1"), Ok((token_vec!["arg"], token_vec!["FUNC1", "(", arg!(0), ")"])));
-    assert_eq!(macro_set.expand_fn_macro("FUNC2"), Ok((token_vec!["arg"], token_vec!["FUNC2", "(", arg!(0), ")"])));
-    assert_eq!(macro_set.expand_var_macro("VAR1"), Ok(token_vec!["1", "+", "VAR1"]));
+    assert_eq!(
+      macro_set.expand_fn_macro("FUNC1"),
+      Ok((token_vec![id!(arg)], token_vec![id!(FUNC1), "(", arg!(0), ")"]))
+    );
+    assert_eq!(
+      macro_set.expand_fn_macro("FUNC2"),
+      Ok((token_vec![id!(arg)], token_vec![id!(FUNC2), "(", arg!(0), ")"]))
+    );
+    assert_eq!(macro_set.expand_var_macro("VAR1"), Ok(token_vec!["1", "+", id!(VAR1)]));
   }
 
   #[test]
@@ -891,7 +941,7 @@ mod tests {
 
     macro_set.define_var_macro("s", ["377"]);
     macro_set.define_fn_macro("STRINGIFY", ["s"], ["#", "s"]);
-    assert_eq!(macro_set.expand_fn_macro("STRINGIFY"), Ok((token_vec!["s"], token_vec!["#", arg!(0)])));
+    assert_eq!(macro_set.expand_fn_macro("STRINGIFY"), Ok((token_vec![id!(s)], token_vec!["#", arg!(0)])));
   }
 
   #[test]
@@ -913,14 +963,10 @@ mod tests {
     macro_set.define_fn_macro("STRINGIFY2", ["s"], ["STRINGIFY1", "(", "s", ")"]);
     macro_set.define_var_macro("LINE_STRING1", ["STRINGIFY1", "(", "__LINE__", ")"]);
     macro_set.define_var_macro("LINE_STRING2", ["STRINGIFY2", "(", "__LINE__", ")"]);
-    eprintln!("STRINGIFY1");
-    assert_eq!(macro_set.expand_fn_macro("STRINGIFY1"), Ok((token_vec!["s"], token_vec!["#", arg!(0)])));
-    eprintln!("STRINGIFY2");
-    assert_eq!(macro_set.expand_fn_macro("STRINGIFY2"), Ok((token_vec!["s"], token_vec!["#", arg!(0)])));
-    eprintln!("LINE_STRING1");
+    assert_eq!(macro_set.expand_fn_macro("STRINGIFY1"), Ok((token_vec![id!(s)], token_vec!["#", arg!(0)])));
+    assert_eq!(macro_set.expand_fn_macro("STRINGIFY2"), Ok((token_vec![id!(s)], token_vec!["#", arg!(0)])));
     assert_eq!(macro_set.expand_var_macro("LINE_STRING1"), Ok(token_vec!["\"__LINE__\""]));
-    eprintln!("LINE_STRING2");
-    assert_eq!(macro_set.expand_var_macro("LINE_STRING2"), Ok(token_vec!["#", "__LINE__"]));
+    assert_eq!(macro_set.expand_var_macro("LINE_STRING2"), Ok(token_vec!["#", id!(__LINE__)]));
   }
 
   #[test]
@@ -956,7 +1002,7 @@ mod tests {
     macro_set.define_var_macro("A", ["1"]);
     macro_set.define_var_macro("B", ["2"]);
     macro_set.define_var_macro("CONCAT", ["A", "##", "B"]);
-    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(token_vec!["AB"]));
+    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(token_vec![id!(AB)]));
   }
 
   #[test]
@@ -966,9 +1012,9 @@ mod tests {
     macro_set.define_var_macro("CONCAT_COMMENT1", ["A", "/* 1 */", "##", "B"]);
     macro_set.define_var_macro("CONCAT_COMMENT2", ["A", "##", "/* 2 */", "B"]);
     macro_set.define_var_macro("CONCAT_COMMENT3", ["A", "/* 1 */", "##", "/* 2 */", "B"]);
-    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT1"), Ok(token_vec!["AB"]));
-    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT2"), Ok(token_vec!["AB"]));
-    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT3"), Ok(token_vec!["AB"]));
+    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT1"), Ok(token_vec![id!(AB)]));
+    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT2"), Ok(token_vec![id!(AB)]));
+    assert_eq!(macro_set.expand_var_macro("CONCAT_COMMENT3"), Ok(token_vec![id!(AB)]));
   }
 
   #[test]
@@ -982,7 +1028,7 @@ mod tests {
     macro_set.define_fn_macro("CONCAT_STRING", ["A", "B"], ["A", "##", "B", "C"]);
     assert_eq!(
       macro_set.expand_fn_macro("CONCAT_STRING"),
-      Ok((token_vec!["A", "B"], token_vec![arg!(0), "##", arg!(1), "\", world!\""]))
+      Ok((token_vec![id!(A), id!(B)], token_vec![arg!(0), "##", arg!(1), "\", world!\""]))
     );
   }
 
@@ -999,7 +1045,7 @@ mod tests {
     macro_set.define_fn_macro("PREFIX_HASH", ["prefix"], ["prefix", "##", "#"]);
     macro_set.define_var_macro("E", ["PREFIX_HASH", "(", "u8", ")"]);
     assert_eq!(macro_set.expand_var_macro("A"), Ok(token_vec!["u8\"abc\""]));
-    assert_eq!(macro_set.expand_var_macro("B"), Ok(token_vec!["u8", "\"abc\""]));
+    assert_eq!(macro_set.expand_var_macro("B"), Ok(token_vec![id!(u8), "\"abc\""]));
     assert_eq!(macro_set.expand_var_macro("C"), Ok(token_vec!["u8\"abc\""]));
     assert_eq!(macro_set.expand_var_macro("D"), Ok(token_vec!["u8\"u8\""]));
     assert_eq!(macro_set.expand_var_macro("E"), Err(ExpansionError::StringifyNonArgument));
@@ -1073,25 +1119,111 @@ mod tests {
     assert_eq!(
       macro_set.expand_var_macro("line1"),
       Ok(token_vec![
-        "f", "(", "2", "*", "(", "y", "+", "1", ")", ")", "+", "f", "(", "2", "*", "(", "f", "(", "2", "*", "(", "z",
-        "[", "0", "]", ")", ")", ")", ")", "%", "f", "(", "2", "*", "(", "0", ")", ")", "+", "t", "(", "1", ")", ";"
+        id!(f),
+        "(",
+        "2",
+        "*",
+        "(",
+        id!(y),
+        "+",
+        "1",
+        ")",
+        ")",
+        "+",
+        id!(f),
+        "(",
+        "2",
+        "*",
+        "(",
+        id!(f),
+        "(",
+        "2",
+        "*",
+        "(",
+        id!(z),
+        "[",
+        "0",
+        "]",
+        ")",
+        ")",
+        ")",
+        ")",
+        "%",
+        id!(f),
+        "(",
+        "2",
+        "*",
+        "(",
+        "0",
+        ")",
+        ")",
+        "+",
+        id!(t),
+        "(",
+        "1",
+        ")",
+        ";"
       ])
     );
     assert_eq!(
       macro_set.expand_var_macro("line2"),
       Ok(token_vec![
-        "f", "(", "2", "*", "(", "2", "+", "(", "3", ",", "4", ")", "-", "0", ",", "1", ")", ")", "|", "f", "(", "2",
-        "*", "(", "~", "5", ")", ")", "&", "f", "(", "2", "*", "(", "0", ",", "1", ")", ")", "^", "m", "(", "0", ",",
-        "1", ")", ";"
+        id!(f),
+        "(",
+        "2",
+        "*",
+        "(",
+        "2",
+        "+",
+        "(",
+        "3",
+        ",",
+        "4",
+        ")",
+        "-",
+        "0",
+        ",",
+        "1",
+        ")",
+        ")",
+        "|",
+        id!(f),
+        "(",
+        "2",
+        "*",
+        "(",
+        "~",
+        "5",
+        ")",
+        ")",
+        "&",
+        id!(f),
+        "(",
+        "2",
+        "*",
+        "(",
+        "0",
+        ",",
+        "1",
+        ")",
+        ")",
+        "^",
+        id!(m),
+        "(",
+        "0",
+        ",",
+        "1",
+        ")",
+        ";"
       ])
     );
     assert_eq!(
       macro_set.expand_var_macro("line3"),
-      Ok(token_vec!["int", "i", "[", "]", "=", "{", "1", ",", "23", ",", "4", ",", "5", ",", "}", ";"])
+      Ok(token_vec![id!(int), id!(i), "[", "]", "=", "{", "1", ",", "23", ",", "4", ",", "5", ",", "}", ";"])
     );
     assert_eq!(
       macro_set.expand_var_macro("line4"),
-      Ok(token_vec!["char", "c", "[", "2", "]", "[", "6", "]", "=", "{", "\"hello\"", ",", "\"\"", "}", ";"])
+      Ok(token_vec![id!(char), id!(c), "[", "2", "]", "[", "6", "]", "=", "{", "\"hello\"", ",", "\"\"", "}", ";"])
     );
   }
 
@@ -1167,7 +1299,7 @@ mod tests {
     assert_eq!(
       macro_set.expand_var_macro("line1"),
       Ok(token_vec![
-        "printf",
+        id!(printf),
         "(",
         "\"x\"",
         "\"1\"",
@@ -1175,9 +1307,9 @@ mod tests {
         "\"2\"",
         "\"= %s\"",
         ",",
-        "x1",
+        id!(x1),
         ",",
-        "x2",
+        id!(x2),
         ")",
         ";"
       ])
@@ -1185,12 +1317,12 @@ mod tests {
     assert_eq!(
       macro_set.expand_var_macro("line2"),
       Ok(token_vec![
-        "fputs",
+        id!(fputs),
         "(",
         "\"strncmp(\\\"abc\\\\0d\\\", \\\"abc\\\", '\\\\4') == 0\"",
         "\": @ \\\\n\"",
         ",",
-        "s",
+        id!(s),
         ")",
         ";"
       ])
@@ -1222,8 +1354,28 @@ mod tests {
     assert_eq!(
       macro_set.expand_var_macro("line1"),
       Ok(token_vec![
-        "int", "j", "[", "]", "=", "{", "123", ",", "45", ",", "67", ",", "89", ",", "10", ",", "11", ",", "12", ",",
-        "}", ";"
+        id!(int),
+        id!(j),
+        "[",
+        "]",
+        "=",
+        "{",
+        "123",
+        ",",
+        "45",
+        ",",
+        "67",
+        ",",
+        "89",
+        ",",
+        "10",
+        ",",
+        "11",
+        ",",
+        "12",
+        ",",
+        "}",
+        ";"
       ])
     );
   }
@@ -1276,38 +1428,38 @@ mod tests {
 
     assert_eq!(
       macro_set.expand_var_macro("line1"),
-      Ok(token_vec!["fprintf", "(", "stderr", ",", "\"Flag\"", ")", ";"])
+      Ok(token_vec![id!(fprintf), "(", id!(stderr), ",", "\"Flag\"", ")", ";"])
     );
     assert_eq!(
       macro_set.expand_var_macro("line2"),
-      Ok(token_vec!["fprintf", "(", "stderr", ",", "\"X = %d\\n\"", ",", "x", ")", ";"])
+      Ok(token_vec![id!(fprintf), "(", id!(stderr), ",", "\"X = %d\\n\"", ",", id!(x), ")", ";"])
     );
     assert_eq!(
       macro_set.expand_var_macro("line3"),
-      Ok(token_vec!["puts", "(", "\"The first, second, and third items.\"", ")", ";"])
+      Ok(token_vec![id!(puts), "(", "\"The first, second, and third items.\"", ")", ";"])
     );
     assert_eq!(
       macro_set.expand_var_macro("line4"),
       Ok(token_vec![
         "(",
         "(",
-        "x",
+        id!(x),
         ">",
-        "y",
+        id!(y),
         ")",
         "?",
-        "puts",
+        id!(puts),
         "(",
         "\"x > y\"",
         ")",
         ":",
-        "printf",
+        id!(printf),
         "(",
         "\"x is %d but y is %d\"",
         ",",
-        "x",
+        id!(x),
         ",",
-        "y",
+        id!(y),
         ")",
         ")",
         ";"

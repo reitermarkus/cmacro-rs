@@ -11,7 +11,7 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use crate::{
-  is_identifier, meta, token, CodegenContext, LitIdent, LocalContext, MacroArgType, MacroBody, MacroToken, Type,
+  ast::macro_id, is_identifier, meta, token, CodegenContext, LocalContext, MacroArgType, MacroBody, MacroToken, Type,
 };
 
 /// A function-like macro.
@@ -109,7 +109,7 @@ impl<'t> FnMacro<'t> {
         map(preceded(meta, token("...")), |var_arg| vec![var_arg.to_owned()]),
         map(
           tuple((
-            fold_many0(preceded(meta, LitIdent::parse), Vec::new, |mut acc, arg| {
+            fold_many0(preceded(meta, macro_id), Vec::new, |mut acc, arg| {
               acc.push(arg.id.into_owned());
               acc
             }),

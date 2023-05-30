@@ -9,8 +9,7 @@ use nom::{
   IResult,
 };
 
-use super::{literal::universal_char, tokens::map_token};
-use crate::MacroToken;
+use super::literal::universal_char;
 
 fn is_identifier_start(c: char) -> bool {
   unicode_ident::is_xid_start(c) || c == '_'
@@ -64,11 +63,6 @@ impl<'t> LitIdent<'t> {
     ))(input)
   }
 
-  /// Parse an identifier.
-  pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    map_token(map(LitIdent::<'i>::parse_str, |id: LitIdent<'i>| id.to_static()))(tokens)
-  }
-
   pub(crate) fn to_static(&self) -> LitIdent<'static> {
     LitIdent { id: Cow::Owned(self.id.clone().into_owned()) }
   }
@@ -87,7 +81,7 @@ impl<'t> TryFrom<&'t str> for LitIdent<'t> {
 mod tests {
   use super::*;
 
-  use crate::{lit_id};
+  use crate::lit_id;
 
   #[test]
   fn parse_literal() {

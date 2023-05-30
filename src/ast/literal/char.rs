@@ -12,7 +12,10 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use super::{escaped_char, unescaped_char};
-use crate::{ast::tokens::map_token, BuiltInType, CodegenContext, Expr, LitIdent, LocalContext, MacroToken, Type};
+use crate::{
+  ast::{id, tokens::map_token},
+  BuiltInType, CodegenContext, Expr, LitIdent, LocalContext, MacroToken, Type,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LitCharPrefix {
@@ -95,9 +98,18 @@ impl LitChar {
   /// Parse a character literal.
   pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
-      map_opt(pair(map_token(LitCharPrefix::parse), map_token(Self::parse_unprefixed)), move |(prefix, c)| {
-        Self::with_prefix(Some(prefix), c)
-      }),
+      map_opt(
+        pair(
+          alt((
+            value(LitCharPrefix::Utf8, id("u8")),
+            value(LitCharPrefix::Utf16, id("u")),
+            value(LitCharPrefix::Utf32, id("U")),
+            value(LitCharPrefix::Wide, id("L")),
+          )),
+          map_token(Self::parse_unprefixed),
+        ),
+        move |(prefix, c)| Self::with_prefix(Some(prefix), c),
+      ),
       map_token(Self::parse_str),
     ))(input)
   }
