@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
   token::{Comment, MacroArg},
-  LitIdent,
+  Lit, LitChar, LitIdent, LitString,
 };
 
 fn is_punctuation(s: &str) -> bool {
@@ -153,15 +153,7 @@ fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
       } else {
         match t.as_ref() {
           "__VA_ARGS__" => Token::VarArgs,
-          token if is_comment(token) => Token::Comment(token),
-          token if is_punctuation(token) => Token::Punctuation(token),
-          token => {
-            if let Ok(identifier) = LitIdent::try_from(token) {
-              Token::Identifier(identifier)
-            } else {
-              Token::Plain(Cow::Borrowed(token))
-            }
-          },
+          token => Token::from_str(token),
         }
       }
     })
@@ -178,110 +170,165 @@ enum StringifyAction<'s> {
 }
 
 impl<'t> Token<'t> {
+  pub fn from_str(token: &'t str) -> Self {
+    if let Ok(identifier) = LitIdent::try_from(token) {
+      Self::Identifier(identifier)
+    } else if let Ok(literal) = Lit::try_from(token) {
+      Self::Literal(literal, Cow::Borrowed(token))
+    } else if is_punctuation(token) {
+      Self::Punctuation(token)
+    } else if is_comment(token) {
+      Self::Comment(token)
+    } else {
+      Self::Plain(Cow::Borrowed(token))
+    }
+  }
+
   pub fn stringify(&self, nested: bool) -> StringifyAction<'_> {
     use StringifyAction::*;
 
     match self {
-      Token::MacroArg(_) => Keep,
-      Token::VarArgs => {
+      Self::MacroArg(_) => Keep,
+      Self::VarArgs => {
         if nested {
           Keep
         } else {
           Append("__VA_ARGS__")
         }
       },
-      Token::Identifier(id) => match id.id.as_ref() {
+      Self::Identifier(id) => match id.id.as_ref() {
         "__LINE__" | "__FILE__" if nested => Keep,
         t => Append(t),
       },
-      Token::NonReplacable(t) => t.stringify(nested),
-      Token::Plain(t) => Append(t.as_ref()),
-      Token::Punctuation(t) => Append(t),
-      Token::Comment(_) => Skip,
-      Token::Placemarker => Skip,
+      Self::NonReplacable(t) => t.stringify(nested),
+      Self::Literal(_, t) => Append(t.as_ref()),
+      Self::Plain(t) => Append(t.as_ref()),
+      Self::Punctuation(t) => Append(t),
+      Self::Comment(_) => Skip,
+      Self::Placemarker => Skip,
     }
   }
 
   pub fn detokenize(self, arg_names: &'t [String]) -> Option<MacroToken<'t>> {
     Some(match self {
-      Token::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
-      Token::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
-      Token::Identifier(id) => MacroToken::Id(id),
-      Token::Plain(t) => MacroToken::Token(t),
-      Token::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
-      Token::Comment(t) => MacroToken::Comment(Comment { comment: Cow::Borrowed(t) }),
-      Token::NonReplacable(t) => return t.detokenize(arg_names),
-      Token::Placemarker => return None,
+      Self::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
+      Self::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
+      Self::Identifier(id) => MacroToken::Id(id),
+      Self::Literal(_, t) => MacroToken::Token(t),
+      Self::Plain(t) => MacroToken::Token(t),
+      Self::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
+      Self::Comment(t) => MacroToken::Comment(Comment { comment: Cow::Borrowed(t) }),
+      Self::NonReplacable(t) => return t.detokenize(arg_names),
+      Self::Placemarker => return None,
     })
   }
 
   pub fn concat(self, other: Self) -> Result<Self, ExpansionError> {
-    Ok(match (self, other) {
-      (Token::Placemarker, rhs) => rhs,
-      (lhs, Token::Placemarker) => lhs,
-      (Token::Punctuation(lhs), Token::Punctuation(rhs)) => {
-        let mut token = Cow::Borrowed(lhs);
-        token.to_mut().push_str(rhs.as_ref());
-        Token::Plain(token)
+    let new_token = match (self, other) {
+      (Token::NonReplacable(lhs), rhs) => return lhs.concat(rhs),
+      (lhs, Token::NonReplacable(rhs)) => return lhs.concat(*rhs),
+      (Self::Placemarker, rhs) => return Ok(rhs),
+      (lhs, Self::Placemarker) => return Ok(lhs),
+      (Self::Identifier(mut lhs), Self::Identifier(LitIdent { id: rhs })) => {
+        lhs.id.to_mut().push_str(rhs.as_ref());
+        return Ok(Self::Identifier(lhs))
       },
-      (Token::Punctuation(lhs), Token::Identifier(LitIdent { id: rhs }) | Token::Plain(rhs)) => {
-        let mut token = Cow::Borrowed(lhs);
-        token.to_mut().push_str(rhs.as_ref());
-        Token::Plain(token)
+      (Self::Punctuation(lhs), Self::Punctuation(rhs)) => {
+        return Ok(Self::NonReplacable(Box::new(Self::Punctuation(match (lhs, rhs) {
+          ("-", ">") => "->",
+          ("+", "+") => "++",
+          ("-", "-") => "--",
+          ("<", "<") => "<<",
+          (">", ">") => ">>",
+          ("<", "=") => "<=",
+          (">", "=") => ">=",
+          ("=", "=") => "==",
+          ("!", "=") => "!=",
+          ("&", "&") => "&&",
+          ("|", "|") => "||",
+          ("*", "=") => "*=",
+          ("/", "=") => "/=",
+          ("%", "=") => "%=",
+          ("+", "=") => "+=",
+          ("-", "=") => "-=",
+          ("<<", "=") | ("<", "<=") => "<<=",
+          (">>", "=") | (">", ">=") => ">>=",
+          ("&", "=") => "&=",
+          ("^", "=") => "^=",
+          ("|", "=") => "|=",
+          ("#", "#") => "##",
+          ("<", ":") => "<:",
+          (":", ">") => ":>",
+          ("<", "%") => "<%",
+          ("%", ">") => "%>",
+          ("%", ":") => "%:",
+          ("%:", "%:") => "%:%:",
+          _ => return Err(ExpansionError::InvalidConcat),
+        }))))
       },
-      (Token::Identifier(LitIdent { id: lhs }) | Token::Plain(lhs), Token::Punctuation(rhs)) => {
-        let mut token = lhs;
-        token.to_mut().push_str(rhs.as_ref());
-        Token::Plain(token)
+      (Self::Literal(Lit::String(_) | Lit::Char(_), _), _) => {
+        // Cannot concatenate anything to a string or char literal.
+        return Err(ExpansionError::InvalidConcat)
       },
-      (Token::Identifier(mut lhs), Token::Identifier(rhs)) => {
-        lhs.id.to_mut().push_str(rhs.id.as_ref());
-        Token::Identifier(lhs)
-      },
-      (
-        Token::Identifier(LitIdent { id: lhs }) | Token::Plain(lhs),
-        Token::Identifier(LitIdent { id: rhs }) | Token::Plain(rhs),
-      ) => {
-        let lhs_is_string_or_char_prefix = match lhs.as_ref() {
-          "u8" => true,
-          "u" => true,
-          "U" => true,
-          "L" => true,
-          lhs => {
-            // Cannot concatenate anything with a string or character literal.
-            if lhs.ends_with('\"') || lhs.ends_with('\'') {
-              return Err(ExpansionError::InvalidConcat)
-            } else {
-              false
-            }
-          },
-        };
-
-        if rhs.ends_with('\"') || rhs.ends_with('\'') {
-          let rhs_is_unprefixed_string_or_char = rhs.starts_with('\"') || rhs.starts_with('\'');
-
-          // Can only concatenate a string or character literal with a
-          // string or character prefix if it isn't already prefixed.
-          if lhs_is_string_or_char_prefix && rhs_is_unprefixed_string_or_char {
-            Token::Plain(Cow::Owned(format!("{lhs}{rhs}")))
-          } else {
-            return Err(ExpansionError::InvalidConcat)
-          }
-        } else {
-          let mut token = lhs;
-          token.to_mut().push_str(rhs.as_ref());
-
-          if LitIdent::try_from(token.as_ref()).is_ok() {
-            Token::Identifier(LitIdent { id: token })
-          } else {
-            Token::Plain(token)
+      (Self::Punctuation(lhs), Self::Literal(lit, rhs)) => {
+        if lhs == "." {
+          match lit {
+            Lit::String(_) | Lit::Char(_) => return Err(ExpansionError::InvalidConcat),
+            Lit::Int(_) | Lit::Float(_) => {
+              let token = format!("{lhs}{rhs}");
+              if let Ok(literal) = Lit::try_from(token.as_str()) {
+                return Ok(Self::Literal(literal, Cow::Owned(token)))
+              }
+            },
           }
         }
+
+        return Err(ExpansionError::InvalidConcat)
       },
-      (Token::NonReplacable(lhs), rhs) => lhs.concat(rhs)?,
-      (lhs, Token::NonReplacable(rhs)) => lhs.concat(*rhs)?,
+      (Self::Identifier(mut lhs), Self::Literal(lit, rhs)) => {
+        match lit {
+          Lit::String(LitString::Ordinary(_)) | Lit::Char(LitChar::Ordinary(_))
+            if matches!(lhs.id.as_ref(), "u8" | "u" | "U" | "L") =>
+          {
+            lhs.id.to_mut().push_str(rhs.as_ref());
+            return Ok(Self::Literal(Lit::try_from(lhs.id.as_ref()).unwrap(), Cow::Owned(lhs.id.into_owned())))
+          },
+          // Strings cannot be prefixed with anything else.
+          Lit::String(_) | Lit::Char(_) => (),
+          Lit::Int(_) => {
+            lhs.id.to_mut().push_str(rhs.as_ref());
+            return Ok(Self::Identifier(lhs))
+          },
+          Lit::Float(_) => {
+            // Appending a float only works for scientific notation
+            if rhs.as_ref().chars().all(unicode_ident::is_xid_continue) {
+              lhs.id.to_mut().push_str(rhs.as_ref());
+              return Ok(Self::Identifier(LitIdent::try_from(lhs.id.as_ref()).unwrap().to_static()))
+            }
+          },
+        }
+
+        return Err(ExpansionError::InvalidConcat)
+      },
+      (
+        Self::Identifier(LitIdent { id: mut lhs }) | Self::Literal(_, mut lhs) | Self::Plain(mut lhs),
+        Self::Identifier(LitIdent { id: ref rhs }) | Self::Literal(_, ref rhs) | Self::Plain(ref rhs),
+      ) => {
+        lhs.to_mut().push_str(rhs.as_ref());
+        lhs.into_owned()
+      },
+      (Self::Punctuation(_lhs), _) => return Err(ExpansionError::InvalidConcat),
+      (_, Self::Punctuation(_rhs)) => return Err(ExpansionError::InvalidConcat),
       (Self::MacroArg(_) | Self::VarArgs | Self::Comment(_), _)
       | (_, Self::MacroArg(_) | Self::VarArgs | Self::Comment(_)) => unreachable!(),
+    };
+
+    Ok(if let Ok(identifier) = LitIdent::try_from(new_token.as_ref()) {
+      Self::Identifier(identifier.to_static())
+    } else if let Ok(literal) = Lit::try_from(new_token.as_ref()) {
+      Self::Literal(literal, Cow::Owned(new_token))
+    } else {
+      Self::Plain(Cow::Owned(new_token))
     })
   }
 }
@@ -317,10 +364,14 @@ fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
     s.push_str(token)
   }
 
-  tokens.extend(current_string.take().map(|s| Token::Plain(Cow::Owned(format!("{s:?}")))));
+  tokens.extend(
+    current_string
+      .take()
+      .map(|s| Token::Literal(Lit::String(LitString::Ordinary(s.clone().into_bytes())), Cow::Owned(format!("{s:?}")))),
+  );
 
   if tokens.is_empty() {
-    return vec![Token::Plain(Cow::Borrowed("\"\""))]
+    return vec![Token::Literal(Lit::String(LitString::Ordinary(vec![])), Cow::Borrowed("\"\""))]
   }
 
   tokens
@@ -351,6 +402,7 @@ enum Token<'t> {
   Plain(Cow<'t, str>),
   Punctuation(&'t str),
   Comment(&'t str),
+  Literal(Lit, Cow<'t, str>),
   Placemarker,
   NonReplacable(Box<Self>),
 }
@@ -1050,6 +1102,38 @@ mod tests {
     assert_eq!(macro_set.expand_var_macro("C"), Ok(token_vec!["u8\"abc\""]));
     assert_eq!(macro_set.expand_var_macro("D"), Ok(token_vec!["u8\"u8\""]));
     assert_eq!(macro_set.expand_var_macro("E"), Err(ExpansionError::StringifyNonArgument));
+  }
+
+  #[test]
+  fn parse_concat_ident_int() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.define_var_macro("CONCAT", ["FUNC", "##", "123"]);
+    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(token_vec![id!(FUNC123)]));
+  }
+
+  #[test]
+  fn parse_concat_ident_float() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.define_var_macro("CONCAT", ["FUNC", "##", "123e4"]);
+    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(token_vec![id!(FUNC123e4)]));
+  }
+
+  #[test]
+  fn parse_concat_dot_float() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.define_var_macro("CONCAT", [".", "##", "123e4"]);
+    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(token_vec![".123e4"]));
+  }
+
+  #[test]
+  fn parse_concat_dot_int() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.define_var_macro("CONCAT", [".", "##", "01234"]);
+    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(token_vec![".01234"]));
   }
 
   #[test]

@@ -1,8 +1,4 @@
-use std::{
-  fmt::Debug,
-  ops::{RangeFrom},
-  str,
-};
+use std::{fmt::Debug, ops::RangeFrom, str};
 
 use nom::{
   branch::alt,
@@ -11,7 +7,7 @@ use nom::{
     complete::{anychar, char, none_of, one_of},
     is_hex_digit, is_oct_digit,
   },
-  combinator::{map, map_opt, value, verify},
+  combinator::{all_consuming, map, map_opt, value, verify},
   multi::fold_many_m_n,
   sequence::preceded,
   AsChar, Compare, FindToken, IResult, InputIter, InputLength, InputTake, Slice,
@@ -112,6 +108,15 @@ impl Lit {
       Self::Float(f) => f.to_tokens(ctx, tokens),
       Self::Int(i) => i.to_tokens(ctx, tokens),
     }
+  }
+}
+
+impl<'t> TryFrom<&'t str> for Lit {
+  type Error = nom::Err<nom::error::Error<&'t str>>;
+
+  fn try_from(s: &'t str) -> Result<Self, Self::Error> {
+    let (_, lit) = all_consuming(Self::parse_str)(s)?;
+    Ok(lit)
   }
 }
 
