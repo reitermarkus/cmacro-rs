@@ -9,7 +9,7 @@ use nom::{
   sequence::{delimited, pair},
 };
 
-use crate::ast::{escaped_char, unescaped_char, LitCharPrefix};
+use crate::ast::{escaped_char, LitCharPrefix};
 
 /// A macro argument.
 #[derive(Debug, Clone, PartialEq, Eq)]

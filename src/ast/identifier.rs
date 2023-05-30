@@ -3,8 +3,8 @@ use std::{borrow::Cow, fmt::Debug};
 use nom::{
   branch::alt,
   character::complete::{anychar, char, satisfy},
-  combinator::{map, map_opt, recognize},
-  multi::{fold_many0, fold_many1},
+  combinator::{map, map_opt, recognize, verify},
+  multi::{fold_many0},
   sequence::{pair, preceded},
   IResult,
 };
@@ -39,36 +39,34 @@ impl<'t> LitIdent<'t> {
   }
 
   pub(crate) fn parse_str(input: &'t str) -> IResult<&'t str, Self> {
-    map(
-      recognize(pair(
-        satisfy(is_identifier_start),
-        fold_many0(satisfy(unicode_ident::is_xid_continue), || (), |_, _| ()),
-      )),
-      |s| Self { id: Cow::Borrowed(s) },
-    )(input)
+    alt((
+      map(
+        recognize(pair(
+          satisfy(is_identifier_start),
+          fold_many0(satisfy(unicode_ident::is_xid_continue), || (), |_, _| ()),
+        )),
+        |s| Self { id: Cow::Borrowed(s) },
+      ),
+      |token| {
+        let mut identifier_char = alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar));
+
+        let (token, start_char) = verify(&mut identifier_char, |c| is_identifier_start(*c))(token)?;
+
+        fold_many0(
+          verify(identifier_char, |c| unicode_ident::is_xid_continue(*c)),
+          move || LitIdent { id: Cow::Owned(String::from(start_char)) },
+          |mut id, c| {
+            id.id.to_mut().push(c);
+            id
+          },
+        )(token)
+      },
+    ))(input)
   }
 
   /// Parse an identifier.
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    map_token(map_opt(
-      |token| {
-        fold_many1(
-          alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar)),
-          String::new,
-          |mut acc, c| {
-            acc.push(c);
-            acc
-          },
-        )(token)
-      },
-      |s| {
-        if is_identifier(&s) {
-          Some(LitIdent { id: Cow::Owned(s) })
-        } else {
-          None
-        }
-      },
-    ))(tokens)
+    map_token(map(LitIdent::<'i>::parse_str, |id: LitIdent<'i>| id.to_static()))(tokens)
   }
 
   pub(crate) fn to_static(&self) -> LitIdent<'static> {
