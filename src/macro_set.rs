@@ -9,6 +9,7 @@ use std::{
 use crate::{
   ast::is_identifier,
   token::{Comment, MacroArg},
+  LitIdent,
 };
 
 fn is_punctuation(s: &str) -> bool {
@@ -246,6 +247,8 @@ fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroT
 pub enum MacroToken<'t> {
   /// A macro parameter for the argument at the given position.
   Arg(MacroArg),
+  // An identifier.
+  Id(LitIdent<'t>),
   /// A macro token.
   Token(Cow<'t, str>),
   /// A comment.

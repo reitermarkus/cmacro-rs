@@ -8,11 +8,15 @@ use nom::{
 
 use crate::{
   token::{Comment, MacroArg},
-  MacroToken,
+  LitIdent, MacroToken,
 };
 
 pub(crate) fn macro_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], MacroArg> {
   map_opt(take_one, |token| if let MacroToken::Arg(macro_arg) = token { Some(macro_arg.clone()) } else { None })(tokens)
+}
+
+pub(crate) fn macro_id<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent<'t>> {
+  map_opt(take_one, |token| if let MacroToken::Id(id) = token { Some(id.clone()) } else { None })(tokens)
 }
 
 pub(crate) fn macro_token<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'i str> {

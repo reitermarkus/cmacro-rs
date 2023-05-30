@@ -3,8 +3,8 @@ use std::{borrow::Cow, fmt::Debug};
 use nom::{
   branch::alt,
   character::complete::{anychar, char, satisfy},
-  combinator::{map, map_opt, recognize, verify},
-  multi::{fold_many0},
+  combinator::{all_consuming, map, map_opt, recognize, verify},
+  multi::fold_many0,
   sequence::{pair, preceded},
   IResult,
 };
@@ -74,34 +74,41 @@ impl<'t> LitIdent<'t> {
   }
 }
 
+impl<'t> TryFrom<&'t str> for LitIdent<'t> {
+  type Error = nom::Err<nom::error::Error<&'t str>>;
+
+  fn try_from(s: &'t str) -> Result<Self, Self::Error> {
+    let (_, id) = all_consuming(Self::parse_str)(s)?;
+    Ok(id)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
 
-  use crate::{lit_id, macro_set::tokens};
+  use crate::{lit_id};
 
   #[test]
   fn parse_literal() {
-    let (_, id) = LitIdent::parse(tokens!["asdf"]).unwrap();
+    let id = LitIdent::try_from("asdf").unwrap();
     assert_eq!(id, lit_id!(asdf));
 
-    let (_, id) = LitIdent::parse(tokens!("\\u0401")).unwrap();
+    let id = LitIdent::try_from("\\u0401").unwrap();
     assert_eq!(id, lit_id!(Ё));
 
-    let (_, id) = LitIdent::parse(tokens!["Δx"]).unwrap();
+    let id = LitIdent::try_from("Δx").unwrap();
     assert_eq!(id, lit_id!(Δx));
 
-    let (_, id) = LitIdent::parse(tokens!["_123"]).unwrap();
+    let id = LitIdent::try_from("_123").unwrap();
     assert_eq!(id, lit_id!(_123));
 
-    let (_, id) = LitIdent::parse(tokens!["__INT_MAX__"]).unwrap();
+    let id = LitIdent::try_from("__INT_MAX__").unwrap();
     assert_eq!(id, lit_id!(__INT_MAX__));
   }
 
   #[test]
   fn parse_wrong() {
-    let tokens = tokens!["123def"];
-    let res = LitIdent::parse(tokens);
-    assert!(res.is_err());
+    LitIdent::try_from("123def").unwrap_err();
   }
 }
