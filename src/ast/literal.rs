@@ -18,13 +18,13 @@ use quote::TokenStreamExt;
 use crate::{CodegenContext, LocalContext, MacroToken, Type};
 
 mod char;
-pub use self::char::LitChar;
+pub use self::char::*;
 mod float;
-pub use self::float::LitFloat;
+pub use self::float::*;
 mod int;
-pub use self::int::LitInt;
+pub use self::int::*;
 mod string;
-pub use self::string::LitString;
+pub use self::string::*;
 
 /// A literal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,7 +186,7 @@ where
 }
 
 /// Parse an escaped character.
-fn escaped_char<I>(input: I) -> IResult<I, u32>
+pub(crate) fn escaped_char<I>(input: I) -> IResult<I, u32>
 where
   I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
   <I as InputIter>::Item: AsChar + Copy,
@@ -196,7 +196,7 @@ where
 }
 
 /// Parse an unescaped character.
-fn unescaped_char<I>(input: I) -> IResult<I, char>
+pub(crate) fn unescaped_char<I>(input: I) -> IResult<I, char>
 where
   I: Debug + InputTake + InputLength + Slice<RangeFrom<usize>> + InputIter + Clone + Compare<&'static str>,
   <I as InputIter>::Item: AsChar + Copy,
