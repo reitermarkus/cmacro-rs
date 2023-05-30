@@ -184,11 +184,11 @@ impl<'t> Statement<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_set::{id as macro_id, tokens};
+  use crate::macro_set::{id as macro_id, int as macro_int, tokens};
 
   #[test]
   fn parse_expr() {
-    let (_, stmt) = Statement::parse(tokens![macro_id!(a), "+=", "2", ";"]).unwrap();
+    let (_, stmt) = Statement::parse(tokens![macro_id!(a), "+=", macro_int!(2), ";"]).unwrap();
     assert_eq!(
       stmt,
       Statement::Expr(Expr::Binary(Box::new(BinaryExpr { lhs: var!(a), op: BinaryOp::AddAssign, rhs: lit!(2) })))
@@ -203,7 +203,7 @@ mod tests {
 
   #[test]
   fn parse_block() {
-    let (_, stmt) = Statement::parse(tokens!["{", macro_id!(int), macro_id!(a), "=", "0", ";", "}"]).unwrap();
+    let (_, stmt) = Statement::parse(tokens!["{", macro_id!(int), macro_id!(a), "=", macro_int!(0), ";", "}"]).unwrap();
     assert_eq!(
       stmt,
       Statement::Block(vec![Statement::Decl(Decl {

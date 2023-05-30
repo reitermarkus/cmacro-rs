@@ -1,15 +1,10 @@
 use std::borrow::Cow;
 
 use nom::{
-  branch::alt,
   bytes::complete::{tag, take_until},
-  character::complete::{char, none_of},
-  combinator::{all_consuming, opt, recognize},
-  multi::fold_many0,
-  sequence::{delimited, pair},
+  combinator::all_consuming,
+  sequence::delimited,
 };
-
-use crate::ast::{escaped_char, LitCharPrefix};
 
 /// A macro argument.
 #[derive(Debug, Clone, PartialEq, Eq)]

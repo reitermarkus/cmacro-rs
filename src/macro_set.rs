@@ -151,9 +151,7 @@ fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
       if let Some(arg_index) = arg_names.iter().position(|arg_name| t == arg_name) {
         Token::MacroArg(arg_index)
       } else {
-        match t.as_ref() {
-          token => Token::from_str(token),
-        }
+        Token::from_str(t.as_ref())
       }
     })
     .collect()
@@ -215,7 +213,7 @@ impl<'t> Token<'t> {
       Self::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
       Self::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
       Self::Identifier(id) => MacroToken::Id(id),
-      Self::Literal(_, t) => MacroToken::Token(t),
+      Self::Literal(lit, _) => MacroToken::Lit(lit),
       Self::Plain(t) => MacroToken::Token(t),
       Self::Punctuation(t) => MacroToken::Token(Cow::Borrowed(t)),
       Self::Comment(t) => MacroToken::Comment(t),
@@ -389,6 +387,8 @@ pub enum MacroToken<'t> {
   Arg(MacroArg),
   /// An identifier.
   Id(LitIdent<'t>),
+  /// A literal.
+  Lit(Lit),
   /// A macro token.
   Token(Cow<'t, str>),
   /// A comment.
@@ -862,6 +862,60 @@ macro_rules! id {
 pub(crate) use id;
 
 #[cfg(test)]
+macro_rules! string {
+  (u8 $s:expr) => {{
+    $crate::MacroToken::Lit($crate::Lit::String($crate::LitString::Utf8($s.to_owned())))
+  }};
+  ($s:expr) => {{
+    $crate::MacroToken::Lit($crate::Lit::String($crate::LitString::Ordinary($s.to_owned().into_bytes())))
+  }};
+}
+#[cfg(test)]
+pub(crate) use string;
+
+#[cfg(test)]
+macro_rules! char {
+  (u8 $c:expr) => {{
+    $crate::MacroToken::Lit($crate::Lit::Char($crate::LitChar::Utf8(u8::try_from($c).unwrap())))
+  }};
+  (u $c:expr) => {{
+    $crate::MacroToken::Lit($crate::Lit::Char($crate::LitChar::Utf16(u16::try_from($c).unwrap())))
+  }};
+  (U $c:expr) => {{
+    $crate::MacroToken::Lit($crate::Lit::Char($crate::LitChar::Utf32(u32::from($c))))
+  }};
+  ($c:expr) => {{
+    $crate::MacroToken::Lit($crate::Lit::Char($crate::LitChar::Ordinary(u8::try_from($c).unwrap())))
+  }};
+}
+#[cfg(test)]
+pub(crate) use char;
+
+#[cfg(test)]
+macro_rules! int {
+  (ull $value:expr) => {{
+    $crate::MacroToken::Lit($crate::Lit::Int($crate::LitInt {
+      value: $value,
+      suffix: Some($crate::BuiltInType::ULongLong),
+    }))
+  }};
+  ($value:expr) => {{
+    $crate::MacroToken::Lit($crate::Lit::Int($crate::LitInt { value: $value, suffix: None }))
+  }};
+}
+#[cfg(test)]
+pub(crate) use int;
+
+#[cfg(test)]
+macro_rules! double {
+  ($value:expr) => {{
+    $crate::MacroToken::Lit($crate::Lit::Float($crate::LitFloat::Double($value)))
+  }};
+}
+#[cfg(test)]
+pub(crate) use double;
+
+#[cfg(test)]
 macro_rules! tokens {
   ($($token:expr),*) => {{
     #[allow(unused)]
@@ -908,14 +962,14 @@ mod tests {
     macro_set.define_var_macro("PLUS_PLUS_VAR", ["PLUS", "(", "PLUS", "(", "3", ",", "1", ")", ",", "8", ")"]);
     macro_set.define_var_macro("PLUS_VAR_VAR", ["PLUS", "(", "7", ",", "VAR", ")"]);
 
-    assert_eq!(macro_set.expand_var_macro("VAR"), Ok(token_vec!["2", "+", "3"]));
+    assert_eq!(macro_set.expand_var_macro("VAR"), Ok(token_vec![int!(2), "+", int!(3)]));
     assert_eq!(
       macro_set.expand_fn_macro("F1"),
-      Ok((token_vec![id!(A), id!(B)], token_vec![arg!(0), "+", "2", "+", "3", "+", arg!(1)]))
+      Ok((token_vec![id!(A), id!(B)], token_vec![arg!(0), "+", int!(2), "+", int!(3), "+", arg!(1)]))
     );
-    assert_eq!(macro_set.expand_var_macro("PLUS_VAR"), Ok(token_vec!["7", "+", "8"]));
-    assert_eq!(macro_set.expand_var_macro("PLUS_PLUS_VAR"), Ok(token_vec!["3", "+", "1", "+", "8"]));
-    assert_eq!(macro_set.expand_var_macro("PLUS_VAR_VAR"), Ok(token_vec!["7", "+", "2", "+", "3"]));
+    assert_eq!(macro_set.expand_var_macro("PLUS_VAR"), Ok(token_vec![int!(7), "+", int!(8)]));
+    assert_eq!(macro_set.expand_var_macro("PLUS_PLUS_VAR"), Ok(token_vec![int!(3), "+", int!(1), "+", int!(8)]));
+    assert_eq!(macro_set.expand_var_macro("PLUS_VAR_VAR"), Ok(token_vec![int!(7), "+", int!(2), "+", int!(3)]));
   }
 
   #[test]
@@ -956,7 +1010,7 @@ mod tests {
     macro_set.define_var_macro("FOUR", ["4"]);
     macro_set.define_var_macro("THREE_PLUS_FOUR", ["THREE_PLUS", "FOUR"]);
 
-    assert_eq!(macro_set.expand_var_macro("THREE_PLUS_FOUR"), Ok(token_vec!["3", "+", "4"]));
+    assert_eq!(macro_set.expand_var_macro("THREE_PLUS_FOUR"), Ok(token_vec![int!(3), "+", int!(4)]));
   }
 
   #[test]
@@ -965,7 +1019,7 @@ mod tests {
 
     macro_set.define_fn_macro("FUNC", [] as [String; 0], ["123"]);
     macro_set.define_var_macro("ONE_TWO_THREE", ["FUNC", "(", ")"]);
-    assert_eq!(macro_set.expand_var_macro("ONE_TWO_THREE"), Ok(token_vec!["123"]));
+    assert_eq!(macro_set.expand_var_macro("ONE_TWO_THREE"), Ok(token_vec![int!(123)]));
   }
 
   #[test]
@@ -976,7 +1030,7 @@ mod tests {
     macro_set.define_var_macro("FUNC1_PARTIAL", ["FUNC1", "(", "1", ","]);
     macro_set.define_fn_macro("FUNC2", [] as [String; 0], ["FUNC1_PARTIAL", "2", ")"]);
 
-    assert_eq!(macro_set.expand_fn_macro("FUNC2"), Ok((token_vec![], token_vec!["1", "+", "2"])));
+    assert_eq!(macro_set.expand_fn_macro("FUNC2"), Ok((token_vec![], token_vec![int!(1), "+", int!(2)])));
   }
 
   #[test]
@@ -987,7 +1041,7 @@ mod tests {
     macro_set.define_fn_macro("FOO", [] as [String; 0], ["BAR"]);
     macro_set.define_var_macro("APLUSB", ["FOO", "(", ")", "(", "3", ",", "1", ")"]);
 
-    assert_eq!(macro_set.expand_var_macro("APLUSB"), Ok(token_vec!["3", "+", "1"]));
+    assert_eq!(macro_set.expand_var_macro("APLUSB"), Ok(token_vec![int!(3), "+", int!(1)]));
   }
 
   #[test]
@@ -1005,7 +1059,7 @@ mod tests {
       macro_set.expand_fn_macro("FUNC2"),
       Ok((token_vec![id!(arg)], token_vec![id!(FUNC2), "(", arg!(0), ")"]))
     );
-    assert_eq!(macro_set.expand_var_macro("VAR1"), Ok(token_vec!["1", "+", id!(VAR1)]));
+    assert_eq!(macro_set.expand_var_macro("VAR1"), Ok(token_vec![int!(1), "+", id!(VAR1)]));
   }
 
   #[test]
@@ -1024,8 +1078,8 @@ mod tests {
     macro_set.define_fn_macro("STRINGIFY", ["s"], ["#", "s"]);
     macro_set.define_var_macro("s", ["STRINGIFY", "(", "asdf", ")"]);
     macro_set.define_var_macro("e", ["STRINGIFY", "(", "a", "+", "b", ")"]);
-    assert_eq!(macro_set.expand_var_macro("s"), Ok(token_vec!["\"asdf\""]));
-    assert_eq!(macro_set.expand_var_macro("e"), Ok(token_vec!["\"a + b\""]));
+    assert_eq!(macro_set.expand_var_macro("s"), Ok(token_vec![string!("asdf")]));
+    assert_eq!(macro_set.expand_var_macro("e"), Ok(token_vec![string!("a + b")]));
   }
 
   #[test]
@@ -1038,7 +1092,7 @@ mod tests {
     macro_set.define_var_macro("LINE_STRING2", ["STRINGIFY2", "(", "__LINE__", ")"]);
     assert_eq!(macro_set.expand_fn_macro("STRINGIFY1"), Ok((token_vec![id!(s)], token_vec!["#", arg!(0)])));
     assert_eq!(macro_set.expand_fn_macro("STRINGIFY2"), Ok((token_vec![id!(s)], token_vec!["#", arg!(0)])));
-    assert_eq!(macro_set.expand_var_macro("LINE_STRING1"), Ok(token_vec!["\"__LINE__\""]));
+    assert_eq!(macro_set.expand_var_macro("LINE_STRING1"), Ok(token_vec![string!("__LINE__")]));
     assert_eq!(macro_set.expand_var_macro("LINE_STRING2"), Ok(token_vec!["#", id!(__LINE__)]));
   }
 
@@ -1050,9 +1104,9 @@ mod tests {
     macro_set.define_var_macro("ZERO", ["STRINGIFY", "(", ")"]);
     macro_set.define_var_macro("ONE", ["STRINGIFY", "(", "asdf", ")"]);
     macro_set.define_var_macro("TWO", ["STRINGIFY", "(", "a", ",", "b", ")"]);
-    assert_eq!(macro_set.expand_var_macro("ZERO"), Ok(token_vec!["\"\""]));
-    assert_eq!(macro_set.expand_var_macro("ONE"), Ok(token_vec!["\"asdf\""]));
-    assert_eq!(macro_set.expand_var_macro("TWO"), Ok(token_vec!["\"a, b\""]));
+    assert_eq!(macro_set.expand_var_macro("ZERO"), Ok(token_vec![string!("")]));
+    assert_eq!(macro_set.expand_var_macro("ONE"), Ok(token_vec![string!("asdf")]));
+    assert_eq!(macro_set.expand_var_macro("TWO"), Ok(token_vec![string!("a, b")]));
   }
 
   #[test]
@@ -1101,7 +1155,7 @@ mod tests {
     macro_set.define_fn_macro("CONCAT_STRING", ["A", "B"], ["A", "##", "B", "C"]);
     assert_eq!(
       macro_set.expand_fn_macro("CONCAT_STRING"),
-      Ok((token_vec![id!(A), id!(B)], token_vec![arg!(0), "##", arg!(1), "\", world!\""]))
+      Ok((token_vec![id!(A), id!(B)], token_vec![arg!(0), "##", arg!(1), string!(", world!")]))
     );
   }
 
@@ -1117,10 +1171,10 @@ mod tests {
     macro_set.define_var_macro("D", ["PREFIX_STRINGIFY", "(", "u8", ")"]);
     macro_set.define_fn_macro("PREFIX_HASH", ["prefix"], ["prefix", "##", "#"]);
     macro_set.define_var_macro("E", ["PREFIX_HASH", "(", "u8", ")"]);
-    assert_eq!(macro_set.expand_var_macro("A"), Ok(token_vec!["u8\"abc\""]));
-    assert_eq!(macro_set.expand_var_macro("B"), Ok(token_vec![id!(u8), "\"abc\""]));
-    assert_eq!(macro_set.expand_var_macro("C"), Ok(token_vec!["u8\"abc\""]));
-    assert_eq!(macro_set.expand_var_macro("D"), Ok(token_vec!["u8\"u8\""]));
+    assert_eq!(macro_set.expand_var_macro("A"), Ok(token_vec![string!(u8 "abc")]));
+    assert_eq!(macro_set.expand_var_macro("B"), Ok(token_vec![id!(u8), string!("abc")]));
+    assert_eq!(macro_set.expand_var_macro("C"), Ok(token_vec![string!(u8 "abc")]));
+    assert_eq!(macro_set.expand_var_macro("D"), Ok(token_vec![string!(u8 "u8")]));
     assert_eq!(macro_set.expand_var_macro("E"), Err(ExpansionError::StringifyNonArgument));
   }
 
@@ -1145,7 +1199,7 @@ mod tests {
     let mut macro_set = MacroSet::new();
 
     macro_set.define_var_macro("CONCAT", [".", "##", "123e4"]);
-    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(token_vec![".123e4"]));
+    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(token_vec![double!(0.123e4)]));
   }
 
   #[test]
@@ -1153,7 +1207,7 @@ mod tests {
     let mut macro_set = MacroSet::new();
 
     macro_set.define_var_macro("CONCAT", [".", "##", "01234"]);
-    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(token_vec![".01234"]));
+    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(token_vec![double!(0.01234)]));
   }
 
   #[test]
@@ -1174,7 +1228,7 @@ mod tests {
     macro_set.define_fn_macro("in_between", ["a"], ["mkstr", "(", "a", ")"]);
     macro_set.define_fn_macro("join", ["c", "d"], ["in_between", "(", "c", "hash_hash", "d", ")"]);
     macro_set.define_var_macro("join_x_y", ["join", "(", "x", ",", "y", ")"]);
-    assert_eq!(macro_set.expand_var_macro("join_x_y"), Ok(token_vec!["\"x ## y\""]));
+    assert_eq!(macro_set.expand_var_macro("join_x_y"), Ok(token_vec![string!("x ## y")]));
   }
 
   #[test]
@@ -1226,28 +1280,28 @@ mod tests {
       Ok(token_vec![
         id!(f),
         "(",
-        "2",
+        int!(2),
         "*",
         "(",
         id!(y),
         "+",
-        "1",
+        int!(1),
         ")",
         ")",
         "+",
         id!(f),
         "(",
-        "2",
+        int!(2),
         "*",
         "(",
         id!(f),
         "(",
-        "2",
+        int!(2),
         "*",
         "(",
         id!(z),
         "[",
-        "0",
+        int!(0),
         "]",
         ")",
         ")",
@@ -1256,16 +1310,16 @@ mod tests {
         "%",
         id!(f),
         "(",
-        "2",
+        int!(2),
         "*",
         "(",
-        "0",
+        int!(0),
         ")",
         ")",
         "+",
         id!(t),
         "(",
-        "1",
+        int!(1),
         ")",
         ";"
       ])
@@ -1275,60 +1329,93 @@ mod tests {
       Ok(token_vec![
         id!(f),
         "(",
-        "2",
+        int!(2),
         "*",
         "(",
-        "2",
+        int!(2),
         "+",
         "(",
-        "3",
+        int!(3),
         ",",
-        "4",
+        int!(4),
         ")",
         "-",
-        "0",
+        int!(0),
         ",",
-        "1",
+        int!(1),
         ")",
         ")",
         "|",
         id!(f),
         "(",
-        "2",
+        int!(2),
         "*",
         "(",
         "~",
-        "5",
+        int!(5),
         ")",
         ")",
         "&",
         id!(f),
         "(",
-        "2",
+        int!(2),
         "*",
         "(",
-        "0",
+        int!(0),
         ",",
-        "1",
+        int!(1),
         ")",
         ")",
         "^",
         id!(m),
         "(",
-        "0",
+        int!(0),
         ",",
-        "1",
+        int!(1),
         ")",
         ";"
       ])
     );
     assert_eq!(
       macro_set.expand_var_macro("line3"),
-      Ok(token_vec![id!(int), id!(i), "[", "]", "=", "{", "1", ",", "23", ",", "4", ",", "5", ",", "}", ";"])
+      Ok(token_vec![
+        id!(int),
+        id!(i),
+        "[",
+        "]",
+        "=",
+        "{",
+        int!(1),
+        ",",
+        int!(23),
+        ",",
+        int!(4),
+        ",",
+        int!(5),
+        ",",
+        "}",
+        ";"
+      ])
     );
     assert_eq!(
       macro_set.expand_var_macro("line4"),
-      Ok(token_vec![id!(char), id!(c), "[", "2", "]", "[", "6", "]", "=", "{", "\"hello\"", ",", "\"\"", "}", ";"])
+      Ok(token_vec![
+        id!(char),
+        id!(c),
+        "[",
+        int!(2),
+        "]",
+        "[",
+        int!(6),
+        "]",
+        "=",
+        "{",
+        string!("hello"),
+        ",",
+        string!(""),
+        "}",
+        ";"
+      ])
     );
   }
 
@@ -1406,11 +1493,11 @@ mod tests {
       Ok(token_vec![
         id!(printf),
         "(",
-        "\"x\"",
-        "\"1\"",
-        "\"= %d, x\"",
-        "\"2\"",
-        "\"= %s\"",
+        string!("x"),
+        string!("1"),
+        string!("= %d, x"),
+        string!("2"),
+        string!("= %s"),
         ",",
         id!(x1),
         ",",
@@ -1424,15 +1511,15 @@ mod tests {
       Ok(token_vec![
         id!(fputs),
         "(",
-        "\"strncmp(\\\"abc\\\\0d\\\", \\\"abc\\\", '\\\\4') == 0\"",
-        "\": @ \\\\n\"",
+        string!("strncmp(\"abc\\0d\", \"abc\", '\\4') == 0"),
+        string!(": @ \\n"),
         ",",
         id!(s),
         ")",
         ";"
       ])
     );
-    assert_eq!(macro_set.expand_var_macro("line3"), Ok(token_vec!["#include", "\"vers2.h\""]));
+    assert_eq!(macro_set.expand_var_macro("line3"), Ok(token_vec!["#include", string!("vers2.h")]));
   }
 
   #[test]
@@ -1465,19 +1552,19 @@ mod tests {
         "]",
         "=",
         "{",
-        "123",
+        int!(123),
         ",",
-        "45",
+        int!(45),
         ",",
-        "67",
+        int!(67),
         ",",
-        "89",
+        int!(89),
         ",",
-        "10",
+        int!(10),
         ",",
-        "11",
+        int!(11),
         ",",
-        "12",
+        int!(12),
         ",",
         "}",
         ";"
@@ -1533,15 +1620,15 @@ mod tests {
 
     assert_eq!(
       macro_set.expand_var_macro("line1"),
-      Ok(token_vec![id!(fprintf), "(", id!(stderr), ",", "\"Flag\"", ")", ";"])
+      Ok(token_vec![id!(fprintf), "(", id!(stderr), ",", string!("Flag"), ")", ";"])
     );
     assert_eq!(
       macro_set.expand_var_macro("line2"),
-      Ok(token_vec![id!(fprintf), "(", id!(stderr), ",", "\"X = %d\\n\"", ",", id!(x), ")", ";"])
+      Ok(token_vec![id!(fprintf), "(", id!(stderr), ",", string!("X = %d\n"), ",", id!(x), ")", ";"])
     );
     assert_eq!(
       macro_set.expand_var_macro("line3"),
-      Ok(token_vec![id!(puts), "(", "\"The first, second, and third items.\"", ")", ";"])
+      Ok(token_vec![id!(puts), "(", string!("The first, second, and third items."), ")", ";"])
     );
     assert_eq!(
       macro_set.expand_var_macro("line4"),
@@ -1555,12 +1642,12 @@ mod tests {
         "?",
         id!(puts),
         "(",
-        "\"x > y\"",
+        string!("x > y"),
         ")",
         ":",
         id!(printf),
         "(",
-        "\"x is %d but y is %d\"",
+        string!("x is %d but y is %d"),
         ",",
         id!(x),
         ",",

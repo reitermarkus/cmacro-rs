@@ -8,7 +8,7 @@ use nom::{
   branch::alt,
   bytes::complete::tag_no_case,
   character::complete::{char, digit1},
-  combinator::{map_opt, opt, recognize, value},
+  combinator::{all_consuming, map_opt, opt, recognize, value},
   sequence::{pair, tuple},
   AsChar, Compare, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, ParseTo, Slice,
 };
@@ -16,7 +16,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use std::num::FpCategory;
 
-use crate::{ast::tokens::map_token, BuiltInType, CodegenContext, LocalContext, MacroToken, Type};
+use crate::{ast::tokens::take_one, BuiltInType, CodegenContext, Lit, LocalContext, MacroToken, Type};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum LitFloatSuffix {
@@ -100,7 +100,7 @@ impl LitFloat {
 
   /// Parse a floating-point literal.
   pub fn parse<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    map_token(Self::parse_str)(tokens)
+    map_opt(take_one, |token| if let MacroToken::Lit(Lit::Float(lit)) = token { Some(*lit) } else { None })(tokens)
   }
 
   #[allow(unused_variables)]
@@ -211,33 +211,33 @@ impl Div for LitFloat {
   }
 }
 
+impl<'t> TryFrom<&'t str> for LitFloat {
+  type Error = nom::Err<nom::error::Error<&'t str>>;
+
+  fn try_from(s: &'t str) -> Result<Self, Self::Error> {
+    let (_, lit) = all_consuming(Self::parse_str)(s)?;
+    Ok(lit)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
 
-  use crate::macro_set::tokens;
-
   #[test]
   fn parse_float() {
-    let (_, id) = LitFloat::parse(tokens![r#"12.34"#]).unwrap();
-    assert_eq!(id, LitFloat::Double(12.34));
+    assert_eq!(LitFloat::try_from("12.34"), Ok(LitFloat::Double(12.34)));
 
-    let (_, id) = LitFloat::parse(tokens![r#"12.34f"#]).unwrap();
-    assert_eq!(id, LitFloat::Float(12.34));
+    assert_eq!(LitFloat::try_from("12.34f"), Ok(LitFloat::Float(12.34)));
 
-    let (_, id) = LitFloat::parse(tokens![r#"12.34L"#]).unwrap();
-    assert_eq!(id, LitFloat::LongDouble(12.34));
+    assert_eq!(LitFloat::try_from("12.34L"), Ok(LitFloat::LongDouble(12.34)));
 
-    let (_, id) = LitFloat::parse(tokens![r#".1"#]).unwrap();
-    assert_eq!(id, LitFloat::Double(0.1));
+    assert_eq!(LitFloat::try_from(".1"), Ok(LitFloat::Double(0.1)));
 
-    let (_, id) = LitFloat::parse(tokens![r#"1."#]).unwrap();
-    assert_eq!(id, LitFloat::Double(1.0));
+    assert_eq!(LitFloat::try_from("1."), Ok(LitFloat::Double(1.0)));
 
-    let (_, id) = LitFloat::parse(tokens![r#"1e1"#]).unwrap();
-    assert_eq!(id, LitFloat::Double(10.0));
+    assert_eq!(LitFloat::try_from("1e1"), Ok(LitFloat::Double(10.0)));
 
-    let (_, id) = LitFloat::parse(tokens![r#"1e-1f"#]).unwrap();
-    assert_eq!(id, LitFloat::Float(0.1));
+    assert_eq!(LitFloat::try_from("1e-1f"), Ok(LitFloat::Float(0.1)));
   }
 }

@@ -4,7 +4,7 @@ use nom::{
   branch::alt,
   bytes::complete::tag,
   character::complete::char,
-  combinator::{map, map_opt, opt, value},
+  combinator::{all_consuming, map, map_opt, opt, value},
   sequence::{delimited, pair},
   AsChar, Compare, IResult, InputIter, InputTake, Slice,
 };
@@ -13,8 +13,8 @@ use quote::{quote, TokenStreamExt};
 
 use super::{escaped_char, unescaped_char};
 use crate::{
-  ast::{id, tokens::map_token},
-  BuiltInType, CodegenContext, Expr, LitIdent, LocalContext, MacroToken, Type,
+  ast::{id, tokens::take_one},
+  BuiltInType, CodegenContext, Expr, Lit, LitIdent, LocalContext, MacroToken, Type,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -106,11 +106,24 @@ impl LitChar {
             value(LitCharPrefix::Utf32, id("U")),
             value(LitCharPrefix::Wide, id("L")),
           )),
-          map_token(Self::parse_unprefixed),
+          map_opt(take_one, |token| match token {
+            MacroToken::Lit(Lit::Char(LitChar::Ordinary(c))) => Some(u32::from(*c)),
+            MacroToken::Token(token) => {
+              if let Ok((_, c)) = all_consuming(Self::parse_unprefixed)(token.as_ref()) {
+                Some(c)
+              } else {
+                None
+              }
+            },
+            _ => None,
+          }),
         ),
         move |(prefix, c)| Self::with_prefix(Some(prefix), c),
       ),
-      map_token(Self::parse_str),
+      map_opt(take_one, |token| match token {
+        MacroToken::Lit(Lit::Char(c)) => Some(c.clone()),
+        _ => None,
+      }),
     ))(input)
   }
 
@@ -184,38 +197,35 @@ impl LitChar {
   }
 }
 
+impl<'t> TryFrom<&'t str> for LitChar {
+  type Error = nom::Err<nom::error::Error<&'t str>>;
+
+  fn try_from(s: &'t str) -> Result<Self, Self::Error> {
+    let (_, lit) = all_consuming(Self::parse_str)(s)?;
+    Ok(lit)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
 
-  use crate::macro_set::tokens;
-
   #[test]
   fn parse_char() {
-    let tokens = tokens![r#"'a'"#];
-    let (rest, id) = LitChar::parse(tokens).unwrap();
-    assert_eq!(id, LitChar::Ordinary(b'a'));
-    assert!(rest.is_empty());
+    assert_eq!(LitChar::try_from("'a'"), Ok(LitChar::Ordinary(b'a')));
 
-    let (_, id) = LitChar::parse(tokens![r#"'\n'"#]).unwrap();
-    assert_eq!(id, LitChar::Ordinary(b'\n'));
+    assert_eq!(LitChar::try_from(r"'\n'"), Ok(LitChar::Ordinary(b'\n')));
 
-    let (_, id) = LitChar::parse(tokens![r#"'\''"#]).unwrap();
-    assert_eq!(id, LitChar::Ordinary(b'\''));
+    assert_eq!(LitChar::try_from(r"'\''"), Ok(LitChar::Ordinary(b'\'')));
 
-    let (_, id) = LitChar::parse(tokens![r#"u'\uFFee'"#]).unwrap();
-    assert_eq!(id, LitChar::Utf16(0xffee));
+    assert_eq!(LitChar::try_from(r"u'\uFFee'"), Ok(LitChar::Utf16(0xffee)));
 
-    let (_, id) = LitChar::parse(tokens![r#"U'\U0001f369'"#]).unwrap();
-    assert_eq!(id, LitChar::Utf32(0x0001f369));
+    assert_eq!(LitChar::try_from(r"U'\U0001f369'"), Ok(LitChar::Utf32(0x0001f369)));
 
-    let (_, id) = LitChar::parse(tokens![r#"U'🍌'"#]).unwrap();
-    assert_eq!(id, LitChar::Utf32(0x0001f34c));
+    assert_eq!(LitChar::try_from("U'🍌'"), Ok(LitChar::Utf32(0x0001f34c)));
 
-    let (_, id) = LitChar::parse(tokens![r#"'\xff'"#]).unwrap();
-    assert_eq!(id, LitChar::Ordinary(0xff));
+    assert_eq!(LitChar::try_from(r"'\xff'"), Ok(LitChar::Ordinary(0xff)));
 
-    let (_, id) = LitChar::parse(tokens![r#"'ÿ'"#]).unwrap();
-    assert_eq!(id, LitChar::Ordinary(0xff));
+    assert_eq!(LitChar::try_from("'ÿ'"), Ok(LitChar::Ordinary(0xff)));
   }
 }

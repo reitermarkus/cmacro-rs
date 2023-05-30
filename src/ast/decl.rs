@@ -66,11 +66,11 @@ impl<'t> Decl<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_set::{id as macro_id, tokens};
+  use crate::macro_set::{id as macro_id, int as macro_int, tokens};
 
   #[test]
   fn parse() {
-    let (_, id) = Decl::parse(tokens![macro_id!(int), "*", macro_id!(abc), "=", "123"]).unwrap();
+    let (_, id) = Decl::parse(tokens![macro_id!(int), "*", macro_id!(abc), "=", macro_int!(123)]).unwrap();
     assert_eq!(
       id,
       Decl {

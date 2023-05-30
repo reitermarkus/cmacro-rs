@@ -961,14 +961,16 @@ impl<'t> Expr<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_set::{arg as macro_arg, id as macro_id, tokens};
+  use crate::macro_set::{
+    arg as macro_arg, char as macro_char, id as macro_id, int as macro_int, string as macro_string, tokens,
+  };
 
   #[test]
   fn parse_literal() {
-    let (_, expr) = Expr::parse(tokens![macro_id!(u8), "'a'"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(u8), macro_char!('a')]).unwrap();
     assert_eq!(expr, lit!(u8 'a'));
 
-    let (_, expr) = Expr::parse(tokens!["U'🍩'"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_char!(U '🍩')]).unwrap();
     assert_eq!(expr, lit!(U '🍩'));
   }
 
@@ -980,10 +982,10 @@ mod tests {
 
   #[test]
   fn parse_concat() {
-    let (_, expr) = Expr::parse(tokens![r#""abc""#, r#""def""#]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_string!("abc"), macro_string!("def")]).unwrap();
     assert_eq!(expr, Expr::Literal(Lit::String(LitString::Ordinary("abcdef".into()))));
 
-    let (_, expr) = Expr::parse(tokens![r#""def""#, "#", macro_arg!(0)]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_string!("def"), "#", macro_arg!(0)]).unwrap();
     assert_eq!(
       expr,
       Expr::ConcatString(vec![
@@ -1037,10 +1039,10 @@ mod tests {
 
   #[test]
   fn parse_array_access() {
-    let (_, expr) = Expr::parse(tokens![macro_id!(a), "[", "0", "]"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), "[", macro_int!(0), "]"]).unwrap();
     assert_eq!(expr, Expr::ArrayAccess { expr: Box::new(var!(a)), index: Box::new(lit!(0)) });
 
-    let (_, expr) = Expr::parse(tokens![macro_id!(a), "[", "0", "]", "[", "1", "]"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), "[", macro_int!(0), "]", "[", macro_int!(1), "]"]).unwrap();
     assert_eq!(
       expr,
       Expr::ArrayAccess {
@@ -1078,13 +1080,13 @@ mod tests {
 
   #[test]
   fn parse_paren() {
-    let (_, expr) = Expr::parse(tokens!["(", "-", "123456789012ULL", ")"]).unwrap();
+    let (_, expr) = Expr::parse(tokens!["(", "-", macro_int!(ull 123456789012), ")"]).unwrap();
     assert_eq!(
       expr,
       Expr::Unary(Box::new(UnaryExpr {
         op: UnaryOp::Minus,
         expr: Expr::Literal(Lit::Int(LitInt { value: 123456789012, suffix: Some(BuiltInType::ULongLong) }))
       }))
-    )
+    );
   }
 }

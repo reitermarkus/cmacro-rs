@@ -1,20 +1,23 @@
-use std::{fmt::Debug, ops::RangeFrom, str};
+use std::{borrow::Cow, fmt::Debug, str};
 
 use nom::{
   branch::alt,
   bytes::complete::{is_not, tag},
   character::complete::{char, none_of},
-  combinator::{map, map_res, opt},
+  combinator::{all_consuming, map, map_opt, map_res, opt},
   multi::{fold_many0, many0, many1},
   sequence::{delimited, preceded},
-  AsChar, Compare, FindToken, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Slice,
+  AsChar, IResult, InputIter,
 };
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::{BuiltInType, CodegenContext, Expr, LocalContext, MacroToken, Type};
+use crate::{BuiltInType, CodegenContext, Expr, Lit, LocalContext, MacroToken, Type};
 
-use crate::ast::{tokens::map_token, LitIdent};
+use crate::ast::{
+  tokens::{id, take_one},
+  LitIdent,
+};
 
 use super::escaped_char;
 
@@ -55,25 +58,13 @@ pub enum LitString {
 
 impl LitString {
   /// Parse
-  fn parse_ordinary<I, C>(input: I) -> IResult<I, Vec<u8>>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<RangeFrom<usize>>
-      + InputIter<Item = C>
-      + Clone
-      + InputTakeAtPosition<Item = C>
-      + Compare<&'static str>,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
-  {
+  fn parse_ordinary(input: &str) -> IResult<&str, Vec<u8>> {
     delimited(
       char('\"'),
       fold_many0(
         alt((
           many1(map_res(escaped_char, u8::try_from)),
-          map(is_not("\\\"\n"), |b: I| {
+          map(is_not("\\\"\n"), |b: &str| {
             let s: String = b.iter_elements().map(|c| c.as_char()).collect();
             s.into_bytes()
           }),
@@ -88,42 +79,18 @@ impl LitString {
     )(input)
   }
 
-  fn parse_utf8<I, C>(input: I) -> IResult<I, String>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<RangeFrom<usize>>
-      + InputIter<Item = C>
-      + Clone
-      + InputTakeAtPosition<Item = C>
-      + Compare<&'static str>,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
-  {
+  fn parse_utf8(input: &str) -> IResult<&str, String> {
     map_res(Self::parse_ordinary, String::from_utf8)(input)
   }
 
-  fn parse_utf16<I, C>(input: I) -> IResult<I, String>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<RangeFrom<usize>>
-      + InputIter<Item = C>
-      + Clone
-      + InputTakeAtPosition<Item = C>
-      + Compare<&'static str>,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
-  {
+  fn parse_utf16(input: &str) -> IResult<&str, String> {
     map_res(
       delimited(
         char('\"'),
         fold_many0(
           alt((
             many1(map_res(escaped_char, u16::try_from)),
-            map(is_not("\\\"\n"), |b: I| {
+            map(is_not("\\\"\n"), |b: &str| {
               let s: String = b.iter_elements().map(|c| c.as_char()).collect();
               s.encode_utf16().collect()
             }),
@@ -140,54 +107,18 @@ impl LitString {
     )(input)
   }
 
-  fn parse_utf32<I, C>(input: I) -> IResult<I, String>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<RangeFrom<usize>>
-      + InputIter<Item = C>
-      + Clone
-      + InputTakeAtPosition<Item = C>
-      + Compare<&'static str>,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
-  {
+  fn parse_utf32(input: &str) -> IResult<&str, String> {
     map(
       delimited(char('\"'), many0(alt((map_res(escaped_char, char::try_from), none_of("\\\"\n")))), char('\"')),
       |chars| chars.into_iter().collect::<String>(),
     )(input)
   }
 
-  fn parse_wide<I, C>(input: I) -> IResult<I, Vec<u32>>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<RangeFrom<usize>>
-      + InputIter<Item = C>
-      + Clone
-      + InputTakeAtPosition<Item = C>
-      + Compare<&'static str>,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
-  {
+  fn parse_wide(input: &str) -> IResult<&str, Vec<u32>> {
     delimited(char('\"'), many0(alt((escaped_char, map(none_of("\\\"\n"), u32::from)))), char('\"'))(input)
   }
 
-  pub(crate) fn parse_str<I, C>(input: I) -> IResult<I, Self>
-  where
-    I: Debug
-      + InputTake
-      + InputLength
-      + Slice<RangeFrom<usize>>
-      + InputIter<Item = C>
-      + Clone
-      + InputTakeAtPosition<Item = C>
-      + Compare<&'static str>,
-    C: AsChar + Copy,
-    &'static str: FindToken<<I as InputTakeAtPosition>::Item>,
-  {
+  pub(crate) fn parse_str(input: &str) -> IResult<&str, Self> {
     alt((
       map(Self::parse_ordinary, Self::Ordinary),
       preceded(tag("u8"), map(Self::parse_utf8, Self::Utf8)),
@@ -199,15 +130,28 @@ impl LitString {
 
   /// Parse a string literal.
   pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (input, s) = map_token(Self::parse_str)(input)?;
+    let (input, s) =
+      map_opt(take_one, |token| if let MacroToken::Lit(Lit::String(s)) = token { Some(s.clone()) } else { None })(
+        input,
+      )?;
 
     match s {
       Self::Ordinary(bytes) => map(
         fold_many0(
-          map_token(Self::parse_ordinary),
+          map_opt(take_one, |token| match token {
+            MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => Some(Cow::Borrowed(bytes)),
+            MacroToken::Token(token) => {
+              if let Ok((_, s)) = all_consuming(Self::parse_ordinary)(token.as_ref()) {
+                Some(Cow::Owned(s))
+              } else {
+                None
+              }
+            },
+            _ => None,
+          }),
           move || bytes.clone(),
-          |mut acc, s| {
-            acc.extend(s);
+          |mut acc, bytes| {
+            acc.extend(bytes.as_ref());
             acc
           },
         ),
@@ -215,10 +159,31 @@ impl LitString {
       )(input),
       Self::Utf8(s) => map(
         fold_many0(
-          map_token(preceded(opt(tag("u8")), Self::parse_utf8)),
+          alt((
+            map_opt(take_one, |token| match token {
+              MacroToken::Lit(Lit::String(LitString::Utf8(s))) => Some(Cow::Borrowed(s)),
+              _ => None,
+            }),
+            preceded(
+              opt(id("u8")),
+              map_opt(take_one, |token| match token {
+                MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
+                  Some(Cow::Owned(bytes.iter().map(|b| char::from_u32(u32::from(*b))).collect::<Option<String>>()?))
+                },
+                MacroToken::Token(token) => {
+                  if let Ok((_, s)) = all_consuming(Self::parse_utf8)(token.as_ref()) {
+                    Some(Cow::Owned(s))
+                  } else {
+                    None
+                  }
+                },
+                _ => None,
+              }),
+            ),
+          )),
           move || s.clone(),
           |mut acc, s| {
-            acc.push_str(&s);
+            acc.push_str(s.as_ref());
             acc
           },
         ),
@@ -226,10 +191,31 @@ impl LitString {
       )(input),
       Self::Utf16(s) => map(
         fold_many0(
-          map_token(preceded(opt(tag("u")), Self::parse_utf16)),
+          alt((
+            map_opt(take_one, |token| match token {
+              MacroToken::Lit(Lit::String(LitString::Utf16(s))) => Some(Cow::Borrowed(s)),
+              _ => None,
+            }),
+            preceded(
+              opt(id("u")),
+              map_opt(take_one, |token| match token {
+                MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
+                  Some(Cow::Owned(bytes.iter().map(|b| char::from_u32(u32::from(*b))).collect::<Option<String>>()?))
+                },
+                MacroToken::Token(token) => {
+                  if let Ok((_, s)) = all_consuming(Self::parse_utf16)(token.as_ref()) {
+                    Some(Cow::Owned(s))
+                  } else {
+                    None
+                  }
+                },
+                _ => None,
+              }),
+            ),
+          )),
           move || s.clone(),
           |mut acc, s| {
-            acc.push_str(&s);
+            acc.push_str(s.as_ref());
             acc
           },
         ),
@@ -237,7 +223,28 @@ impl LitString {
       )(input),
       Self::Utf32(s) => map(
         fold_many0(
-          map_token(preceded(opt(tag("U")), Self::parse_utf32)),
+          alt((
+            map_opt(take_one, |token| match token {
+              MacroToken::Lit(Lit::String(LitString::Utf32(s))) => Some(Cow::Borrowed(s)),
+              _ => None,
+            }),
+            preceded(
+              opt(id("U")),
+              map_opt(take_one, |token| match token {
+                MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
+                  Some(Cow::Owned(bytes.iter().map(|b| char::from_u32(u32::from(*b))).collect::<Option<String>>()?))
+                },
+                MacroToken::Token(token) => {
+                  if let Ok((_, s)) = all_consuming(Self::parse_utf32)(token.as_ref()) {
+                    Some(Cow::Owned(s))
+                  } else {
+                    None
+                  }
+                },
+                _ => None,
+              }),
+            ),
+          )),
           move || s.clone(),
           |mut acc, s| {
             acc.push_str(&s);
@@ -246,12 +253,33 @@ impl LitString {
         ),
         Self::Utf32,
       )(input),
-      Self::Wide(v) => map(
+      Self::Wide(words) => map(
         fold_many0(
-          map_token(preceded(opt(tag("L")), Self::parse_wide)),
-          move || v.clone(),
-          |mut acc, s| {
-            acc.extend(s);
+          alt((
+            map_opt(take_one, |token| match token {
+              MacroToken::Lit(Lit::String(LitString::Wide(words))) => Some(Cow::Borrowed(words)),
+              _ => None,
+            }),
+            preceded(
+              opt(id("L")),
+              map_opt(take_one, |token| match token {
+                MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
+                  Some(Cow::Owned(bytes.iter().map(|b| u32::from(*b)).collect::<Vec<_>>()))
+                },
+                MacroToken::Token(token) => {
+                  if let Ok((_, s)) = all_consuming(Self::parse_wide)(token.as_ref()) {
+                    Some(Cow::Owned(s))
+                  } else {
+                    None
+                  }
+                },
+                _ => None,
+              }),
+            ),
+          )),
+          move || words.clone(),
+          |mut acc, words| {
+            acc.extend(words.as_ref());
             acc
           },
         ),
@@ -457,36 +485,41 @@ impl LitString {
   }
 }
 
+impl<'t> TryFrom<&'t str> for LitString {
+  type Error = nom::Err<nom::error::Error<&'t str>>;
+
+  fn try_from(s: &'t str) -> Result<Self, Self::Error> {
+    let (_, lit) = all_consuming(Self::parse_str)(s)?;
+    Ok(lit)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
 
-  use crate::macro_set::tokens;
-
   #[test]
   fn parse_string() {
-    let (_, id) = LitString::parse(tokens![r#""asdf""#]).unwrap();
-    assert_eq!(id, LitString::Ordinary("asdf".into()));
+    assert_eq!(LitString::try_from(r#""asdf""#), Ok(LitString::Ordinary("asdf".into())));
 
-    let (_, id) = LitString::parse(tokens![r#""\360\237\216\247🎧""#]).unwrap();
-    assert_eq!(id, LitString::Ordinary("🎧🎧".into()));
+    assert_eq!(LitString::try_from(r#""\360\237\216\247🎧""#), Ok(LitString::Ordinary("🎧🎧".into())));
 
-    let (_, id) = LitString::parse(tokens![r#""abc\ndef""#]).unwrap();
-    assert_eq!(id, LitString::Ordinary("abc\ndef".into()));
+    assert_eq!(LitString::try_from(r#""abc\ndef""#), Ok(LitString::Ordinary("abc\ndef".into())));
 
-    let (_, id) = LitString::parse(tokens![r#""escaped\"quote""#]).unwrap();
-    assert_eq!(id, LitString::Ordinary(r#"escaped"quote"#.into()));
+    assert_eq!(LitString::try_from(r#""escaped\"quote""#), Ok(LitString::Ordinary(r#"escaped"quote"#.into())));
 
-    let (_, id) = LitString::parse(tokens![r#"u8"🎧\xf0\x9f\x8e\xa4""#]).unwrap();
-    assert_eq!(id, LitString::Utf8("🎧🎤".into()));
+    assert_eq!(LitString::try_from(r#"u8"🎧\xf0\x9f\x8e\xa4""#), Ok(LitString::Utf8("🎧🎤".into())));
 
-    let (_, id) = LitString::parse(tokens![r#"u8"Put your 🎧 on.""#]).unwrap();
-    assert_eq!(id, LitString::Utf8("Put your 🎧 on.".into()));
+    assert_eq!(LitString::try_from(r#"u8"Put your 🎧 on.""#), Ok(LitString::Utf8("Put your 🎧 on.".into())));
 
-    let (_, id) = LitString::parse(tokens![r#"u"🎧\uD83C\uDFA4""#]).unwrap();
-    assert_eq!(id, LitString::Utf16("🎧🎤".into()));
+    assert_eq!(LitString::try_from(r#"u"🎧\uD83C\uDFA4""#), Ok(LitString::Utf16("🎧🎤".into())));
 
-    let (_, id) = LitString::parse(tokens![r#"U"🎧\U0001F3A4""#]).unwrap();
-    assert_eq!(id, LitString::Utf32("🎧🎤".into()));
+    assert_eq!(LitString::try_from(r#"U"🎧\U0001F3A4""#), Ok(LitString::Utf32("🎧🎤".into())));
+  }
+
+  #[ignore]
+  #[test]
+  fn parse_unprefixed_utf32() {
+    assert_eq!(LitString::try_from(r"\U00020402"), Ok(LitString::Ordinary(vec![0o360, 0o240, 0o220, 0o202])))
   }
 }

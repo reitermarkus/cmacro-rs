@@ -15,7 +15,7 @@ use nom::{
 use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
 
-use crate::{ast::map_token, CodegenContext, LocalContext, MacroToken, Type};
+use crate::{CodegenContext, LocalContext, MacroToken, Type};
 
 mod char;
 pub use self::char::*;
@@ -81,7 +81,12 @@ impl Lit {
 
   /// Parse a literal.
   pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    map_token(Self::parse_str)(input)
+    alt((
+      map(LitChar::parse, Self::Char),
+      map(LitString::parse, Self::String),
+      map(LitFloat::parse, Self::Float),
+      map(LitInt::parse, Self::Int),
+    ))(input)
   }
 
   pub(crate) fn finish<'t, C>(
@@ -222,16 +227,12 @@ where
 mod tests {
   use super::*;
 
-  use crate::macro_set::tokens;
-
   use crate::BuiltInType;
 
   #[test]
   fn parse_int_before_float() {
-    let (_, int) = Lit::parse(tokens!["123"]).unwrap();
-    assert_eq!(int, Lit::Int(LitInt { value: 123, suffix: None }));
+    assert_eq!(Lit::try_from("123"), Ok(Lit::Int(LitInt { value: 123, suffix: None })));
 
-    let (_, int) = Lit::parse(tokens!["123L"]).unwrap();
-    assert_eq!(int, Lit::Int(LitInt { value: 123, suffix: Some(BuiltInType::Long) }));
+    assert_eq!(Lit::try_from("123L"), Ok(Lit::Int(LitInt { value: 123, suffix: Some(BuiltInType::Long) })));
   }
 }
