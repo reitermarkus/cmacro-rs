@@ -5,7 +5,7 @@ use nom::{
   bytes::complete::{is_not, tag},
   character::complete::{char, none_of},
   combinator::{all_consuming, map, map_opt, map_res, opt},
-  multi::{fold_many0, many0, many1},
+  multi::{fold_many0, many0},
   sequence::{delimited, preceded},
   AsChar, IResult, InputIter,
 };
@@ -63,7 +63,16 @@ impl LitString {
       char('\"'),
       fold_many0(
         alt((
-          many1(map_res(escaped_char, u8::try_from)),
+          map_opt(escaped_char, |c| {
+            if let Ok(c) = u8::try_from(c) {
+              Some(vec![c])
+            } else if let Ok(c) = char::try_from(c) {
+              let mut s = [0; 4];
+              Some(c.encode_utf8(&mut s).as_bytes().to_vec())
+            } else {
+              None
+            }
+          }),
           map(is_not("\\\"\n"), |b: &str| {
             let s: String = b.iter_elements().map(|c| c.as_char()).collect();
             s.into_bytes()
@@ -89,7 +98,16 @@ impl LitString {
         char('\"'),
         fold_many0(
           alt((
-            many1(map_res(escaped_char, u16::try_from)),
+            map_opt(escaped_char, |c| {
+              if let Ok(c) = u16::try_from(c) {
+                Some(vec![c])
+              } else if let Ok(c) = char::try_from(c) {
+                let mut s = [0; 2];
+                Some(c.encode_utf16(&mut s).to_vec())
+              } else {
+                None
+              }
+            }),
             map(is_not("\\\"\n"), |b: &str| {
               let s: String = b.iter_elements().map(|c| c.as_char()).collect();
               s.encode_utf16().collect()
