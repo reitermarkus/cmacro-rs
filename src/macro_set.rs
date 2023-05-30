@@ -271,7 +271,7 @@ impl<'t> Token<'t> {
           let mut token = lhs;
           token.to_mut().push_str(rhs.as_ref());
 
-          if let Ok(identifier) = LitIdent::try_from(token.as_ref()) {
+          if LitIdent::try_from(token.as_ref()).is_ok() {
             Token::Identifier(LitIdent { id: token })
           } else {
             Token::Plain(token)
