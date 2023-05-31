@@ -594,14 +594,14 @@ impl<'t> Expr<'t> {
           }
 
           if let Some(current_name) = current_name.take() {
-            new_names.push(Self::Literal(Lit::String(LitString::Ordinary(current_name))));
+            new_names.push(Self::Literal(Lit::String(LitString::Ordinary(Cow::Owned(current_name)))));
           }
 
           new_names.push(name.clone());
         }
 
         if let Some(current_name) = current_name.take() {
-          new_names.push(Self::Literal(Lit::String(LitString::Ordinary(current_name))));
+          new_names.push(Self::Literal(Lit::String(LitString::Ordinary(Cow::Owned(current_name)))));
         }
 
         if new_names.len() == 1 {
@@ -983,13 +983,13 @@ mod tests {
   #[test]
   fn parse_concat() {
     let (_, expr) = Expr::parse(tokens![macro_string!("abc"), macro_string!("def")]).unwrap();
-    assert_eq!(expr, Expr::Literal(Lit::String(LitString::Ordinary("abcdef".into()))));
+    assert_eq!(expr, Expr::Literal(Lit::String(LitString::Ordinary("abcdef".as_bytes().into()))));
 
     let (_, expr) = Expr::parse(tokens![macro_string!("def"), "#", macro_arg!(0)]).unwrap();
     assert_eq!(
       expr,
       Expr::ConcatString(vec![
-        Expr::Literal(Lit::String(LitString::Ordinary("def".into()))),
+        Expr::Literal(Lit::String(LitString::Ordinary("def".as_bytes().into()))),
         Expr::Stringify(Stringify { arg: Box::new(arg!(0)) }),
       ])
     );

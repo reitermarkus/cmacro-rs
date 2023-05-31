@@ -35,19 +35,19 @@ pub enum LitString<'t> {
   /// ```c
   /// #define STRING "abc"
   /// ```
-  Ordinary(Vec<u8>),
+  Ordinary(Cow<'t, [u8]>),
   /// A UTF-8 string (`const char8_t*`) literal.
   ///
   /// ```c
   /// #define STRING u8"def"
   /// ```
-  Utf8(String),
+  Utf8(Cow<'t, str>),
   /// A UTF-16 string (`const char16_t*`) literal.
   ///
   /// ```c
   /// #define STRING u"ghi"
   /// ```
-  Utf16(String),
+  Utf16(Cow<'t, str>),
   /// A UTF-32 string (`const char32_t*`) literal.
   ///
   /// ```c
@@ -200,9 +200,9 @@ impl<'t> LitString<'t> {
 
   pub(crate) fn parse_str(input: &'t str) -> IResult<&'t str, Self> {
     alt((
-      map(Self::parse_ordinary, |bytes| Self::Ordinary(bytes.into_owned())),
-      preceded(tag("u8"), map(Self::parse_utf8, |s| Self::Utf8(s.into_owned()))),
-      preceded(tag("u"), map(Self::parse_utf16, |s| Self::Utf16(s.into_owned()))),
+      map(Self::parse_ordinary, Self::Ordinary),
+      preceded(tag("u8"), map(Self::parse_utf8, Self::Utf8)),
+      preceded(tag("u"), map(Self::parse_utf16, Self::Utf16)),
       preceded(tag("U"), map(Self::parse_utf32, Self::Utf32)),
       preceded(tag("L"), map(Self::parse_wide, Self::Wide)),
     ))(input)
@@ -231,7 +231,7 @@ impl<'t> LitString<'t> {
           }),
           move || bytes.clone(),
           |mut acc, bytes| {
-            acc.extend(bytes.as_ref());
+            acc.to_mut().extend(bytes.as_ref());
             acc
           },
         ),
@@ -263,7 +263,7 @@ impl<'t> LitString<'t> {
           )),
           move || s.clone(),
           |mut acc, s| {
-            acc.push_str(s.as_ref());
+            acc.to_mut().push_str(s.as_ref());
             acc
           },
         ),
@@ -295,7 +295,7 @@ impl<'t> LitString<'t> {
           )),
           move || s.clone(),
           |mut acc, s| {
-            acc.push_str(s.as_ref());
+            acc.to_mut().push_str(s.as_ref());
             acc
           },
         ),
@@ -344,7 +344,7 @@ impl<'t> LitString<'t> {
               opt(id("L")),
               map_opt(take_one, |token| match token {
                 MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
-                  Some(Cow::Owned(bytes.iter().map(|b| u32::from(*b)).collect::<Vec<_>>()))
+                  Some(Cow::Owned(bytes.as_ref().iter().map(|b| u32::from(*b)).collect::<Vec<_>>()))
                 },
                 MacroToken::Token(token) => {
                   if let Ok((_, s)) = all_consuming(Self::parse_wide)(token.as_ref()) {
@@ -410,7 +410,7 @@ impl<'t> LitString<'t> {
 
     match self {
       Self::Ordinary(bytes) => {
-        let mut bytes = bytes.clone();
+        let mut bytes = bytes.clone().into_owned();
         bytes.push(0);
 
         let byte_count = proc_macro2::Literal::usize_unsuffixed(bytes.len());
@@ -545,7 +545,7 @@ impl<'t> LitString<'t> {
   /// Get the raw string representation as bytes.
   pub(crate) fn as_bytes(&self) -> Option<&[u8]> {
     match self {
-      Self::Ordinary(bytes) => Some(bytes.as_slice()),
+      Self::Ordinary(bytes) => Some(bytes.as_ref()),
       Self::Utf8(s) => Some(s.as_bytes()),
       Self::Utf16(s) => Some(s.as_bytes()),
       Self::Utf32(s) => Some(s.as_bytes()),
@@ -557,8 +557,8 @@ impl<'t> LitString<'t> {
   pub(crate) fn as_str(&self) -> Option<&str> {
     match self {
       Self::Ordinary(ref bytes) => str::from_utf8(bytes).ok(),
-      Self::Utf8(s) => Some(s.as_str()),
-      Self::Utf16(s) => Some(s.as_str()),
+      Self::Utf8(s) => Some(s.as_ref()),
+      Self::Utf16(s) => Some(s.as_ref()),
       Self::Utf32(s) => Some(s.as_ref()),
       _ => None,
     }
@@ -568,9 +568,9 @@ impl<'t> LitString<'t> {
 
   pub(crate) fn into_static(self) -> LitString<'static> {
     match self {
-      Self::Ordinary(bytes) => LitString::Ordinary(bytes),
-      Self::Utf8(s) => LitString::Utf8(s),
-      Self::Utf16(s) => LitString::Utf16(s),
+      Self::Ordinary(bytes) => LitString::Ordinary(Cow::Owned(bytes.into_owned())),
+      Self::Utf8(s) => LitString::Utf8(Cow::Owned(s.into_owned())),
+      Self::Utf16(s) => LitString::Utf16(Cow::Owned(s.into_owned())),
       Self::Utf32(s) => LitString::Utf32(Cow::Owned(s.into_owned())),
       Self::Wide(words) => LitString::Wide(words),
     }
@@ -593,13 +593,13 @@ mod tests {
 
   #[test]
   fn parse_string() {
-    assert_eq!(LitString::try_from(r#""asdf""#), Ok(LitString::Ordinary("asdf".into())));
+    assert_eq!(LitString::try_from(r#""asdf""#), Ok(LitString::Ordinary("asdf".as_bytes().into())));
 
-    assert_eq!(LitString::try_from(r#""\360\237\216\247🎧""#), Ok(LitString::Ordinary("🎧🎧".into())));
+    assert_eq!(LitString::try_from(r#""\360\237\216\247🎧""#), Ok(LitString::Ordinary("🎧🎧".as_bytes().into())));
 
-    assert_eq!(LitString::try_from(r#""abc\ndef""#), Ok(LitString::Ordinary("abc\ndef".into())));
+    assert_eq!(LitString::try_from(r#""abc\ndef""#), Ok(LitString::Ordinary("abc\ndef".as_bytes().into())));
 
-    assert_eq!(LitString::try_from(r#""escaped\"quote""#), Ok(LitString::Ordinary(r#"escaped"quote"#.into())));
+    assert_eq!(LitString::try_from(r#""escaped\"quote""#), Ok(LitString::Ordinary(r#"escaped"quote"#.as_bytes().into())));
 
     assert_eq!(LitString::try_from(r#"u8"🎧\xf0\x9f\x8e\xa4""#), Ok(LitString::Utf8("🎧🎤".into())));
 
@@ -613,6 +613,6 @@ mod tests {
   #[ignore]
   #[test]
   fn parse_unprefixed_utf32() {
-    assert_eq!(LitString::try_from(r"\U00020402"), Ok(LitString::Ordinary(vec![0o360, 0o240, 0o220, 0o202])))
+    assert_eq!(LitString::try_from(r"\U00020402"), Ok(LitString::Ordinary(Cow::Borrowed(&[0o360, 0o240, 0o220, 0o202]))))
   }
 }

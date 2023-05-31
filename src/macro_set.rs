@@ -366,11 +366,11 @@ fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
   tokens.extend(
     current_string
       .take()
-      .map(|s| Token::Literal(Lit::String(LitString::Ordinary(s.clone().into_bytes())), Cow::Owned(format!("{s:?}")))),
+      .map(|s| Token::Literal(Lit::String(LitString::Ordinary(Cow::Owned(s.clone().into_bytes()))), Cow::Owned(format!("{s:?}")))),
   );
 
   if tokens.is_empty() {
-    return vec![Token::Literal(Lit::String(LitString::Ordinary(vec![])), Cow::Borrowed("\"\""))]
+    return vec![Token::Literal(Lit::String(LitString::Ordinary(Cow::Borrowed(&[]))), Cow::Borrowed("\"\""))]
   }
 
   tokens
@@ -864,10 +864,10 @@ pub(crate) use id;
 #[cfg(test)]
 macro_rules! string {
   (u8 $s:expr) => {{
-    $crate::MacroToken::Lit($crate::Lit::String($crate::LitString::Utf8($s.to_owned())))
+    $crate::MacroToken::Lit($crate::Lit::String($crate::LitString::Utf8($s.into())))
   }};
   ($s:expr) => {{
-    $crate::MacroToken::Lit($crate::Lit::String($crate::LitString::Ordinary($s.to_owned().into_bytes())))
+    $crate::MacroToken::Lit($crate::Lit::String($crate::LitString::Ordinary($s.as_bytes().into())))
   }};
 }
 #[cfg(test)]
