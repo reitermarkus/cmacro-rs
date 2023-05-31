@@ -1,10 +1,10 @@
 use std::{
   borrow::Cow,
   fmt::Debug,
+  iter,
   str::{self, Utf8Error},
   string::FromUtf16Error,
 };
-use std::iter;
 
 use nom::{
   branch::alt,
@@ -369,10 +369,7 @@ impl<'t> LitString<'t> {
   }
 
   #[allow(unused_variables)]
-  pub(crate) fn finish<C>(
-    &mut self,
-    ctx: &mut LocalContext<'_, 't, C>,
-  ) -> Result<Option<Type<'t>>, crate::CodegenError>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -564,8 +561,6 @@ impl<'t> LitString<'t> {
     }
   }
 
-
-
   pub(crate) fn into_static(self) -> LitString<'static> {
     match self {
       Self::Ordinary(bytes) => LitString::Ordinary(Cow::Owned(bytes.into_owned())),
@@ -575,7 +570,6 @@ impl<'t> LitString<'t> {
       Self::Wide(words) => LitString::Wide(words),
     }
   }
-
 }
 
 impl<'t> TryFrom<&'t str> for LitString<'t> {
@@ -599,7 +593,10 @@ mod tests {
 
     assert_eq!(LitString::try_from(r#""abc\ndef""#), Ok(LitString::Ordinary("abc\ndef".as_bytes().into())));
 
-    assert_eq!(LitString::try_from(r#""escaped\"quote""#), Ok(LitString::Ordinary(r#"escaped"quote"#.as_bytes().into())));
+    assert_eq!(
+      LitString::try_from(r#""escaped\"quote""#),
+      Ok(LitString::Ordinary(r#"escaped"quote"#.as_bytes().into()))
+    );
 
     assert_eq!(LitString::try_from(r#"u8"🎧\xf0\x9f\x8e\xa4""#), Ok(LitString::Utf8("🎧🎤".into())));
 
@@ -613,6 +610,9 @@ mod tests {
   #[ignore]
   #[test]
   fn parse_unprefixed_utf32() {
-    assert_eq!(LitString::try_from(r"\U00020402"), Ok(LitString::Ordinary(Cow::Borrowed(&[0o360, 0o240, 0o220, 0o202]))))
+    assert_eq!(
+      LitString::try_from(r"\U00020402"),
+      Ok(LitString::Ordinary(Cow::Borrowed(&[0o360, 0o240, 0o220, 0o202])))
+    )
   }
 }

@@ -92,8 +92,7 @@ impl<'t> Lit<'t> {
   pub(crate) fn finish<C: CodegenContext>(
     &mut self,
     ctx: &mut LocalContext<'_, 't, C>,
-  ) -> Result<Option<Type<'t>>, crate::CodegenError>
-  {
+  ) -> Result<Option<Type<'t>>, crate::CodegenError> {
     match self {
       Self::Char(c) => c.finish(ctx),
       Self::String(s) => s.finish(ctx),
@@ -122,7 +121,6 @@ impl<'t> Lit<'t> {
       Self::Int(i) => Lit::Int(i),
     }
   }
-
 }
 
 impl<'t> TryFrom<&'t str> for Lit<'t> {

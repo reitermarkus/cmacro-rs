@@ -222,6 +222,40 @@ impl<'t> Token<'t> {
     })
   }
 
+  fn concat_punctuation(lhs: &'t str, rhs: &'t str) -> Result<&'t str, ExpansionError> {
+    Ok(match (lhs, rhs) {
+      ("-", ">") => "->",
+      ("+", "+") => "++",
+      ("-", "-") => "--",
+      ("<", "<") => "<<",
+      (">", ">") => ">>",
+      ("<", "=") => "<=",
+      (">", "=") => ">=",
+      ("=", "=") => "==",
+      ("!", "=") => "!=",
+      ("&", "&") => "&&",
+      ("|", "|") => "||",
+      ("*", "=") => "*=",
+      ("/", "=") => "/=",
+      ("%", "=") => "%=",
+      ("+", "=") => "+=",
+      ("-", "=") => "-=",
+      ("<<", "=") | ("<", "<=") => "<<=",
+      (">>", "=") | (">", ">=") => ">>=",
+      ("&", "=") => "&=",
+      ("^", "=") => "^=",
+      ("|", "=") => "|=",
+      ("#", "#") => "##",
+      ("<", ":") => "<:",
+      (":", ">") => ":>",
+      ("<", "%") => "<%",
+      ("%", ">") => "%>",
+      ("%", ":") => "%:",
+      ("%:", "%:") => "%:%:",
+      _ => return Err(ExpansionError::InvalidConcat),
+    })
+  }
+
   pub fn concat(self, other: Self) -> Result<Self, ExpansionError> {
     let new_token = match (self, other) {
       (Token::NonReplacable(lhs), rhs) => return lhs.concat(rhs),
@@ -233,37 +267,7 @@ impl<'t> Token<'t> {
         return Ok(Self::Identifier(lhs))
       },
       (Self::Punctuation(lhs), Self::Punctuation(rhs)) => {
-        return Ok(Self::NonReplacable(Box::new(Self::Punctuation(match (lhs, rhs) {
-          ("-", ">") => "->",
-          ("+", "+") => "++",
-          ("-", "-") => "--",
-          ("<", "<") => "<<",
-          (">", ">") => ">>",
-          ("<", "=") => "<=",
-          (">", "=") => ">=",
-          ("=", "=") => "==",
-          ("!", "=") => "!=",
-          ("&", "&") => "&&",
-          ("|", "|") => "||",
-          ("*", "=") => "*=",
-          ("/", "=") => "/=",
-          ("%", "=") => "%=",
-          ("+", "=") => "+=",
-          ("-", "=") => "-=",
-          ("<<", "=") | ("<", "<=") => "<<=",
-          (">>", "=") | (">", ">=") => ">>=",
-          ("&", "=") => "&=",
-          ("^", "=") => "^=",
-          ("|", "=") => "|=",
-          ("#", "#") => "##",
-          ("<", ":") => "<:",
-          (":", ">") => ":>",
-          ("<", "%") => "<%",
-          ("%", ">") => "%>",
-          ("%", ":") => "%:",
-          ("%:", "%:") => "%:%:",
-          _ => return Err(ExpansionError::InvalidConcat),
-        }))))
+        return Ok(Self::NonReplacable(Box::new(Self::Punctuation(Self::concat_punctuation(lhs, rhs)?))))
       },
       (Self::Literal(Lit::String(_) | Lit::Char(_), _), _) => {
         // Cannot concatenate anything to a string or char literal.
@@ -290,7 +294,10 @@ impl<'t> Token<'t> {
             if matches!(lhs.id.as_ref(), "u8" | "u" | "U" | "L") =>
           {
             lhs.id.to_mut().push_str(rhs.as_ref());
-            return Ok(Self::Literal(Lit::try_from(lhs.id.as_ref()).unwrap().into_static(), Cow::Owned(lhs.id.into_owned())))
+            return Ok(Self::Literal(
+              Lit::try_from(lhs.id.as_ref()).unwrap().into_static(),
+              Cow::Owned(lhs.id.into_owned()),
+            ))
           },
           // Strings cannot be prefixed with anything else.
           Lit::String(_) | Lit::Char(_) => (),
@@ -363,11 +370,9 @@ fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
     s.push_str(token)
   }
 
-  tokens.extend(
-    current_string
-      .take()
-      .map(|s| Token::Literal(Lit::String(LitString::Ordinary(Cow::Owned(s.clone().into_bytes()))), Cow::Owned(format!("{s:?}")))),
-  );
+  tokens.extend(current_string.take().map(|s| {
+    Token::Literal(Lit::String(LitString::Ordinary(Cow::Owned(s.clone().into_bytes()))), Cow::Owned(format!("{s:?}")))
+  }));
 
   if tokens.is_empty() {
     return vec![Token::Literal(Lit::String(LitString::Ordinary(Cow::Borrowed(&[]))), Cow::Borrowed("\"\""))]
@@ -389,6 +394,8 @@ pub enum MacroToken<'t> {
   Id(LitIdent<'t>),
   /// A literal.
   Lit(Lit<'t>),
+  /// Punctuation.
+  Punctuation(&'t str),
   /// A macro token.
   Token(Cow<'t, str>),
   /// A comment.
