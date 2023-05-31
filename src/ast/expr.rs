@@ -26,7 +26,7 @@ pub enum Expr<'t> {
   Variable { name: LitIdent<'t> },
   FunctionCall(FunctionCall<'t>),
   Cast { expr: Box<Self>, ty: Type<'t> },
-  Literal(Lit),
+  Literal(Lit<'t>),
   FieldAccess { expr: Box<Self>, field: Box<Self> },
   ArrayAccess { expr: Box<Self>, index: Box<Self> },
   Stringify(Stringify<'t>),

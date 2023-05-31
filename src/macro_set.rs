@@ -276,7 +276,7 @@ impl<'t> Token<'t> {
             Lit::Int(_) | Lit::Float(_) => {
               let token = format!("{lhs}{rhs}");
               if let Ok(literal) = Lit::try_from(token.as_str()) {
-                return Ok(Self::Literal(literal, Cow::Owned(token)))
+                return Ok(Self::Literal(literal.into_static(), Cow::Owned(token)))
               }
             },
           }
@@ -290,7 +290,7 @@ impl<'t> Token<'t> {
             if matches!(lhs.id.as_ref(), "u8" | "u" | "U" | "L") =>
           {
             lhs.id.to_mut().push_str(rhs.as_ref());
-            return Ok(Self::Literal(Lit::try_from(lhs.id.as_ref()).unwrap(), Cow::Owned(lhs.id.into_owned())))
+            return Ok(Self::Literal(Lit::try_from(lhs.id.as_ref()).unwrap().into_static(), Cow::Owned(lhs.id.into_owned())))
           },
           // Strings cannot be prefixed with anything else.
           Lit::String(_) | Lit::Char(_) => (),
@@ -325,7 +325,7 @@ impl<'t> Token<'t> {
     Ok(if let Ok(identifier) = LitIdent::try_from(new_token.as_ref()) {
       Self::Identifier(identifier.to_static())
     } else if let Ok(literal) = Lit::try_from(new_token.as_ref()) {
-      Self::Literal(literal, Cow::Owned(new_token))
+      Self::Literal(literal.into_static(), Cow::Owned(new_token))
     } else {
       Self::Plain(Cow::Owned(new_token))
     })
@@ -388,7 +388,7 @@ pub enum MacroToken<'t> {
   /// An identifier.
   Id(LitIdent<'t>),
   /// A literal.
-  Lit(Lit),
+  Lit(Lit<'t>),
   /// A macro token.
   Token(Cow<'t, str>),
   /// A comment.
@@ -408,7 +408,7 @@ enum Token<'t> {
   /// An identifier.
   Identifier(LitIdent<'t>),
   /// A literal.
-  Literal(Lit, Cow<'t, str>),
+  Literal(Lit<'t>, Cow<'t, str>),
   /// An intermediary token which cannot be parsed yet.
   Plain(Cow<'t, str>),
   /// A comment token.

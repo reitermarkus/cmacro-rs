@@ -4,6 +4,7 @@ use std::{
   str::{self, Utf8Error},
   string::FromUtf16Error,
 };
+use std::iter;
 
 use nom::{
   branch::alt,
@@ -28,7 +29,7 @@ use super::escaped_char;
 
 /// A string literal.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LitString {
+pub enum LitString<'t> {
   /// An ordinary string (`const char*`) literal.
   ///
   /// ```c
@@ -52,7 +53,7 @@ pub enum LitString {
   /// ```c
   /// #define STRING U"jkl"
   /// ```
-  Utf32(String),
+  Utf32(Cow<'t, str>),
   /// A wide string (`const wchar_t*`) literal.
   ///
   /// ```c
@@ -61,9 +62,9 @@ pub enum LitString {
   Wide(Vec<u32>),
 }
 
-impl LitString {
+impl<'t> LitString<'t> {
   /// Parse
-  fn parse_ordinary<'t>(input: &'t str) -> IResult<&str, Cow<'t, [u8]>> {
+  fn parse_ordinary(input: &str) -> IResult<&str, Cow<'_, [u8]>> {
     delimited(
       char('\"'),
       fold_many0(
@@ -81,7 +82,7 @@ impl LitString {
           map(is_not("\\\"\n"), |b: &str| Cow::Borrowed(b.as_bytes())),
         )),
         || Cow::Borrowed(&[] as &[u8]),
-        |mut acc: Cow<'t, [u8]>, c| {
+        |mut acc: Cow<'_, [u8]>, c| {
           if acc.as_ref().is_empty() {
             c
           } else {
@@ -94,8 +95,8 @@ impl LitString {
     )(input)
   }
 
-  fn parse_utf8<'t>(input: &'t str) -> IResult<&'t str, Cow<'t, str>> {
-    map_res(Self::parse_ordinary, |bytes| -> Result<Cow<'t, str>, Utf8Error> {
+  fn parse_utf8(input: &str) -> IResult<&str, Cow<'_, str>> {
+    map_res(Self::parse_ordinary, |bytes| -> Result<Cow<'_, str>, Utf8Error> {
       match bytes {
         Cow::Borrowed(bytes) => Ok(Cow::Borrowed(str::from_utf8(bytes)?)),
         Cow::Owned(bytes) => Ok(Cow::Owned(String::from_utf8(bytes).map_err(|e| e.utf8_error())?)),
@@ -103,13 +104,13 @@ impl LitString {
     })(input)
   }
 
-  fn parse_utf16<'t>(input: &'t str) -> IResult<&'t str, Cow<'t, str>> {
-    enum Part<'t> {
+  fn parse_utf16(input: &str) -> IResult<&str, Cow<'_, str>> {
+    enum Part<'s> {
       Vec(Vec<u16>),
-      String(Cow<'t, str>),
+      String(Cow<'s, str>),
     }
 
-    impl<'t> Part<'t> {
+    impl<'s> Part<'s> {
       fn into_vec(self) -> Vec<u16> {
         match self {
           Self::Vec(vec) => vec,
@@ -151,7 +152,7 @@ impl LitString {
         ),
         char('\"'),
       ),
-      |part| -> Result<Cow<'t, str>, FromUtf16Error> {
+      |part| -> Result<Cow<'_, str>, FromUtf16Error> {
         match part {
           Part::String(s) => Ok(s),
           Part::Vec(v) => Ok(Cow::Owned(String::from_utf16(&v)?)),
@@ -161,9 +162,9 @@ impl LitString {
   }
 
   fn parse_utf32(input: &str) -> IResult<&str, Cow<'_, str>> {
-    enum Part<'t> {
+    enum Part<'s> {
       Char(char),
-      String(Cow<'t, str>),
+      String(Cow<'s, str>),
     }
 
     delimited(
@@ -197,18 +198,18 @@ impl LitString {
     delimited(char('\"'), many0(alt((escaped_char, map(none_of("\\\"\n"), u32::from)))), char('\"'))(input)
   }
 
-  pub(crate) fn parse_str(input: &str) -> IResult<&str, Self> {
+  pub(crate) fn parse_str(input: &'t str) -> IResult<&'t str, Self> {
     alt((
       map(Self::parse_ordinary, |bytes| Self::Ordinary(bytes.into_owned())),
       preceded(tag("u8"), map(Self::parse_utf8, |s| Self::Utf8(s.into_owned()))),
       preceded(tag("u"), map(Self::parse_utf16, |s| Self::Utf16(s.into_owned()))),
-      preceded(tag("U"), map(Self::parse_utf32, |s| Self::Utf32(s.into_owned()))),
+      preceded(tag("U"), map(Self::parse_utf32, Self::Utf32)),
       preceded(tag("L"), map(Self::parse_wide, Self::Wide)),
     ))(input)
   }
 
   /// Parse a string literal.
-  pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub fn parse<'i>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (input, s) =
       map_opt(take_one, |token| if let MacroToken::Lit(Lit::String(s)) = token { Some(s.clone()) } else { None })(
         input,
@@ -326,7 +327,7 @@ impl LitString {
           )),
           move || s.clone(),
           |mut acc, s| {
-            acc.push_str(&s);
+            acc.to_mut().push_str(&s);
             acc
           },
         ),
@@ -368,7 +369,7 @@ impl LitString {
   }
 
   #[allow(unused_variables)]
-  pub(crate) fn finish<'t, C>(
+  pub(crate) fn finish<C>(
     &mut self,
     ctx: &mut LocalContext<'_, 't, C>,
   ) -> Result<Option<Type<'t>>, crate::CodegenError>
@@ -472,7 +473,7 @@ impl LitString {
         }
       },
       Self::Utf16(s) => {
-        let words = s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<_>>();
+        let words = s.encode_utf16().chain(iter::once(0)).collect::<Vec<_>>();
 
         let word_count = proc_macro2::Literal::usize_unsuffixed(words.len());
         let word_array = quote! { &[#(#words),*] };
@@ -492,7 +493,7 @@ impl LitString {
         }
       },
       Self::Utf32(s) => {
-        let dwords = s.chars().map(u32::from).chain(std::iter::once(0)).collect::<Vec<_>>();
+        let dwords = s.as_ref().chars().map(u32::from).chain(iter::once(0)).collect::<Vec<_>>();
 
         let dword_count = proc_macro2::Literal::usize_unsuffixed(dwords.len());
         let dword_array = quote! { &[#(#dwords),*] };
@@ -513,7 +514,7 @@ impl LitString {
       },
       Self::Wide(s) => {
         let wchars =
-          s.iter().cloned().chain(std::iter::once(0)).map(proc_macro2::Literal::u32_unsuffixed).collect::<Vec<_>>();
+          s.iter().cloned().chain(iter::once(0)).map(proc_macro2::Literal::u32_unsuffixed).collect::<Vec<_>>();
 
         let wchar_ty = if let Some(ty) = ctx.resolve_ty("wchar_t") {
           Type::from_rust_ty(&ty, ctx.ffi_prefix().as_ref()).unwrap().to_token_stream(ctx)
@@ -558,13 +559,26 @@ impl LitString {
       Self::Ordinary(ref bytes) => str::from_utf8(bytes).ok(),
       Self::Utf8(s) => Some(s.as_str()),
       Self::Utf16(s) => Some(s.as_str()),
-      Self::Utf32(s) => Some(s.as_str()),
+      Self::Utf32(s) => Some(s.as_ref()),
       _ => None,
     }
   }
+
+
+
+  pub(crate) fn into_static(self) -> LitString<'static> {
+    match self {
+      Self::Ordinary(bytes) => LitString::Ordinary(bytes),
+      Self::Utf8(s) => LitString::Utf8(s),
+      Self::Utf16(s) => LitString::Utf16(s),
+      Self::Utf32(s) => LitString::Utf32(Cow::Owned(s.into_owned())),
+      Self::Wide(words) => LitString::Wide(words),
+    }
+  }
+
 }
 
-impl<'t> TryFrom<&'t str> for LitString {
+impl<'t> TryFrom<&'t str> for LitString<'t> {
   type Error = nom::Err<nom::error::Error<&'t str>>;
 
   fn try_from(s: &'t str) -> Result<Self, Self::Error> {

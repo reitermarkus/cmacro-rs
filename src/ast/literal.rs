@@ -28,31 +28,31 @@ pub use self::string::*;
 
 /// A literal.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Lit {
+pub enum Lit<'t> {
   /// A character literal.
   Char(LitChar),
   /// A string literal.
-  String(LitString),
+  String(LitString<'t>),
   /// A floating-point literal.
   Float(LitFloat),
   /// An integer literal.
   Int(LitInt),
 }
 
-impl From<f32> for Lit {
-  fn from(f: f32) -> Lit {
+impl From<f32> for Lit<'_> {
+  fn from(f: f32) -> Self {
     Lit::Float(LitFloat::Float(f))
   }
 }
 
-impl From<f64> for Lit {
-  fn from(f: f64) -> Lit {
+impl From<f64> for Lit<'_> {
+  fn from(f: f64) -> Self {
     Lit::Float(LitFloat::Double(f))
   }
 }
 
-impl From<char> for Lit {
-  fn from(c: char) -> Lit {
+impl From<char> for Lit<'_> {
+  fn from(c: char) -> Self {
     let c = c as u32;
 
     if c <= 0xff {
@@ -63,14 +63,14 @@ impl From<char> for Lit {
   }
 }
 
-impl From<i32> for Lit {
-  fn from(n: i32) -> Lit {
+impl From<i32> for Lit<'_> {
+  fn from(n: i32) -> Self {
     Lit::Int(LitInt { value: n.into(), suffix: None })
   }
 }
 
-impl Lit {
-  pub(crate) fn parse_str(input: &str) -> IResult<&str, Self> {
+impl<'t> Lit<'t> {
+  pub(crate) fn parse_str(input: &'t str) -> IResult<&'t str, Self> {
     alt((
       map(LitChar::parse_str, Self::Char),
       map(LitString::parse_str, Self::String),
@@ -80,7 +80,7 @@ impl Lit {
   }
 
   /// Parse a literal.
-  pub fn parse<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
+  pub fn parse<'i>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
       map(LitChar::parse, Self::Char),
       map(LitString::parse, Self::String),
@@ -89,12 +89,10 @@ impl Lit {
     ))(input)
   }
 
-  pub(crate) fn finish<'t, C>(
+  pub(crate) fn finish<C: CodegenContext>(
     &mut self,
     ctx: &mut LocalContext<'_, 't, C>,
   ) -> Result<Option<Type<'t>>, crate::CodegenError>
-  where
-    C: CodegenContext,
   {
     match self {
       Self::Char(c) => c.finish(ctx),
@@ -103,6 +101,7 @@ impl Lit {
       Self::Int(i) => i.finish(ctx),
     }
   }
+
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
     match self {
       Self::Char(c) => c.to_tokens(ctx, tokens),
@@ -114,9 +113,19 @@ impl Lit {
       Self::Int(i) => i.to_tokens(ctx, tokens),
     }
   }
+
+  pub(crate) fn into_static(self) -> Lit<'static> {
+    match self {
+      Self::Char(c) => Lit::Char(c),
+      Self::String(s) => Lit::String(s.into_static()),
+      Self::Float(f) => Lit::Float(f),
+      Self::Int(i) => Lit::Int(i),
+    }
+  }
+
 }
 
-impl<'t> TryFrom<&'t str> for Lit {
+impl<'t> TryFrom<&'t str> for Lit<'t> {
   type Error = nom::Err<nom::error::Error<&'t str>>;
 
   fn try_from(s: &'t str) -> Result<Self, Self::Error> {
