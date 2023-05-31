@@ -12,7 +12,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 
 use super::{
-  tokens::{meta, parenthesized, token},
+  tokens::{meta, parenthesized, punct},
   Expr, LitString, Type,
 };
 use crate::{CodegenContext, LocalContext, MacroToken};
@@ -150,9 +150,9 @@ impl<'t> Asm<'t> {
         meta,
       ),
       opt(preceded(
-        delimited(meta, token(":"), meta),
+        delimited(meta, punct(":"), meta),
         separated_list0(
-          delimited(meta, token(","), meta),
+          delimited(meta, punct(","), meta),
           map(
             pair(
               map_opt(LitString::parse, |s| {
@@ -166,9 +166,9 @@ impl<'t> Asm<'t> {
         ),
       )),
       opt(preceded(
-        delimited(meta, token(":"), meta),
+        delimited(meta, punct(":"), meta),
         separated_list0(
-          delimited(meta, token(","), meta),
+          delimited(meta, punct(","), meta),
           pair(
             map_opt(LitString::parse, |s| {
               let (_, operands) = Self::parse_input_operands(s.as_str()?).ok()?;
@@ -179,8 +179,8 @@ impl<'t> Asm<'t> {
         ),
       )),
       opt(preceded(
-        delimited(meta, token(":"), meta),
-        separated_list0(tuple((meta, token(","), meta)), map_opt(LitString::parse, |s| Some(s.as_str()?.to_owned()))),
+        delimited(meta, punct(":"), meta),
+        separated_list0(tuple((meta, punct(","), meta)), map_opt(LitString::parse, |s| Some(s.as_str()?.to_owned()))),
       )),
     )))(tokens)?;
 

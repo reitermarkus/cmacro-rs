@@ -10,7 +10,10 @@ use nom::{
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
-use super::{tokens::parenthesized, *};
+use super::{
+  tokens::{parenthesized, punct},
+  *,
+};
 use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken};
 
 /// A function declaration.
@@ -31,7 +34,7 @@ impl<'t> FunctionDecl<'t> {
     let (tokens, ((_, ret_ty), name, args)) = tuple((
       permutation((opt(id("static")), Type::parse)),
       Expr::parse_concat_ident,
-      parenthesized(separated_list0(pair(meta, token(",")), pair(Type::parse, Expr::parse_concat_ident))),
+      parenthesized(separated_list0(pair(meta, punct(",")), pair(Type::parse, Expr::parse_concat_ident))),
     ))(tokens)?;
 
     Ok((tokens, Self { ret_ty, name, args }))

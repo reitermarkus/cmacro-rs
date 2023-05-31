@@ -58,7 +58,7 @@ impl<'t> Expr<'t> {
 
     fold_many0(
       preceded(
-        delimited(meta, token("##"), meta),
+        delimited(meta, punct("##"), meta),
         alt((
           map(macro_arg, Self::Arg),
           map(macro_id, |id| Self::Variable { name: id }),
@@ -192,19 +192,19 @@ impl<'t> Expr<'t> {
         preceded(
           meta,
           alt((
-            map(parenthesized(separated_list0(tuple((meta, token(","), meta)), Self::parse)), Access::Fn),
-            map(preceded(terminated(token("."), meta), Self::parse_concat_ident), |field| Access::Field {
+            map(parenthesized(separated_list0(tuple((meta, punct(","), meta)), Self::parse)), Access::Fn),
+            map(preceded(terminated(punct("."), meta), Self::parse_concat_ident), |field| Access::Field {
               field: Box::new(field),
               deref: false,
             }),
-            map(delimited(terminated(token("["), meta), Self::parse, preceded(meta, token("]"))), |index| {
+            map(delimited(terminated(punct("["), meta), Self::parse, preceded(meta, punct("]"))), |index| {
               Access::Array { index: Box::new(index) }
             }),
-            map(preceded(terminated(token("->"), meta), Self::parse_concat_ident), |field| Access::Field {
+            map(preceded(terminated(punct("->"), meta), Self::parse_concat_ident), |field| Access::Field {
               field: Box::new(field),
               deref: true,
             }),
-            map(alt((value(UnaryOp::PostInc, token("++")), value(UnaryOp::PostDec, token("--")))), |op| {
+            map(alt((value(UnaryOp::PostInc, punct("++")), value(UnaryOp::PostDec, punct("--")))), |op| {
               Access::UnaryOp(op)
             }),
           )),
@@ -249,14 +249,14 @@ impl<'t> Expr<'t> {
         pair(
           terminated(
             alt((
-              value(UnaryOp::Deref, token("*")),
-              value(UnaryOp::AddrOf, token("&")),
-              value(UnaryOp::Inc, token("++")),
-              value(UnaryOp::Dec, token("--")),
-              value(UnaryOp::Plus, token("+")),
-              value(UnaryOp::Minus, token("-")),
-              value(UnaryOp::Not, token("!")),
-              value(UnaryOp::Comp, token("~")),
+              value(UnaryOp::Deref, punct("*")),
+              value(UnaryOp::AddrOf, punct("&")),
+              value(UnaryOp::Inc, punct("++")),
+              value(UnaryOp::Dec, punct("--")),
+              value(UnaryOp::Plus, punct("+")),
+              value(UnaryOp::Minus, punct("-")),
+              value(UnaryOp::Not, punct("!")),
+              value(UnaryOp::Comp, punct("~")),
             )),
             meta,
           ),
@@ -275,7 +275,7 @@ impl<'t> Expr<'t> {
       pair(
         delimited(
           meta,
-          alt((value(BinaryOp::Mul, token("*")), value(BinaryOp::Div, token("/")), value(BinaryOp::Rem, token("%")))),
+          alt((value(BinaryOp::Mul, punct("*")), value(BinaryOp::Div, punct("/")), value(BinaryOp::Rem, punct("%")))),
           meta,
         ),
         Self::parse_term_prec2,
@@ -290,7 +290,7 @@ impl<'t> Expr<'t> {
 
     fold_many0(
       pair(
-        delimited(meta, alt((value(BinaryOp::Add, token("+")), value(BinaryOp::Sub, token("-")))), meta),
+        delimited(meta, alt((value(BinaryOp::Add, punct("+")), value(BinaryOp::Sub, punct("-")))), meta),
         Self::parse_term_prec3,
       ),
       move || term.clone(),
@@ -303,7 +303,7 @@ impl<'t> Expr<'t> {
 
     fold_many0(
       pair(
-        delimited(meta, alt((value(BinaryOp::Shl, token("<<")), value(BinaryOp::Shr, token(">>")))), meta),
+        delimited(meta, alt((value(BinaryOp::Shl, punct("<<")), value(BinaryOp::Shr, punct(">>")))), meta),
         Self::parse_term_prec4,
       ),
       move || term.clone(),
@@ -319,10 +319,10 @@ impl<'t> Expr<'t> {
         delimited(
           meta,
           alt((
-            value(BinaryOp::Lt, token("<")),
-            value(BinaryOp::Lte, token("<=")),
-            value(BinaryOp::Gt, token(">")),
-            value(BinaryOp::Gte, token(">=")),
+            value(BinaryOp::Lt, punct("<")),
+            value(BinaryOp::Lte, punct("<=")),
+            value(BinaryOp::Gt, punct(">")),
+            value(BinaryOp::Gte, punct(">=")),
           )),
           meta,
         ),
@@ -338,7 +338,7 @@ impl<'t> Expr<'t> {
 
     fold_many0(
       pair(
-        delimited(meta, alt((value(BinaryOp::Eq, token("==")), value(BinaryOp::Neq, token("!=")))), meta),
+        delimited(meta, alt((value(BinaryOp::Eq, punct("==")), value(BinaryOp::Neq, punct("!=")))), meta),
         Self::parse_term_prec6,
       ),
       move || term.clone(),
@@ -350,7 +350,7 @@ impl<'t> Expr<'t> {
     let (tokens, term) = Self::parse_term_prec7(tokens)?;
 
     fold_many0(
-      preceded(delimited(meta, token("&"), meta), Self::parse_term_prec7),
+      preceded(delimited(meta, punct("&"), meta), Self::parse_term_prec7),
       move || term.clone(),
       |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitAnd, rhs })),
     )(tokens)
@@ -360,7 +360,7 @@ impl<'t> Expr<'t> {
     let (tokens, term) = Self::parse_term_prec8(tokens)?;
 
     fold_many0(
-      preceded(delimited(meta, token("^"), meta), Self::parse_term_prec8),
+      preceded(delimited(meta, punct("^"), meta), Self::parse_term_prec8),
       move || term.clone(),
       |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitXor, rhs })),
     )(tokens)
@@ -370,7 +370,7 @@ impl<'t> Expr<'t> {
     let (tokens, term) = Self::parse_term_prec9(tokens)?;
 
     fold_many0(
-      preceded(delimited(meta, token("|"), meta), Self::parse_term_prec9),
+      preceded(delimited(meta, punct("|"), meta), Self::parse_term_prec9),
       move || term.clone(),
       |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitOr, rhs })),
     )(tokens)
@@ -380,9 +380,9 @@ impl<'t> Expr<'t> {
     let (tokens, term) = Self::parse_term_prec10(tokens)?;
 
     // Parse ternary.
-    if let Ok((tokens, _)) = delimited(meta, token("?"), meta)(tokens) {
+    if let Ok((tokens, _)) = delimited(meta, punct("?"), meta)(tokens) {
       let (tokens, if_branch) = Self::parse_term_prec7(tokens)?;
-      let (tokens, _) = delimited(meta, token(":"), meta)(tokens)?;
+      let (tokens, _) = delimited(meta, punct(":"), meta)(tokens)?;
       let (tokens, else_branch) = Self::parse_term_prec7(tokens)?;
       return Ok((tokens, Self::Ternary(Box::new(term), Box::new(if_branch), Box::new(else_branch))))
     }
@@ -398,17 +398,17 @@ impl<'t> Expr<'t> {
         delimited(
           meta,
           alt((
-            value(BinaryOp::Assign, token("=")),
-            value(BinaryOp::AddAssign, token("+=")),
-            value(BinaryOp::SubAssign, token("-=")),
-            value(BinaryOp::MulAssign, token("*=")),
-            value(BinaryOp::DivAssign, token("/=")),
-            value(BinaryOp::RemAssign, token("%=")),
-            value(BinaryOp::ShlAssign, token("<<=")),
-            value(BinaryOp::ShrAssign, token(">>=")),
-            value(BinaryOp::BitAndAssign, token("&=")),
-            value(BinaryOp::BitXorAssign, token("^=")),
-            value(BinaryOp::BitOrAssign, token("|=")),
+            value(BinaryOp::Assign, punct("=")),
+            value(BinaryOp::AddAssign, punct("+=")),
+            value(BinaryOp::SubAssign, punct("-=")),
+            value(BinaryOp::MulAssign, punct("*=")),
+            value(BinaryOp::DivAssign, punct("/=")),
+            value(BinaryOp::RemAssign, punct("%=")),
+            value(BinaryOp::ShlAssign, punct("<<=")),
+            value(BinaryOp::ShrAssign, punct(">>=")),
+            value(BinaryOp::BitAndAssign, punct("&=")),
+            value(BinaryOp::BitXorAssign, punct("^=")),
+            value(BinaryOp::BitOrAssign, punct("|=")),
           )),
           meta,
         ),
@@ -962,7 +962,8 @@ mod tests {
   use super::*;
 
   use crate::macro_set::{
-    arg as macro_arg, char as macro_char, id as macro_id, int as macro_int, string as macro_string, tokens,
+    arg as macro_arg, char as macro_char, id as macro_id, int as macro_int, punct as macro_punct,
+    string as macro_string, tokens,
   };
 
   #[test]
@@ -976,7 +977,7 @@ mod tests {
 
   #[test]
   fn parse_stringify() {
-    let (_, expr) = Expr::parse(tokens!["#", macro_arg!(0)]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_punct!("#"), macro_arg!(0)]).unwrap();
     assert_eq!(expr, Expr::Stringify(Stringify { arg: Box::new(arg!(0)) }));
   }
 
@@ -985,7 +986,7 @@ mod tests {
     let (_, expr) = Expr::parse(tokens![macro_string!("abc"), macro_string!("def")]).unwrap();
     assert_eq!(expr, Expr::Literal(Lit::String(LitString::Ordinary("abcdef".as_bytes().into()))));
 
-    let (_, expr) = Expr::parse(tokens![macro_string!("def"), "#", macro_arg!(0)]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_string!("def"), macro_punct!("#"), macro_arg!(0)]).unwrap();
     assert_eq!(
       expr,
       Expr::ConcatString(vec![
@@ -997,37 +998,39 @@ mod tests {
 
   #[test]
   fn parse_concat_ident() {
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", macro_id!(def)]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_id!(def)]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(def)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", macro_id!(def), "##", macro_id!(ghi)]).unwrap();
+    let (_, id) =
+      Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_id!(def), macro_punct!("##"), macro_id!(ghi)])
+        .unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(def), var!(ghi)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", macro_id!(_def)]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_id!(_def)]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(_def)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "123"]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), "123"]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "123def"]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), "123def"]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), "##", "123def456ghi"]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), "123def456ghi"]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def456ghi)]));
 
-    let (_, id) = Expr::parse(tokens![macro_id!(__INT), "##", macro_id!(_MAX__)]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_id!(__INT), macro_punct!("##"), macro_id!(_MAX__)]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![var!(__INT), var!(_MAX__)]));
   }
 
   #[test]
   fn parse_field_access() {
-    let (_, expr) = Expr::parse(tokens![macro_id!(a), ".", macro_id!(b)]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), macro_punct!("."), macro_id!(b)]).unwrap();
     assert_eq!(expr, Expr::FieldAccess { expr: Box::new(var!(a)), field: Box::new(var!(b)) });
   }
 
   #[test]
   fn parse_pointer_access() {
-    let (_, expr) = Expr::parse(tokens![macro_id!(a), "->", macro_id!(b)]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), macro_punct!("->"), macro_id!(b)]).unwrap();
     assert_eq!(
       expr,
       Expr::FieldAccess {
@@ -1039,10 +1042,19 @@ mod tests {
 
   #[test]
   fn parse_array_access() {
-    let (_, expr) = Expr::parse(tokens![macro_id!(a), "[", macro_int!(0), "]"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), macro_punct!("["), macro_int!(0), macro_punct!("]")]).unwrap();
     assert_eq!(expr, Expr::ArrayAccess { expr: Box::new(var!(a)), index: Box::new(lit!(0)) });
 
-    let (_, expr) = Expr::parse(tokens![macro_id!(a), "[", macro_int!(0), "]", "[", macro_int!(1), "]"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![
+      macro_id!(a),
+      macro_punct!("["),
+      macro_int!(0),
+      macro_punct!("]"),
+      macro_punct!("["),
+      macro_int!(1),
+      macro_punct!("]")
+    ])
+    .unwrap();
     assert_eq!(
       expr,
       Expr::ArrayAccess {
@@ -1051,13 +1063,14 @@ mod tests {
       }
     );
 
-    let (_, expr) = Expr::parse(tokens![macro_id!(a), "[", macro_id!(b), "]"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![macro_id!(a), macro_punct!("["), macro_id!(b), macro_punct!("]")]).unwrap();
     assert_eq!(expr, Expr::ArrayAccess { expr: Box::new(var!(a)), index: Box::new(var!(b)) });
   }
 
   #[test]
   fn parse_assignment() {
-    let (_, expr) = Expr::parse(tokens![macro_id!(a), "=", macro_id!(b), "=", macro_id!(c)]).unwrap();
+    let (_, expr) =
+      Expr::parse(tokens![macro_id!(a), macro_punct!("="), macro_id!(b), macro_punct!("="), macro_id!(c)]).unwrap();
     assert_eq!(
       expr,
       Expr::Binary(Box::new(BinaryExpr {
@@ -1070,8 +1083,15 @@ mod tests {
 
   #[test]
   fn parse_function_call() {
-    let (_, expr) =
-      Expr::parse(tokens![macro_id!(my_function), "(", macro_id!(arg1), ",", macro_id!(arg2), ")"]).unwrap();
+    let (_, expr) = Expr::parse(tokens![
+      macro_id!(my_function),
+      macro_punct!("("),
+      macro_id!(arg1),
+      macro_punct!(","),
+      macro_id!(arg2),
+      macro_punct!(")")
+    ])
+    .unwrap();
     assert_eq!(
       expr,
       Expr::FunctionCall(FunctionCall { name: Box::new(var!(my_function)), args: vec![var!(arg1), var!(arg2)] })
@@ -1080,7 +1100,9 @@ mod tests {
 
   #[test]
   fn parse_paren() {
-    let (_, expr) = Expr::parse(tokens!["(", "-", macro_int!(ull 123456789012), ")"]).unwrap();
+    let (_, expr) =
+      Expr::parse(tokens![macro_punct!("("), macro_punct!("-"), macro_int!(ull 123456789012), macro_punct!(")")])
+        .unwrap();
     assert_eq!(
       expr,
       Expr::Unary(Box::new(UnaryExpr {

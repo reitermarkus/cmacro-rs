@@ -10,7 +10,10 @@ use nom::{
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
-use super::{tokens::parenthesized, *};
+use super::{
+  tokens::{parenthesized, punct},
+  *,
+};
 use crate::{CodegenContext, LocalContext, MacroToken};
 
 /// A statement.
@@ -43,7 +46,7 @@ impl<'t> Statement<'t> {
     let condition = |input| parenthesized(Expr::parse)(input);
     let block =
       |input| map(Self::parse_single, |stmt| if let Self::Block(stmts) = stmt { stmts } else { vec![stmt] })(input);
-    let semicolon_or_eof = |input| alt((value((), token(";")), value((), eof)))(input);
+    let semicolon_or_eof = |input| alt((value((), punct(";")), value((), eof)))(input);
 
     alt((
       map(
@@ -62,7 +65,7 @@ impl<'t> Statement<'t> {
         Self::DoWhile { block, condition }
       }),
       map(
-        delimited(terminated(token("{"), meta), many0(preceded(meta, Self::parse_single)), preceded(meta, token("}"))),
+        delimited(terminated(punct("{"), meta), many0(preceded(meta, Self::parse_single)), preceded(meta, punct("}"))),
         Self::Block,
       ),
       map(terminated(FunctionDecl::parse, semicolon_or_eof), Self::FunctionDecl),
@@ -184,11 +187,12 @@ impl<'t> Statement<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_set::{id as macro_id, int as macro_int, tokens};
+  use crate::macro_set::{id as macro_id, int as macro_int, punct as macro_punct, tokens};
 
   #[test]
   fn parse_expr() {
-    let (_, stmt) = Statement::parse(tokens![macro_id!(a), "+=", macro_int!(2), ";"]).unwrap();
+    let (_, stmt) =
+      Statement::parse(tokens![macro_id!(a), macro_punct!("+="), macro_int!(2), macro_punct!(";")]).unwrap();
     assert_eq!(
       stmt,
       Statement::Expr(Expr::Binary(Box::new(BinaryExpr { lhs: var!(a), op: BinaryOp::AddAssign, rhs: lit!(2) })))
@@ -197,13 +201,22 @@ mod tests {
 
   #[test]
   fn parse_empty_block() {
-    let (_, stmt) = Statement::parse(tokens!["{", "}"]).unwrap();
+    let (_, stmt) = Statement::parse(tokens![macro_punct!("{"), macro_punct!("}")]).unwrap();
     assert_eq!(stmt, Statement::Block(vec![]));
   }
 
   #[test]
   fn parse_block() {
-    let (_, stmt) = Statement::parse(tokens!["{", macro_id!(int), macro_id!(a), "=", macro_int!(0), ";", "}"]).unwrap();
+    let (_, stmt) = Statement::parse(tokens![
+      macro_punct!("{"),
+      macro_id!(int),
+      macro_id!(a),
+      macro_punct!("="),
+      macro_int!(0),
+      macro_punct!(";"),
+      macro_punct!("}")
+    ])
+    .unwrap();
     assert_eq!(
       stmt,
       Statement::Block(vec![Statement::Decl(Decl {
@@ -217,7 +230,15 @@ mod tests {
 
   #[test]
   fn parse_if_stmt() {
-    let (_, stmt) = Statement::parse(tokens![macro_id!(if), "(", macro_id!(a), ")", macro_id!(b), ";"]).unwrap();
+    let (_, stmt) = Statement::parse(tokens![
+      macro_id!(if),
+      macro_punct!("("),
+      macro_id!(a),
+      macro_punct!(")"),
+      macro_id!(b),
+      macro_punct!(";")
+    ])
+    .unwrap();
     assert_eq!(
       stmt,
       Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
@@ -228,14 +249,14 @@ mod tests {
   fn parse_if_else_stmt() {
     let (_, stmt) = Statement::parse(tokens![
       macro_id!(if),
-      "(",
+      macro_punct!("("),
       macro_id!(a),
-      ")",
+      macro_punct!(")"),
       macro_id!(b),
-      ";",
+      macro_punct!(";"),
       macro_id!(else),
       macro_id!(c),
-      ";"
+      macro_punct!(";")
     ])
     .unwrap();
     assert_eq!(
@@ -250,8 +271,17 @@ mod tests {
 
   #[test]
   fn parse_if_block() {
-    let (_, stmt) =
-      Statement::parse(tokens![macro_id!(if), "(", macro_id!(a), ")", "{", macro_id!(b), ";", "}"]).unwrap();
+    let (_, stmt) = Statement::parse(tokens![
+      macro_id!(if),
+      macro_punct!("("),
+      macro_id!(a),
+      macro_punct!(")"),
+      macro_punct!("{"),
+      macro_id!(b),
+      macro_punct!(";"),
+      macro_punct!("}")
+    ])
+    .unwrap();
     assert_eq!(
       stmt,
       Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
@@ -262,18 +292,18 @@ mod tests {
   fn parse_if_else_block() {
     let (_, stmt) = Statement::parse(tokens![
       macro_id!(if),
-      "(",
+      macro_punct!("("),
       macro_id!(a),
-      ")",
-      "{",
+      macro_punct!(")"),
+      macro_punct!("{"),
       macro_id!(b),
-      ";",
-      "}",
+      macro_punct!(";"),
+      macro_punct!("}"),
       macro_id!(else),
-      "{",
+      macro_punct!("{"),
       macro_id!(c),
-      ";",
-      "}"
+      macro_punct!(";"),
+      macro_punct!("}")
     ])
     .unwrap();
     assert_eq!(
@@ -288,16 +318,33 @@ mod tests {
 
   #[test]
   fn parse_do_while_stmt() {
-    let (_, stmt) =
-      Statement::parse(tokens![macro_id!(do), macro_id!(a), ";", macro_id!(while), "(", macro_id!(b), ")"]).unwrap();
+    let (_, stmt) = Statement::parse(tokens![
+      macro_id!(do),
+      macro_id!(a),
+      macro_punct!(";"),
+      macro_id!(while),
+      macro_punct!("("),
+      macro_id!(b),
+      macro_punct!(")")
+    ])
+    .unwrap();
     assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
   }
 
   #[test]
   fn parse_do_while_block() {
-    let (_, stmt) =
-      Statement::parse(tokens![macro_id!(do), "{", macro_id!(a), ";", "}", macro_id!(while), "(", macro_id!(b), ")"])
-        .unwrap();
+    let (_, stmt) = Statement::parse(tokens![
+      macro_id!(do),
+      macro_punct!("{"),
+      macro_id!(a),
+      macro_punct!(";"),
+      macro_punct!("}"),
+      macro_id!(while),
+      macro_punct!("("),
+      macro_id!(b),
+      macro_punct!(")")
+    ])
+    .unwrap();
     assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
   }
 }

@@ -10,7 +10,7 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{
-  tokens::{macro_arg, macro_id, meta, token},
+  tokens::{macro_arg, macro_id, meta, punct},
   BuiltInType, Type,
 };
 use crate::{CodegenContext, Expr, LocalContext, MacroArgType, MacroToken};
@@ -29,7 +29,7 @@ impl<'t> Stringify<'t> {
   /// Parse a stringification expression.
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     preceded(
-      terminated(token("#"), meta),
+      terminated(punct("#"), meta),
       alt((
         map(macro_arg, |arg| Self { arg: Box::new(Expr::Arg(arg)) }),
         map(macro_id, |id| Self { arg: Box::new(Expr::Variable { name: id }) }),
@@ -107,12 +107,12 @@ mod tests {
 
   use crate::{
     ast::arg,
-    macro_set::{arg as macro_arg, tokens},
+    macro_set::{arg as macro_arg, punct as macro_punct, tokens},
   };
 
   #[test]
   fn parse_stringify() {
-    let (_, ty) = Stringify::parse(tokens!["#", macro_arg!(0)]).unwrap();
+    let (_, ty) = Stringify::parse(tokens![macro_punct!("#"), macro_arg!(0)]).unwrap();
     assert_eq!(ty, Stringify { arg: Box::new(arg!(0)) });
   }
 }

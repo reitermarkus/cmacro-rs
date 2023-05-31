@@ -11,7 +11,8 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use crate::{
-  ast::macro_id, is_identifier, meta, token, CodegenContext, LocalContext, MacroArgType, MacroBody, MacroToken, Type,
+  ast::{macro_id, meta, punct},
+  is_identifier, CodegenContext, LocalContext, MacroArgType, MacroBody, MacroToken, Type,
 };
 
 /// A function-like macro.
@@ -106,14 +107,14 @@ impl<'t> FnMacro<'t> {
   fn parse_args<'i>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Vec<String>> {
     all_consuming(terminated(
       alt((
-        map(preceded(meta, token("...")), |var_arg| vec![var_arg.to_owned()]),
+        map(preceded(meta, punct("...")), |var_arg| vec![var_arg.to_owned()]),
         map(
           tuple((
             fold_many0(preceded(meta, macro_id), Vec::new, |mut acc, arg| {
               acc.push(arg.id.into_owned());
               acc
             }),
-            preceded(meta, opt(map(token("..."), |var_arg| var_arg.to_owned()))),
+            preceded(meta, opt(map(punct("..."), |var_arg| var_arg.to_owned()))),
           )),
           |(arguments, var_arg)| {
             let mut arguments = arguments.to_vec();

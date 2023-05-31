@@ -11,7 +11,7 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens, TokenStreamExt};
 
 use super::*;
-use crate::{CodegenContext, LocalContext, MacroToken};
+use crate::{macro_set::is_punctuation, CodegenContext, LocalContext, MacroToken};
 
 /// A built-in type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,7 +288,7 @@ impl<'t> Type<'t> {
     let (tokens, ty) = delimited(const_qualifier, ty, const_qualifier)(tokens)?;
 
     fold_many0(
-      preceded(pair(token("*"), meta), const_qualifier),
+      preceded(pair(punct("*"), meta), const_qualifier),
       move || ty.clone(),
       |acc, is_const| Self::Ptr { ty: Box::new(acc), mutable: !is_const },
     )(tokens)
@@ -442,6 +442,8 @@ impl FromStr for Type<'static> {
       .map(|t| {
         if let Ok(identifier) = LitIdent::try_from(t) {
           MacroToken::Id(identifier)
+        } else if is_punctuation(t) {
+          MacroToken::Punctuation(t)
         } else {
           MacroToken::Token(Cow::Borrowed(t))
         }
@@ -460,7 +462,7 @@ impl FromStr for Type<'static> {
 mod tests {
   use super::*;
 
-  use crate::macro_set::{id as macro_id, tokens};
+  use crate::macro_set::{id as macro_id, punct as macro_punct, tokens};
 
   #[test]
   fn parse_builtin_from_syn_type() {
@@ -575,13 +577,14 @@ mod tests {
 
   #[test]
   fn parse_ptr() {
-    let (_, ty) = Type::parse(tokens![macro_id!(void), "*"]).unwrap();
+    let (_, ty) = Type::parse(tokens![macro_id!(void), macro_punct!("*")]).unwrap();
     assert_eq!(ty, ty!(*mut BuiltInType::Void));
 
-    let (_, ty) = Type::parse(tokens![macro_id!(void), "*", macro_id!(const)]).unwrap();
+    let (_, ty) = Type::parse(tokens![macro_id!(void), macro_punct!("*"), macro_id!(const)]).unwrap();
     assert_eq!(ty, ty!(*const BuiltInType::Void));
 
-    let (_, ty) = Type::parse(tokens![macro_id!(void), "*", macro_id!(const), "*"]).unwrap();
+    let (_, ty) =
+      Type::parse(tokens![macro_id!(void), macro_punct!("*"), macro_id!(const), macro_punct!("*")]).unwrap();
     assert_eq!(ty, ty!(*mut *const BuiltInType::Void));
   }
 
@@ -596,7 +599,7 @@ mod tests {
     let (_, ty) = Type::parse(tokens![macro_id!(const), macro_id!(int), macro_id!(const)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Int));
 
-    let (_, ty) = Type::parse(tokens![macro_id!(const), macro_id!(int), "*", macro_id!(const)]).unwrap();
+    let (_, ty) = Type::parse(tokens![macro_id!(const), macro_id!(int), macro_punct!("*"), macro_id!(const)]).unwrap();
     assert_eq!(ty, ty!(*const BuiltInType::Int));
   }
 

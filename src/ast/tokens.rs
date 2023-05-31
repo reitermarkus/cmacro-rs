@@ -1,6 +1,5 @@
 use nom::{
-  bytes::complete::tag,
-  combinator::{all_consuming, map_opt, value, verify},
+  combinator::{map_opt, value, verify},
   multi::many0,
   sequence::{delimited, pair},
   IResult, Parser,
@@ -17,13 +16,6 @@ pub(crate) fn macro_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [Ma
 
 pub(crate) fn macro_id<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent<'t>> {
   map_opt(take_one, |token| if let MacroToken::Id(id) = token { Some(id.clone()) } else { None })(tokens)
-}
-
-pub(crate) fn macro_token<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'i str> {
-  map_opt(take_one, |token| {
-    let token = if let MacroToken::Token(token) = token { token } else { return None };
-    Some(token.as_ref())
-  })(tokens)
 }
 
 pub(crate) fn take_one<I>(tokens: &[I]) -> IResult<&[I], &I>
@@ -48,31 +40,18 @@ pub(crate) fn meta<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroTok
   many0(comment)(input)
 }
 
-pub(crate) fn map_token<'i, 't, O, P>(
-  mut parser: P,
-) -> impl FnMut(&'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], O>
-where
-  't: 'i,
-  P: FnMut(&'i str) -> IResult<&'i str, O>,
-{
-  move |input: &'i [MacroToken<'t>]| match macro_token(input) {
-    Ok((rest, token)) => {
-      let (_, output) = all_consuming(&mut parser)(token)
-        .map_err(|err: nom::Err<nom::error::Error<&'i str>>| err.map_input(|_| input))?;
-
-      Ok((rest, output))
-    },
-    Err(err) => Err(err),
-  }
-}
-
-pub(crate) fn token<'i, 't>(
-  token: &'static str,
+pub(crate) fn punct<'i, 't>(
+  punct: &'static str,
 ) -> impl Fn(&'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'static str>
 where
   't: 'i,
 {
-  move |tokens| map_token(value(token, tag(token)))(tokens)
+  move |tokens| {
+    value(
+      punct,
+      verify(take_one, move |token| if let MacroToken::Punctuation(p) = token { punct == *p } else { false }),
+    )(tokens)
+  }
 }
 
 pub(crate) fn id<'i, 't>(
@@ -93,5 +72,5 @@ where
   't: 'i,
   F: Parser<&'i [MacroToken<'t>], O, nom::error::Error<&'i [MacroToken<'t>]>>,
 {
-  delimited(pair(token("("), meta), f, pair(meta, token(")")))
+  delimited(pair(punct("("), meta), f, pair(meta, punct(")")))
 }
