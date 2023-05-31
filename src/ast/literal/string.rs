@@ -1,4 +1,9 @@
-use std::{borrow::Cow, fmt::Debug, str};
+use std::{
+  borrow::Cow,
+  fmt::Debug,
+  str::{self, Utf8Error},
+  string::FromUtf16Error,
+};
 
 use nom::{
   branch::alt,
@@ -7,7 +12,7 @@ use nom::{
   combinator::{all_consuming, map, map_opt, map_res, opt},
   multi::{fold_many0, many0},
   sequence::{delimited, preceded},
-  AsChar, IResult, InputIter,
+  IResult,
 };
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -58,41 +63,61 @@ pub enum LitString {
 
 impl LitString {
   /// Parse
-  fn parse_ordinary(input: &str) -> IResult<&str, Vec<u8>> {
+  fn parse_ordinary<'t>(input: &'t str) -> IResult<&str, Cow<'t, [u8]>> {
     delimited(
       char('\"'),
       fold_many0(
         alt((
           map_opt(escaped_char, |c| {
             if let Ok(c) = u8::try_from(c) {
-              Some(vec![c])
+              Some(Cow::Owned(vec![c]))
             } else if let Ok(c) = char::try_from(c) {
               let mut s = [0; 4];
-              Some(c.encode_utf8(&mut s).as_bytes().to_vec())
+              Some(Cow::Owned(c.encode_utf8(&mut s).as_bytes().to_vec()))
             } else {
               None
             }
           }),
-          map(is_not("\\\"\n"), |b: &str| {
-            let s: String = b.iter_elements().map(|c| c.as_char()).collect();
-            s.into_bytes()
-          }),
+          map(is_not("\\\"\n"), |b: &str| Cow::Borrowed(b.as_bytes())),
         )),
-        Vec::new,
-        |mut acc, c| {
-          acc.extend(c);
-          acc
+        || Cow::Borrowed(&[] as &[u8]),
+        |mut acc: Cow<'t, [u8]>, c| {
+          if acc.as_ref().is_empty() {
+            c
+          } else {
+            acc.to_mut().extend(c.as_ref());
+            acc
+          }
         },
       ),
       char('\"'),
     )(input)
   }
 
-  fn parse_utf8(input: &str) -> IResult<&str, String> {
-    map_res(Self::parse_ordinary, String::from_utf8)(input)
+  fn parse_utf8<'t>(input: &'t str) -> IResult<&'t str, Cow<'t, str>> {
+    map_res(Self::parse_ordinary, |bytes| -> Result<Cow<'t, str>, Utf8Error> {
+      match bytes {
+        Cow::Borrowed(bytes) => Ok(Cow::Borrowed(str::from_utf8(bytes)?)),
+        Cow::Owned(bytes) => Ok(Cow::Owned(String::from_utf8(bytes).map_err(|e| e.utf8_error())?)),
+      }
+    })(input)
   }
 
-  fn parse_utf16(input: &str) -> IResult<&str, String> {
+  fn parse_utf16<'t>(input: &'t str) -> IResult<&'t str, Cow<'t, str>> {
+    enum Part<'t> {
+      Vec(Vec<u16>),
+      String(Cow<'t, str>),
+    }
+
+    impl<'t> Part<'t> {
+      fn into_vec(self) -> Vec<u16> {
+        match self {
+          Self::Vec(vec) => vec,
+          Self::String(s) => s.as_ref().encode_utf16().collect(),
+        }
+      }
+    }
+
     map_res(
       delimited(
         char('\"'),
@@ -100,35 +125,71 @@ impl LitString {
           alt((
             map_opt(escaped_char, |c| {
               if let Ok(c) = u16::try_from(c) {
-                Some(vec![c])
+                Some(Part::Vec(vec![c]))
               } else if let Ok(c) = char::try_from(c) {
                 let mut s = [0; 2];
-                Some(c.encode_utf16(&mut s).to_vec())
+                Some(Part::Vec(c.encode_utf16(&mut s).to_vec()))
               } else {
                 None
               }
             }),
-            map(is_not("\\\"\n"), |b: &str| {
-              let s: String = b.iter_elements().map(|c| c.as_char()).collect();
-              s.encode_utf16().collect()
-            }),
+            map(is_not("\\\"\n"), |s: &str| Part::String(Cow::Borrowed(s))),
           )),
-          Vec::new,
-          |mut acc, c| {
-            acc.extend(c);
-            acc
+          || Part::String(Cow::Borrowed("")),
+          |acc, c| match (acc, c) {
+            (Part::String(s), c) if s.as_ref().is_empty() => c,
+            (Part::String(mut s), Part::String(c)) => {
+              s.to_mut().push_str(c.as_ref());
+              Part::String(s)
+            },
+            (s, c) => {
+              let mut acc = s.into_vec();
+              acc.extend(c.into_vec());
+              Part::Vec(acc)
+            },
           },
         ),
         char('\"'),
       ),
-      |v| String::from_utf16(&v),
+      |part| -> Result<Cow<'t, str>, FromUtf16Error> {
+        match part {
+          Part::String(s) => Ok(s),
+          Part::Vec(v) => Ok(Cow::Owned(String::from_utf16(&v)?)),
+        }
+      },
     )(input)
   }
 
-  fn parse_utf32(input: &str) -> IResult<&str, String> {
-    map(
-      delimited(char('\"'), many0(alt((map_res(escaped_char, char::try_from), none_of("\\\"\n")))), char('\"')),
-      |chars| chars.into_iter().collect::<String>(),
+  fn parse_utf32(input: &str) -> IResult<&str, Cow<'_, str>> {
+    enum Part<'t> {
+      Char(char),
+      String(Cow<'t, str>),
+    }
+
+    delimited(
+      char('\"'),
+      fold_many0(
+        alt((
+          map_res(escaped_char, |c| char::try_from(c).map(Part::Char)),
+          map(is_not("\\\"\n"), |s| Part::String(Cow::Borrowed(s))),
+        )),
+        || Cow::Borrowed(""),
+        |mut acc, c| match c {
+          Part::Char(c) => {
+            acc.to_mut().push(c);
+            acc
+          },
+          Part::String(s) => {
+            if acc.as_ref().is_empty() {
+              s
+            } else {
+              acc.to_mut().push_str(s.as_ref());
+              acc
+            }
+          },
+        },
+      ),
+      char('\"'),
     )(input)
   }
 
@@ -138,10 +199,10 @@ impl LitString {
 
   pub(crate) fn parse_str(input: &str) -> IResult<&str, Self> {
     alt((
-      map(Self::parse_ordinary, Self::Ordinary),
-      preceded(tag("u8"), map(Self::parse_utf8, Self::Utf8)),
-      preceded(tag("u"), map(Self::parse_utf16, Self::Utf16)),
-      preceded(tag("U"), map(Self::parse_utf32, Self::Utf32)),
+      map(Self::parse_ordinary, |bytes| Self::Ordinary(bytes.into_owned())),
+      preceded(tag("u8"), map(Self::parse_utf8, |s| Self::Utf8(s.into_owned()))),
+      preceded(tag("u"), map(Self::parse_utf16, |s| Self::Utf16(s.into_owned()))),
+      preceded(tag("U"), map(Self::parse_utf32, |s| Self::Utf32(s.into_owned()))),
       preceded(tag("L"), map(Self::parse_wide, Self::Wide)),
     ))(input)
   }
@@ -157,10 +218,10 @@ impl LitString {
       Self::Ordinary(bytes) => map(
         fold_many0(
           map_opt(take_one, |token| match token {
-            MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => Some(Cow::Borrowed(bytes)),
+            MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => Some(Cow::Borrowed(bytes.as_ref())),
             MacroToken::Token(token) => {
               if let Ok((_, s)) = all_consuming(Self::parse_ordinary)(token.as_ref()) {
-                Some(Cow::Owned(s))
+                Some(s)
               } else {
                 None
               }
@@ -179,18 +240,18 @@ impl LitString {
         fold_many0(
           alt((
             map_opt(take_one, |token| match token {
-              MacroToken::Lit(Lit::String(LitString::Utf8(s))) => Some(Cow::Borrowed(s)),
+              MacroToken::Lit(Lit::String(LitString::Utf8(s))) => Some(Cow::Borrowed(s.as_ref())),
               _ => None,
             }),
             preceded(
               opt(id("u8")),
               map_opt(take_one, |token| match token {
                 MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
-                  Some(Cow::Owned(bytes.iter().map(|b| char::from_u32(u32::from(*b))).collect::<Option<String>>()?))
+                  Some(Cow::Borrowed(str::from_utf8(bytes.as_ref()).ok()?))
                 },
                 MacroToken::Token(token) => {
                   if let Ok((_, s)) = all_consuming(Self::parse_utf8)(token.as_ref()) {
-                    Some(Cow::Owned(s))
+                    Some(s)
                   } else {
                     None
                   }
@@ -211,18 +272,18 @@ impl LitString {
         fold_many0(
           alt((
             map_opt(take_one, |token| match token {
-              MacroToken::Lit(Lit::String(LitString::Utf16(s))) => Some(Cow::Borrowed(s)),
+              MacroToken::Lit(Lit::String(LitString::Utf16(s))) => Some(Cow::Borrowed(s.as_ref())),
               _ => None,
             }),
             preceded(
               opt(id("u")),
               map_opt(take_one, |token| match token {
                 MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
-                  Some(Cow::Owned(bytes.iter().map(|b| char::from_u32(u32::from(*b))).collect::<Option<String>>()?))
+                  Some(Cow::Borrowed(str::from_utf8(bytes.as_ref()).ok()?))
                 },
                 MacroToken::Token(token) => {
                   if let Ok((_, s)) = all_consuming(Self::parse_utf16)(token.as_ref()) {
-                    Some(Cow::Owned(s))
+                    Some(s)
                   } else {
                     None
                   }
@@ -243,18 +304,18 @@ impl LitString {
         fold_many0(
           alt((
             map_opt(take_one, |token| match token {
-              MacroToken::Lit(Lit::String(LitString::Utf32(s))) => Some(Cow::Borrowed(s)),
+              MacroToken::Lit(Lit::String(LitString::Utf32(s))) => Some(Cow::Borrowed(s.as_ref())),
               _ => None,
             }),
             preceded(
               opt(id("U")),
               map_opt(take_one, |token| match token {
                 MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
-                  Some(Cow::Owned(bytes.iter().map(|b| char::from_u32(u32::from(*b))).collect::<Option<String>>()?))
+                  Some(Cow::Borrowed(str::from_utf8(bytes.as_ref()).ok()?))
                 },
                 MacroToken::Token(token) => {
                   if let Ok((_, s)) = all_consuming(Self::parse_utf32)(token.as_ref()) {
-                    Some(Cow::Owned(s))
+                    Some(s)
                   } else {
                     None
                   }
