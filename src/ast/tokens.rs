@@ -55,12 +55,26 @@ where
 }
 
 pub(crate) fn id<'i, 't>(
-  token: &'static str,
+  id: &'static str,
 ) -> impl Fn(&'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'static str>
 where
   't: 'i,
 {
-  move |tokens| value(token, verify(macro_id, move |id| id.id.as_ref() == token))(tokens)
+  move |tokens| {
+    value(
+      id,
+      verify(
+        take_one,
+        move |token| {
+          if let MacroToken::Id(identifier) = token {
+            identifier.id.as_ref() == id
+          } else {
+            false
+          }
+        },
+      ),
+    )(tokens)
+  }
 }
 
 pub(crate) use id as keyword;
