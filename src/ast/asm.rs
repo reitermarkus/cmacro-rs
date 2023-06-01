@@ -342,8 +342,7 @@ mod tests {
       macro_punct!("("),
       macro_id!(n),
       macro_punct!(")"),
-      macro_punct!(")"),
-      macro_punct!(";")
+      macro_punct!(")")
     ])
     .unwrap();
     assert_eq!(
@@ -354,6 +353,26 @@ mod tests {
         inputs: vec![(RegConstraint::Digit(0), var!(n))],
         clobbers: vec![]
       }
+    );
+  }
+
+  #[test]
+  fn parse_asm_memory_barrier() {
+    let (_, stmt) = Asm::parse(tokens![
+      macro_id!(__asm__),
+      macro_id!(volatile),
+      macro_punct!("("),
+      macro_string!(""),
+      macro_punct!(":"),
+      macro_punct!(":"),
+      macro_punct!(":"),
+      macro_string!("memory"),
+      macro_punct!(")")
+    ])
+    .unwrap();
+    assert_eq!(
+      stmt,
+      Asm { template: vec!["".into()], outputs: vec![], inputs: vec![], clobbers: vec!["memory".into()] }
     );
   }
 }
