@@ -23,17 +23,19 @@ use crate::{
 /// therefore the argument types cannot be inferred and the macro is
 /// generated as a Rust macro.
 ///
-/// ```ignore
+/// ```
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use cmacro::{FnMacro, CodegenContext};
+/// use cmacro::{CodegenContext, FnMacro, MacroSet};
 /// use quote::quote;
 ///
-/// // #define FUNC(a, b, c) a + b * c
-/// let name = "FUNC";
-/// let args = ["a", "b", "c"];
-/// let value = ["$a", "+", "$b", "*", "$c"];
+/// let mut macro_set = MacroSet::new();
 ///
-/// let mut fn_macro = FnMacro::parse(name, &args, &value)?;
+/// // #define FUNC(a, b, c) a + b * c
+/// macro_set.define_fn_macro("FUNC", &["a", "b", "c"], &["a", "+", "b", "*", "c"]);
+///
+/// let (args, body) = macro_set.expand_fn_macro("FUNC")?;
+/// let mut fn_macro = FnMacro::parse("FUNC", &args, &body)?;
+///
 /// let output = fn_macro.generate(())?;
 /// assert_eq!(
 ///   output.to_string(),
@@ -60,28 +62,30 @@ use crate::{
 /// [`CodegenContext::function_macro`] methods, respectively. If all types can be inferred,
 /// a function is generated instead of a macro, as seen in the following example:
 ///
-/// ```ignore
+/// ```
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use cmacro::{FnMacro, CodegenContext};
+/// use cmacro::{CodegenContext, FnMacro, MacroSet};
 /// use quote::quote;
 ///
 /// struct Context;
 ///
 /// impl CodegenContext for Context {
-///   fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<String> {
+///   fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<syn::Type> {
 ///     match (macro_name, arg_name) {
-///       ("FUNC", "a" | "b" | "c") => Some("unsigned int".into()),
+///       ("FUNC", "a" | "b" | "c") => Some(syn::parse_quote! { c_uint }),
 ///       _ => None,
 ///     }
 ///   }
 /// }
 ///
-/// // #define FUNC(a, b, c) a + b * c
-/// let name = "FUNC";
-/// let args = ["a", "b", "c"];
-/// let value = ["$a", "+", "$b", "*", "$c"];
+/// let mut macro_set = MacroSet::new();
 ///
-/// let mut fn_macro = FnMacro::parse(name, &args, &value)?;
+/// // #define FUNC(a, b, c) a + b * c
+/// macro_set.define_fn_macro("FUNC", &["a", "b", "c"], &["a", "+", "b", "*", "c"]);
+///
+/// let (args, body) = macro_set.expand_fn_macro("FUNC")?;
+/// let mut fn_macro = FnMacro::parse("FUNC", &args, &body)?;
+///
 /// let output = fn_macro.generate(Context)?;
 /// assert_eq!(
 ///   output.to_string(),

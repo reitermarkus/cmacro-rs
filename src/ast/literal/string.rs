@@ -607,11 +607,10 @@ mod tests {
     assert_eq!(LitString::try_from(r#"U"🎧\U0001F3A4""#), Ok(LitString::Utf32("🎧🎤".into())));
   }
 
-  #[ignore]
   #[test]
   fn parse_unprefixed_utf32() {
     assert_eq!(
-      LitString::try_from(r"\U00020402"),
+      LitString::try_from(r#""\U00020402""#),
       Ok(LitString::Ordinary(Cow::Borrowed(&[0o360, 0o240, 0o220, 0o202])))
     )
   }

@@ -10,15 +10,18 @@ use crate::{ast::Lit, is_identifier, CodegenContext, Expr, LocalContext, MacroBo
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use cmacro::VarMacro;
+/// use cmacro::{MacroSet, VarMacro};
+///
+/// let mut macro_set = MacroSet::new();
 ///
 /// // #define VAR 4 + 7 + 82
-/// let name = "VAR";
-/// let value = ["4", "+", "7", "*", "82"];
+/// macro_set.define_var_macro("VAR", &["4", "+", "7", "*", "82"]);
 ///
-/// let mut var_macro = VarMacro::parse(name, &value)?;
+/// let body = macro_set.expand_var_macro("VAR")?;
+/// let mut var_macro = VarMacro::parse("VAR", &body)?;
+///
 /// let (output, ty) = var_macro.generate(())?;
 /// assert_eq!(output.to_string(), "578");
 /// # Ok(())

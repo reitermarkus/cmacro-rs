@@ -1,6 +1,7 @@
 use std::{
   borrow::Cow,
   collections::{HashMap, HashSet},
+  error::Error,
   fmt,
   iter::IntoIterator,
   mem,
@@ -134,6 +135,8 @@ impl fmt::Display for ExpansionError {
     }
   }
 }
+
+impl Error for ExpansionError {}
 
 fn is_comment(s: &str) -> bool {
   (s.starts_with("/*") && s.ends_with("*/")) || s.starts_with("//")
@@ -754,12 +757,12 @@ impl MacroSet {
   /// Returns true if the macro was redefined.
   pub fn define_var_macro<N, B>(&mut self, name: N, body: B) -> bool
   where
-    N: Into<String>,
+    N: AsRef<str>,
     B: IntoIterator,
-    B::Item: Into<String>,
+    B::Item: AsRef<str>,
   {
-    let name = name.into();
-    let body = body.into_iter().map(|t| t.into()).collect::<Vec<_>>();
+    let name = name.as_ref().to_owned();
+    let body = body.into_iter().map(|t| t.as_ref().to_owned()).collect::<Vec<_>>();
 
     let redefined = if let Some(old_body) = self.var_macros.remove(&name) {
       let old_tokens = old_body.iter().filter(|t| !is_whitespace(t));
@@ -780,15 +783,15 @@ impl MacroSet {
   /// Returns true if the macro was redefined.
   pub fn define_fn_macro<N, A, B>(&mut self, name: N, args: A, body: B) -> bool
   where
-    N: Into<String>,
+    N: AsRef<str>,
     A: IntoIterator,
-    A::Item: Into<String>,
+    A::Item: AsRef<str>,
     B: IntoIterator,
-    B::Item: Into<String>,
+    B::Item: AsRef<str>,
   {
-    let name = name.into();
-    let args = args.into_iter().map(|a| a.into()).collect::<Vec<_>>();
-    let body = body.into_iter().map(|a| a.into()).collect::<Vec<_>>();
+    let name = name.as_ref().to_owned();
+    let args = args.into_iter().map(|a| a.as_ref().to_owned()).collect::<Vec<_>>();
+    let body = body.into_iter().map(|a| a.as_ref().to_owned()).collect::<Vec<_>>();
 
     let redefined = if let Some((old_args, old_body)) = self.fn_macros.remove(&name) {
       let old_args = old_args.iter().filter(|t| !is_whitespace(t));
