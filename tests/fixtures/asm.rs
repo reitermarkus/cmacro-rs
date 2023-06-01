@@ -6,7 +6,7 @@ macro_rules! __cmacro__secureportREAD_PSP {
       "mrs {0}, psp",
       out(reg) $pucOutCurrentStackPointer,
       options(nomem, preserves_flags),
-    )
+    );
   };
 }
 pub use __cmacro__secureportREAD_PSP as secureportREAD_PSP;
@@ -19,7 +19,7 @@ macro_rules! __cmacro__secureportSET_PSP {
       "msr psp, {0}",
       in(reg) $pucCurrentStackPointer,
       options(nomem, preserves_flags),
-    )
+    );
   };
 }
 pub use __cmacro__secureportSET_PSP as secureportSET_PSP;

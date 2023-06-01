@@ -35,13 +35,12 @@ pub enum Expr<'t> {
   Unary(Box<UnaryExpr<'t>>),
   Binary(Box<BinaryExpr<'t>>),
   Ternary(TernaryExpr<'t>),
-  Asm(Asm<'t>),
 }
 
 impl<'t> Expr<'t> {
   pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
     match self {
-      Self::Asm(_) | Self::Literal(_) | Self::Arg(_) | Self::Variable { .. } | Self::ConcatIdent(_) => (0, None),
+      Self::Literal(_) | Self::Arg(_) | Self::Variable { .. } | Self::ConcatIdent(_) => (0, None),
       Self::FunctionCall(_) | Self::FieldAccess { .. } => (1, Some(true)),
       Self::Cast { .. } | Self::Stringify(_) | Self::ConcatString(_) => (3, Some(true)),
       Self::Ternary(..) => (0, None),
@@ -146,31 +145,7 @@ impl<'t> Expr<'t> {
   fn parse_term_prec1<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, factor) = Self::parse_factor(tokens)?;
 
-    // `__asm ( ... )` or `__asm volatile ( ... )`
-    fn is_asm(expr: &Expr) -> bool {
-      match expr {
-        Expr::Variable { name } => matches!(name.as_str(), "__asm__" | "__asm" | "asm"),
-        Expr::ConcatString(exprs) => match exprs.as_slice() {
-          [first, second] => {
-            is_asm(first)
-              && matches!(
-                second,
-                Expr::Variable { name }
-                if matches!(name.as_str(), "volatile" | "inline" | "goto")
-              )
-          },
-          _ => false,
-        },
-        _ => false,
-      }
-    }
-
     match factor {
-      ref expr if is_asm(expr) => {
-        if let Ok((tokens, asm)) = Asm::parse(tokens) {
-          return Ok((tokens, Self::Asm(asm)))
-        }
-      },
       Self::Arg(_)
       | Self::Variable { .. }
       | Self::FunctionCall(..)
@@ -760,7 +735,6 @@ impl<'t> Expr<'t> {
         }
       },
       Self::Ternary(expr) => expr.finish(ctx),
-      Self::Asm(asm) => asm.finish(ctx),
     }
   }
 
@@ -931,7 +905,6 @@ impl<'t> Expr<'t> {
       Self::Unary(op) => op.to_tokens(ctx, tokens),
       Self::Binary(op) => op.to_tokens(ctx, tokens),
       Self::Ternary(ref expr) => expr.to_tokens(ctx, tokens),
-      Self::Asm(ref asm) => asm.to_tokens(ctx, tokens),
     }
   }
 
@@ -951,19 +924,24 @@ mod tests {
     string as macro_string, tokens,
   };
 
+  macro_rules! parse_expr {
+    ($tokens:expr => $expr:expr) => {{
+      use nom::combinator::all_consuming;
+      let tokens = $tokens;
+      let expr = all_consuming(Expr::parse)(tokens).map(|(_, expr)| expr);
+      assert_eq!(expr, Ok($expr))
+    }};
+  }
+
   #[test]
   fn parse_literal() {
-    let (_, expr) = Expr::parse(tokens![macro_id!(u8), macro_char!('a')]).unwrap();
-    assert_eq!(expr, lit!(u8 'a'));
-
-    let (_, expr) = Expr::parse(tokens![macro_char!(U '🍩')]).unwrap();
-    assert_eq!(expr, lit!(U '🍩'));
+    parse_expr!(tokens![macro_id!(u8), macro_char!('a')] => lit!(u8 'a'));
+    parse_expr!(tokens![macro_char!(U '🍩')] => lit!(U '🍩'));
   }
 
   #[test]
   fn parse_stringify() {
-    let (_, expr) = Expr::parse(tokens![macro_punct!("#"), macro_arg!(0)]).unwrap();
-    assert_eq!(expr, Expr::Stringify(Stringify { arg: Box::new(arg!(0)) }));
+    parse_expr!(tokens![macro_punct!("#"), macro_arg!(0)] => Expr::Stringify(Stringify { arg: Box::new(arg!(0)) }));
   }
 
   #[test]

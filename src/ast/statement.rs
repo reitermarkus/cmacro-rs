@@ -27,6 +27,7 @@ use crate::{CodegenContext, LocalContext, MacroToken};
 #[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub enum Statement<'t> {
+  Asm(Asm<'t>),
   /// An expression.
   Expr(Expr<'t>),
   /// A function declaration.
@@ -36,9 +37,16 @@ pub enum Statement<'t> {
   /// A block containing multiple statements.
   Block(Vec<Self>),
   /// An if-condition.
-  If { condition: Expr<'t>, if_branch: Vec<Statement<'t>>, else_branch: Vec<Statement<'t>> },
+  If {
+    condition: Expr<'t>,
+    if_branch: Vec<Statement<'t>>,
+    else_branch: Vec<Statement<'t>>,
+  },
   /// A do-while condition.
-  DoWhile { block: Vec<Statement<'t>>, condition: Expr<'t> },
+  DoWhile {
+    block: Vec<Statement<'t>>,
+    condition: Expr<'t>,
+  },
 }
 
 impl<'t> Statement<'t> {
@@ -49,6 +57,7 @@ impl<'t> Statement<'t> {
     let semicolon_or_eof = |input| alt((value((), punct(";")), value((), eof)))(input);
 
     alt((
+      map(terminated(Asm::parse, semicolon_or_eof), Self::Asm),
       map(
         tuple((
           preceded(terminated(id("if"), meta), condition),
@@ -90,6 +99,9 @@ impl<'t> Statement<'t> {
     C: CodegenContext,
   {
     match self {
+      Self::Asm(asm) => {
+        asm.finish(ctx)?;
+      },
       Self::Expr(expr) => {
         expr.finish(ctx)?;
       },
@@ -129,6 +141,10 @@ impl<'t> Statement<'t> {
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     match self {
+      Self::Asm(asm) => {
+        let asm = asm.to_token_stream(ctx);
+        tokens.append_all(quote! { #asm; })
+      },
       Self::Expr(expr) => {
         let expr = expr.to_token_stream(ctx);
         tokens.append_all(quote! { #expr; })

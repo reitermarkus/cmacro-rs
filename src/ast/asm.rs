@@ -5,20 +5,20 @@ use nom::{
   character::complete::{alpha1, char, digit1, none_of},
   combinator::{all_consuming, map, map_opt, opt, value},
   multi::{fold_many0, fold_many1, separated_list0},
-  sequence::{delimited, pair, preceded, tuple},
+  sequence::{delimited, pair, preceded, terminated, tuple},
   IResult,
 };
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 
 use super::{
-  tokens::{meta, parenthesized, punct},
+  tokens::{id, meta, parenthesized, punct},
   Expr, LitString, Type,
 };
 use crate::{CodegenContext, LocalContext, MacroToken};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Dir {
+pub(crate) enum Dir {
   Out,
   InOut,
 }
@@ -33,7 +33,7 @@ impl ToTokens for Dir {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RegConstraint {
+pub(crate) enum RegConstraint {
   Reg,
   RegAbcd,
   RegByte,
@@ -68,10 +68,10 @@ impl ToTokens for RegConstraint {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Asm<'t> {
-  template: Vec<String>,
-  outputs: Vec<(Dir, RegConstraint, Expr<'t>)>,
-  inputs: Vec<(RegConstraint, Expr<'t>)>,
-  clobbers: Vec<String>,
+  pub(crate) template: Vec<String>,
+  pub(crate) outputs: Vec<(Dir, RegConstraint, Expr<'t>)>,
+  pub(crate) inputs: Vec<(RegConstraint, Expr<'t>)>,
+  pub(crate) clobbers: Vec<String>,
 }
 
 impl<'t> Asm<'t> {
@@ -140,49 +140,52 @@ impl<'t> Asm<'t> {
   }
 
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, (template, outputs, inputs, clobbers)) = parenthesized(tuple((
-      delimited(
-        meta,
-        map_opt(LitString::parse, |s| {
-          let (_, template) = Self::parse_template(s.as_str()?).ok()?;
-          Some(template)
-        }),
-        meta,
-      ),
-      opt(preceded(
-        delimited(meta, punct(":"), meta),
-        separated_list0(
-          delimited(meta, punct(","), meta),
-          map(
+    let (tokens, (template, outputs, inputs, clobbers)) = preceded(
+      terminated(alt((id("__asm__"), id("__asm"), id("asm"))), opt(alt((id("volatile"), id("inline"), id("goto"))))),
+      parenthesized(tuple((
+        delimited(
+          meta,
+          map_opt(LitString::parse, |s| {
+            let (_, template) = Self::parse_template(s.as_str()?).ok()?;
+            Some(template)
+          }),
+          meta,
+        ),
+        opt(preceded(
+          delimited(meta, punct(":"), meta),
+          separated_list0(
+            delimited(meta, punct(","), meta),
+            map(
+              pair(
+                map_opt(LitString::parse, |s| {
+                  let (_, operands) = Self::parse_output_operands(s.as_str()?).ok()?;
+                  Some(operands)
+                }),
+                parenthesized(Expr::parse),
+              ),
+              |((dir, reg), id)| (dir, reg, id),
+            ),
+          ),
+        )),
+        opt(preceded(
+          delimited(meta, punct(":"), meta),
+          separated_list0(
+            delimited(meta, punct(","), meta),
             pair(
               map_opt(LitString::parse, |s| {
-                let (_, operands) = Self::parse_output_operands(s.as_str()?).ok()?;
+                let (_, operands) = Self::parse_input_operands(s.as_str()?).ok()?;
                 Some(operands)
               }),
               parenthesized(Expr::parse),
             ),
-            |((dir, reg), id)| (dir, reg, id),
           ),
-        ),
-      )),
-      opt(preceded(
-        delimited(meta, punct(":"), meta),
-        separated_list0(
-          delimited(meta, punct(","), meta),
-          pair(
-            map_opt(LitString::parse, |s| {
-              let (_, operands) = Self::parse_input_operands(s.as_str()?).ok()?;
-              Some(operands)
-            }),
-            parenthesized(Expr::parse),
-          ),
-        ),
-      )),
-      opt(preceded(
-        delimited(meta, punct(":"), meta),
-        separated_list0(tuple((meta, punct(","), meta)), map_opt(LitString::parse, |s| Some(s.as_str()?.to_owned()))),
-      )),
-    )))(tokens)?;
+        )),
+        opt(preceded(
+          delimited(meta, punct(":"), meta),
+          separated_list0(tuple((meta, punct(","), meta)), map_opt(LitString::parse, |s| Some(s.as_str()?.to_owned()))),
+        )),
+      ))),
+    )(tokens)?;
 
     let outputs = outputs.unwrap_or_default();
     let inputs = inputs.unwrap_or_default();
@@ -298,11 +301,21 @@ impl<'t> Asm<'t> {
       )
     })
   }
+
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>) -> TokenStream {
+    let mut tokens = TokenStream::new();
+    self.to_tokens(ctx, &mut tokens);
+    tokens
+  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  use crate::ast::var;
+
+  use crate::macro_set::{id as macro_id, punct as macro_punct, string as macro_string, tokens};
 
   #[test]
   fn parse_template() {
@@ -311,5 +324,36 @@ mod tests {
 
     assert!(rest.is_empty());
     assert_eq!(template_tokens, vec!["btsl {2},{1}", "sbb {0},{0}"]);
+  }
+
+  #[test]
+  fn parse_asm() {
+    let (_, stmt) = Asm::parse(tokens![
+      macro_id!(__asm__),
+      macro_punct!("("),
+      macro_string!("leal (%0,%0,4),%0"),
+      macro_punct!(":"),
+      macro_string!("=r"),
+      macro_punct!("("),
+      macro_id!(n),
+      macro_punct!(")"),
+      macro_punct!(":"),
+      macro_string!("0"),
+      macro_punct!("("),
+      macro_id!(n),
+      macro_punct!(")"),
+      macro_punct!(")"),
+      macro_punct!(";")
+    ])
+    .unwrap();
+    assert_eq!(
+      stmt,
+      Asm {
+        template: vec!["leal ({0},{0},4),{0}".into()],
+        outputs: vec![(Dir::Out, RegConstraint::Reg, var!(n))],
+        inputs: vec![(RegConstraint::Digit(0), var!(n))],
+        clobbers: vec![]
+      }
+    );
   }
 }
