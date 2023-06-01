@@ -144,14 +144,18 @@ fn is_whitespace(s: &str) -> bool {
   s.is_empty() || is_comment(s)
 }
 
-fn tokenize<'t>(arg_names: &[String], tokens: &'t [String]) -> Vec<Token<'t>> {
+fn tokenize<'t, T>(arg_names: &[String], tokens: &'t [T]) -> Vec<Token<'t>>
+where
+  T: AsRef<str> + 't,
+{
   tokens
     .iter()
     .map(|t| {
+      let t = t.as_ref();
       if let Some(arg_index) = arg_names.iter().position(|arg_name| t == arg_name) {
         Token::MacroArg(arg_index)
       } else {
-        Token::from_str(t.as_ref())
+        Token::from_str(t)
       }
     })
     .collect()
@@ -434,11 +438,14 @@ impl MacroSet {
     body.iter().any(|t| *t == Token::VarArgs)
   }
 
-  fn expand_macro_body<'s>(
+  fn expand_macro_body<'s, 't>(
     &'s self,
     non_replaced_names: HashSet<&str>,
-    body: &[Token<'s>],
-  ) -> Result<Vec<Token<'s>>, ExpansionError> {
+    body: &[Token<'t>],
+  ) -> Result<Vec<Token<'t>>, ExpansionError>
+  where
+    's: 't,
+  {
     let mut tokens = vec![];
     let mut it = body.iter().cloned().peekable();
 
@@ -485,12 +492,15 @@ impl MacroSet {
     Ok(tokens)
   }
 
-  fn expand_var_macro_body<'s, 'n>(
+  fn expand_var_macro_body<'s, 't, 'n>(
     &'s self,
     mut non_replaced_names: HashSet<&'n str>,
     name: &'n str,
-    body: &[Token<'s>],
-  ) -> Result<Vec<Token<'s>>, ExpansionError> {
+    body: &[Token<'t>],
+  ) -> Result<Vec<Token<'t>>, ExpansionError>
+  where
+    's: 't,
+  {
     // A variable-like macro shall not contain `__VA_ARGS__`.
     if Self::contains_var_args(body) {
       return Err(ExpansionError::NonVariadicVarArgs)
@@ -504,14 +514,17 @@ impl MacroSet {
     self.expand_macro_body(non_replaced_names, &body)
   }
 
-  fn expand_fn_macro_body<'s, 'n>(
+  fn expand_fn_macro_body<'s, 't, 'n>(
     &'s self,
     mut non_replaced_names: HashSet<&'n str>,
     name: &'n str,
     arg_names: &[String],
-    args: Option<&[Vec<Token<'s>>]>,
-    body: &[Token<'s>],
-  ) -> Result<Vec<Token<'s>>, ExpansionError> {
+    args: Option<&[Vec<Token<'t>>]>,
+    body: &[Token<'t>],
+  ) -> Result<Vec<Token<'t>>, ExpansionError>
+  where
+    's: 't,
+  {
     let is_variadic = arg_names.last().map(|arg_name| *arg_name == "...").unwrap_or(false);
 
     if !is_variadic {
@@ -557,9 +570,10 @@ impl MacroSet {
     self.expand_macro_body(non_replaced_names, &body)
   }
 
-  fn collect_args<'s, I>(&'s self, it: &mut I) -> Result<Vec<Vec<Token<'s>>>, ExpansionError>
+  fn collect_args<'s, 't, I>(&'s self, it: &mut I) -> Result<Vec<Vec<Token<'t>>>, ExpansionError>
   where
-    I: Iterator<Item = Token<'s>> + Clone,
+    's: 't,
+    I: Iterator<Item = Token<'t>> + Clone,
   {
     let mut parentheses = vec![]; // Keep track of parenthesis pairs.
     let mut args = vec![];
@@ -620,13 +634,16 @@ impl MacroSet {
     Err(ExpansionError::UnclosedParenthesis('('))
   }
 
-  fn expand_arguments<'s>(
+  fn expand_arguments<'s, 't>(
     &'s self,
     non_replaced_names: HashSet<&str>,
     arg_names: &[String],
-    args: &[Vec<Token<'s>>],
-    tokens: &[Token<'s>],
-  ) -> Result<Vec<Token<'s>>, ExpansionError> {
+    args: &[Vec<Token<'t>>],
+    tokens: &[Token<'t>],
+  ) -> Result<Vec<Token<'t>>, ExpansionError>
+  where
+    's: 't,
+  {
     let mut it = tokens.iter().cloned().peekable();
     let mut tokens = vec![];
 
@@ -800,7 +817,10 @@ impl MacroSet {
   }
 
   /// Expand a variable-like macro.
-  pub fn expand_var_macro<'t>(&'t self, name: &str) -> Result<Vec<MacroToken<'t>>, ExpansionError> {
+  pub fn expand_var_macro<'s, 't>(&'s self, name: &str) -> Result<Vec<MacroToken<'t>>, ExpansionError>
+  where
+    's: 't,
+  {
     let body = self.var_macros.get(name).ok_or(ExpansionError::MacroNotFound)?;
     let body = tokenize(&[], body);
     let tokens = self.expand_var_macro_body(HashSet::new(), name, &body)?;
@@ -808,10 +828,13 @@ impl MacroSet {
   }
 
   /// Expand a function-like macro.
-  pub fn expand_fn_macro<'t>(
-    &'t self,
+  pub fn expand_fn_macro<'s, 't>(
+    &'s self,
     name: &str,
-  ) -> Result<(Vec<MacroToken<'t>>, Vec<MacroToken<'t>>), ExpansionError> {
+  ) -> Result<(Vec<MacroToken<'t>>, Vec<MacroToken<'t>>), ExpansionError>
+  where
+    's: 't,
+  {
     let (arg_names, body) = self.fn_macros.get(name).ok_or(ExpansionError::MacroNotFound)?;
     let body = tokenize(arg_names, body);
     let tokens = self.expand_fn_macro_body(HashSet::new(), name, arg_names, None, &body)?;
@@ -819,6 +842,18 @@ impl MacroSet {
       detokenize(&[], arg_names.iter().map(|arg_name| Token::from_str(arg_name)).collect()),
       detokenize(arg_names, tokens),
     ))
+  }
+
+  /// Expand a macro expression using the macros defined in the set.
+  pub fn expand<'s, 'b, 't, T>(&'s self, body: &'b [T]) -> Result<Vec<MacroToken<'t>>, ExpansionError>
+  where
+    's: 't,
+    'b: 't,
+    T: AsRef<str> + 't,
+  {
+    let body = tokenize(&[], body);
+    let tokens: Vec<Token<'t>> = self.expand_var_macro_body(HashSet::new(), "", &body)?;
+    Ok(detokenize(&[], tokens))
   }
 }
 
@@ -949,7 +984,7 @@ macro_rules! token_vec {
 
     vec![
       $(
-        $token.to_macro_token()
+        $token
       ),*
     ]
   }};
@@ -1271,34 +1306,11 @@ mod tests {
     macro_set.define_fn_macro("r", ["x", "y"], ["x", "##", "y"]);
     macro_set.define_fn_macro("str", ["x"], ["#", "x"]);
 
-    macro_set.define_var_macro(
-      "line1",
-      [
+    assert_eq!(
+      macro_set.expand(&[
         "f", "(", "y", "+", "1", ")", "+", "f", "(", "f", "(", "z", ")", ")", "%", "t", "(", "t", "(", "g", ")", "(",
         "0", ")", "+", "t", ")", "(", "1", ")", ";",
-      ],
-    );
-    macro_set.define_var_macro(
-      "line2",
-      [
-        "g", "(", "x", "+", "(", "3", ",", "4", ")", "-", "w", ")", "|", "h", "5", ")", "&", "m", "(", "f", ")", "^",
-        "m", "(", "m", ")", ";",
-      ],
-    );
-    macro_set.define_var_macro(
-      "line3",
-      [
-        "p", "(", ")", "i", "[", "q", "(", ")", "]", "=", "{", "q", "(", "1", ")", ",", "r", "(", "2", ",", "3", ")",
-        ",", "r", "(", "4", ",", ")", ",", "r", "(", ",", "5", ")", ",", "r", "(", ",", ")", "}", ";",
-      ],
-    );
-    macro_set.define_var_macro(
-      "line4",
-      ["char", "c", "[", "2", "]", "[", "6", "]", "=", "{", "str", "(", "hello", ")", ",", "str", "(", ")", "}", ";"],
-    );
-
-    assert_eq!(
-      macro_set.expand_var_macro("line1"),
+      ]),
       Ok(token_vec![
         id!(f),
         punct!("("),
@@ -1347,7 +1359,10 @@ mod tests {
       ])
     );
     assert_eq!(
-      macro_set.expand_var_macro("line2"),
+      macro_set.expand(&[
+        "g", "(", "x", "+", "(", "3", ",", "4", ")", "-", "w", ")", "|", "h", "5", ")", "&", "m", "(", "f", ")", "^",
+        "m", "(", "m", ")", ";",
+      ]),
       Ok(token_vec![
         id!(f),
         punct!("("),
@@ -1399,7 +1414,10 @@ mod tests {
       ])
     );
     assert_eq!(
-      macro_set.expand_var_macro("line3"),
+      macro_set.expand(&[
+        "p", "(", ")", "i", "[", "q", "(", ")", "]", "=", "{", "q", "(", "1", ")", ",", "r", "(", "2", ",", "3", ")",
+        ",", "r", "(", "4", ",", ")", ",", "r", "(", ",", "5", ")", ",", "r", "(", ",", ")", "}", ";",
+      ]),
       Ok(token_vec![
         id!(int),
         id!(i),
@@ -1420,7 +1438,9 @@ mod tests {
       ])
     );
     assert_eq!(
-      macro_set.expand_var_macro("line4"),
+      macro_set.expand(&[
+        "char", "c", "[", "2", "]", "[", "6", "]", "=", "{", "str", "(", "hello", ")", ",", "str", "(", ")", "}", ";"
+      ]),
       Ok(token_vec![
         id!(char),
         id!(c),
@@ -1477,10 +1497,26 @@ mod tests {
     macro_set.define_var_macro("HIGHLOW", ["\"hello\""]);
     macro_set.define_var_macro("LOW", ["LOW", "\", world\""]);
 
-    macro_set.define_var_macro("line1", ["debug", "(", "1", ",", "2", ")", ";"]);
-    macro_set.define_var_macro(
-      "line2",
-      [
+    assert_eq!(
+      macro_set.expand(&["debug", "(", "1", ",", "2", ")", ";"]),
+      Ok(token_vec![
+        id!(printf),
+        punct!("("),
+        string!("x"),
+        string!("1"),
+        string!("= %d, x"),
+        string!("2"),
+        string!("= %s"),
+        punct!(","),
+        id!(x1),
+        punct!(","),
+        id!(x2),
+        punct!(")"),
+        punct!(";")
+      ])
+    );
+    assert_eq!(
+      macro_set.expand(&[
         "fputs",
         "(",
         "str",
@@ -1506,30 +1542,7 @@ mod tests {
         "s",
         ")",
         ";",
-      ],
-    );
-    macro_set.define_var_macro("line3", ["#include", "xstr", "(", "INCFILE", "(", "2", ")", ".", "h", ")"]);
-
-    assert_eq!(
-      macro_set.expand_var_macro("line1"),
-      Ok(token_vec![
-        id!(printf),
-        punct!("("),
-        string!("x"),
-        string!("1"),
-        string!("= %d, x"),
-        string!("2"),
-        string!("= %s"),
-        punct!(","),
-        id!(x1),
-        punct!(","),
-        id!(x2),
-        punct!(")"),
-        punct!(";")
-      ])
-    );
-    assert_eq!(
-      macro_set.expand_var_macro("line2"),
+      ]),
       Ok(token_vec![
         id!(fputs),
         punct!("("),
@@ -1541,7 +1554,10 @@ mod tests {
         punct!(";")
       ])
     );
-    assert_eq!(macro_set.expand_var_macro("line3"), Ok(token_vec!["#include", string!("vers2.h")]));
+    assert_eq!(
+      macro_set.expand(&["xstr", "(", "INCFILE", "(", "2", ")", ".", "h", ")"]),
+      Ok(token_vec![string!("vers2.h")])
+    );
   }
 
   #[test]
@@ -1549,9 +1565,8 @@ mod tests {
     let mut macro_set = MacroSet::new();
 
     macro_set.define_fn_macro("t", ["x", "y", "z"], ["x", "##", "y", "##", "z"]);
-    macro_set.define_var_macro(
-      "line1",
-      [
+    assert_eq!(
+      macro_set.expand(&[
         "int", "j", "[", "]", "=", "{", //
         "t", "(", "1", ",", "2", ",", "3", ")", ",", //
         "t", "(", ",", "4", ",", "5", ")", ",", //
@@ -1562,11 +1577,7 @@ mod tests {
         "t", "(", ",", ",", "12", ")", ",", //
         "t", "(", ",", ",", ")", //
         "}", ";",
-      ],
-    );
-
-    assert_eq!(
-      macro_set.expand_var_macro("line1"),
+      ]),
       Ok(token_vec![
         id!(int),
         id!(j),
@@ -1629,23 +1640,12 @@ mod tests {
       ["(", "(", "test", ")", "?", "puts", "(", "#", "test", ")", ":", "printf", "(", "__VA_ARGS__", ")", ")"],
     );
 
-    macro_set.define_var_macro("line1", ["debug", "(", "\"Flag\"", ")", ";"]);
-    macro_set.define_var_macro("line2", ["debug", "(", "\"X = %d\\n\"", ",", "x", ")", ";"]);
-    macro_set.define_var_macro(
-      "line3",
-      ["showlist", "(", "The", "first", ",", "second", ",", "and", "third", "items", ".", ")", ";"],
-    );
-    macro_set.define_var_macro(
-      "line4",
-      ["report", "(", "x", ">", "y", ",", "\"x is %d but y is %d\"", ",", "x", ",", "y", ")", ";"],
-    );
-
     assert_eq!(
-      macro_set.expand_var_macro("line1"),
+      macro_set.expand(&["debug", "(", "\"Flag\"", ")", ";"]),
       Ok(token_vec![id!(fprintf), punct!("("), id!(stderr), punct!(","), string!("Flag"), punct!(")"), punct!(";")])
     );
     assert_eq!(
-      macro_set.expand_var_macro("line2"),
+      macro_set.expand(&["debug", "(", "\"X = %d\\n\"", ",", "x", ")", ";"]),
       Ok(token_vec![
         id!(fprintf),
         punct!("("),
@@ -1659,11 +1659,11 @@ mod tests {
       ])
     );
     assert_eq!(
-      macro_set.expand_var_macro("line3"),
+      macro_set.expand(&["showlist", "(", "The", "first", ",", "second", ",", "and", "third", "items", ".", ")", ";"]),
       Ok(token_vec![id!(puts), punct!("("), string!("The first, second, and third items."), punct!(")"), punct!(";")])
     );
     assert_eq!(
-      macro_set.expand_var_macro("line4"),
+      macro_set.expand(&["report", "(", "x", ">", "y", ",", "\"x is %d but y is %d\"", ",", "x", ",", "y", ")", ";"]),
       Ok(token_vec![
         punct!("("),
         punct!("("),
