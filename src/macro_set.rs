@@ -75,6 +75,14 @@ pub(crate) fn is_punctuation(s: &str) -> bool {
 /// A set of macros.
 ///
 /// C macros can only be fully expanded once all macros are defined.
+/// This struct is a container for collecting all defined variable-like and
+/// function-like macros.
+///
+/// After all macros have been defined [`MacroSet::expand_var_macro`] and
+/// [`MacroSet::expand_fn_macro`] can be used to properly tokenize and
+/// fully expand nested macros. This also includes expanding stringification (`#`)
+/// and concatenation (`##`), except when their respective operands are macro
+/// arguments.
 #[derive(Debug, Clone, Default)]
 pub struct MacroSet {
   var_macros: HashMap<String, Vec<String>>,
