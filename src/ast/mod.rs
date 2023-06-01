@@ -10,6 +10,8 @@ mod unary_expr;
 pub use unary_expr::*;
 mod binary_expr;
 pub use binary_expr::*;
+mod ternary_expr;
+pub use ternary_expr::*;
 
 mod ty;
 pub use ty::*;

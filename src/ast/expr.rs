@@ -34,7 +34,7 @@ pub enum Expr<'t> {
   ConcatString(Vec<Self>),
   Unary(Box<UnaryExpr<'t>>),
   Binary(Box<BinaryExpr<'t>>),
-  Ternary(Box<Self>, Box<Self>, Box<Self>),
+  Ternary(TernaryExpr<'t>),
   Asm(Asm<'t>),
 }
 
@@ -384,7 +384,14 @@ impl<'t> Expr<'t> {
       let (tokens, if_branch) = Self::parse_term_prec7(tokens)?;
       let (tokens, _) = delimited(meta, punct(":"), meta)(tokens)?;
       let (tokens, else_branch) = Self::parse_term_prec7(tokens)?;
-      return Ok((tokens, Self::Ternary(Box::new(term), Box::new(if_branch), Box::new(else_branch))))
+      return Ok((
+        tokens,
+        Self::Ternary(TernaryExpr {
+          condition: Box::new(term),
+          if_branch: Box::new(if_branch),
+          else_branch: Box::new(else_branch),
+        }),
+      ))
     }
 
     Ok((tokens, term))
@@ -752,17 +759,7 @@ impl<'t> Expr<'t> {
           },
         }
       },
-      Self::Ternary(cond, if_branch, else_branch) => {
-        cond.finish(ctx)?;
-        let lhs_ty = if_branch.finish(ctx)?;
-        let rhs_ty = else_branch.finish(ctx)?;
-
-        if lhs_ty == rhs_ty {
-          Ok(lhs_ty)
-        } else {
-          Ok(lhs_ty.xor(rhs_ty))
-        }
-      },
+      Self::Ternary(expr) => expr.finish(ctx),
       Self::Asm(asm) => asm.finish(ctx),
     }
   }
@@ -933,19 +930,7 @@ impl<'t> Expr<'t> {
       },
       Self::Unary(op) => op.to_tokens(ctx, tokens),
       Self::Binary(op) => op.to_tokens(ctx, tokens),
-      Self::Ternary(ref cond, ref if_branch, ref else_branch) => {
-        let cond = cond.to_token_stream(ctx);
-        let if_branch = if_branch.to_token_stream(ctx);
-        let else_branch = else_branch.to_token_stream(ctx);
-
-        tokens.append_all(quote! {
-          if #cond {
-            #if_branch
-          } else {
-            #else_branch
-          }
-        })
-      },
+      Self::Ternary(ref expr) => expr.to_tokens(ctx, tokens),
       Self::Asm(ref asm) => asm.to_tokens(ctx, tokens),
     }
   }
