@@ -5,10 +5,9 @@ use nom::{
   IResult, Parser,
 };
 
-use crate::{
-  token::{Comment, MacroArg},
-  LitIdent, MacroToken,
-};
+use crate::MacroToken;
+
+use super::{Comment, LitIdent, MacroArg};
 
 pub(crate) fn macro_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], MacroArg> {
   map_opt(take_one, |token| if let MacroToken::Arg(macro_arg) = token { Some(macro_arg.clone()) } else { None })(tokens)

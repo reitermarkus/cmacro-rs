@@ -7,10 +7,7 @@ use std::{
   mem,
 };
 
-use crate::{
-  token::{Comment, MacroArg},
-  Lit, LitChar, LitIdent, LitString,
-};
+use crate::ast::{Comment, Lit, LitChar, LitIdent, LitString, MacroArg};
 
 pub(crate) fn is_punctuation(s: &str) -> bool {
   matches!(
@@ -937,7 +934,7 @@ impl<'t> ToMacroToken<'t> for &'t str {
 #[cfg(test)]
 macro_rules! arg {
   ($index:expr) => {{
-    $crate::MacroToken::Arg($crate::token::MacroArg { index: $index })
+    $crate::MacroToken::Arg($crate::ast::MacroArg { index: $index })
   }};
 }
 #[cfg(test)]
@@ -991,7 +988,7 @@ macro_rules! int {
     }))
   }};
   ($value:expr) => {{
-    $crate::MacroToken::Lit($crate::Lit::Int($crate::LitInt { value: $value, suffix: None }))
+    $crate::MacroToken::Lit($crate::ast::Lit::Int($crate::ast::LitInt { value: $value, suffix: None }))
   }};
 }
 #[cfg(test)]
@@ -1000,7 +997,7 @@ pub(crate) use int;
 #[cfg(test)]
 macro_rules! double {
   ($value:expr) => {{
-    $crate::MacroToken::Lit($crate::Lit::Float($crate::LitFloat::Double($value)))
+    $crate::MacroToken::Lit($crate::ast::Lit::Float($crate::ast::LitFloat::Double($value)))
   }};
 }
 #[cfg(test)]
@@ -1009,7 +1006,7 @@ pub(crate) use double;
 #[cfg(test)]
 macro_rules! comment {
   ($comment:expr) => {{
-    $crate::MacroToken::Comment(Comment::try_from($comment).unwrap())
+    $crate::MacroToken::Comment($crate::ast::Comment::try_from($comment).unwrap())
   }};
 }
 #[cfg(test)]

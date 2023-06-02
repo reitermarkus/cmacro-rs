@@ -11,12 +11,11 @@ use nom::{
 use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
-use super::{tokens::parenthesized, *};
-use crate::{
-  ast::tokens::{macro_arg, macro_id},
-  token::MacroArg,
-  CodegenContext, LocalContext, MacroArgType, MacroToken, UnaryOp,
+use super::{
+  tokens::{macro_arg, macro_id, parenthesized},
+  *,
 };
+use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken, UnaryOp};
 
 /// An expression.
 #[derive(Debug, Clone, PartialEq, Eq)]

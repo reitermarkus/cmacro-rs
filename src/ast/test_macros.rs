@@ -10,7 +10,7 @@ pub(crate) use lit_id;
 
 macro_rules! arg {
   ($index:expr) => {
-    $crate::ast::Expr::Arg($crate::token::MacroArg { index: $index })
+    $crate::ast::Expr::Arg($crate::ast::MacroArg { index: $index })
   };
 }
 pub(crate) use arg;
