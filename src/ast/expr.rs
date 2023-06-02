@@ -918,9 +918,9 @@ impl<'t> Expr<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_set::{
+  use crate::macro_token::{
     arg as macro_arg, char as macro_char, id as macro_id, int as macro_int, punct as macro_punct,
-    string as macro_string, tokens,
+    string as macro_string, token as macro_token, tokens,
   };
 
   macro_rules! parse_expr {
@@ -971,13 +971,13 @@ mod tests {
     let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_id!(_def)]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(_def)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), "123"]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_token!("123")]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), "123def"]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_token!("123def")]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), "123def456ghi"]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_token!("123def456ghi")]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def456ghi)]));
 
     let (_, id) = Expr::parse(tokens![macro_id!(__INT), macro_punct!("##"), macro_id!(_MAX__)]).unwrap();

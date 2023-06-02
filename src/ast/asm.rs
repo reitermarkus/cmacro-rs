@@ -315,7 +315,7 @@ mod tests {
 
   use crate::ast::var;
 
-  use crate::macro_set::{id as macro_id, punct as macro_punct, string as macro_string, tokens};
+  use crate::macro_token::{id as macro_id, punct as macro_punct, string as macro_string, tokens};
 
   #[test]
   fn parse_template() {

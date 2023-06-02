@@ -7,7 +7,13 @@ use std::{
   mem,
 };
 
-use crate::ast::{Comment, Identifier, Lit, LitChar, LitString, MacroArg};
+use crate::{
+  ast::{Comment, Identifier, Lit, LitChar, LitString, MacroArg},
+  MacroToken,
+};
+
+#[cfg(test)]
+pub(crate) mod test_macros;
 
 pub(crate) fn is_punctuation(s: &str) -> bool {
   matches!(
@@ -260,7 +266,10 @@ impl<'t> Token<'t> {
       Self::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
       Self::Identifier(id) => MacroToken::Identifier(id),
       Self::Literal(lit, _) => MacroToken::Lit(lit),
-      Self::Plain(t) => MacroToken::Token(t),
+      Self::Plain(t) => {
+        // panic!("unparsed token: {t:?}");
+        MacroToken::Token(t)
+      },
       Self::Punctuation(t) => MacroToken::Punctuation(t),
       Self::Comment(t) => MacroToken::Comment(t),
       Self::NonReplacable(t) => return t.detokenize(arg_names),
@@ -429,23 +438,6 @@ fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
 
 fn detokenize<'t>(arg_names: &[Token<'t>], tokens: Vec<Token<'t>>) -> Vec<MacroToken<'t>> {
   tokens.into_iter().filter_map(|t| t.detokenize(arg_names)).collect()
-}
-
-/// A macro token.
-#[derive(Debug, Clone, PartialEq)]
-pub enum MacroToken<'t> {
-  /// A macro parameter for the argument at the given position.
-  Arg(MacroArg),
-  /// An identifier.
-  Identifier(Identifier<'t>),
-  /// A literal.
-  Lit(Lit<'t>),
-  /// Punctuation.
-  Punctuation(&'t str),
-  /// A macro token.
-  Token(Cow<'t, str>),
-  /// A comment.
-  Comment(Comment<'t>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -913,139 +905,8 @@ impl MacroSet {
 }
 
 #[cfg(test)]
-pub(crate) trait ToMacroToken<'t> {
-  fn to_macro_token(self) -> MacroToken<'t>;
-}
-
-#[cfg(test)]
-impl<'t> ToMacroToken<'t> for MacroToken<'t> {
-  fn to_macro_token(self) -> MacroToken<'t> {
-    self
-  }
-}
-
-#[cfg(test)]
-impl<'t> ToMacroToken<'t> for &'t str {
-  fn to_macro_token(self) -> MacroToken<'t> {
-    MacroToken::Token(Cow::Borrowed(self))
-  }
-}
-
-#[cfg(test)]
-macro_rules! arg {
-  ($index:expr) => {{
-    $crate::MacroToken::Arg($crate::ast::MacroArg { index: $index })
-  }};
-}
-#[cfg(test)]
-pub(crate) use arg;
-
-#[cfg(test)]
-macro_rules! id {
-  ($id:ident) => {{
-    $crate::MacroToken::Identifier($crate::Identifier { id: ::std::borrow::Cow::Borrowed(stringify!($id)) })
-  }};
-}
-#[cfg(test)]
-pub(crate) use id;
-
-#[cfg(test)]
-macro_rules! string {
-  (u8 $s:expr) => {{
-    $crate::MacroToken::Lit($crate::Lit::String($crate::LitString::Utf8($s.into())))
-  }};
-  ($s:expr) => {{
-    $crate::MacroToken::Lit($crate::Lit::String($crate::LitString::Ordinary($s.as_bytes().into())))
-  }};
-}
-#[cfg(test)]
-pub(crate) use string;
-
-#[cfg(test)]
-macro_rules! char {
-  (u8 $c:expr) => {{
-    $crate::MacroToken::Lit($crate::Lit::Char($crate::LitChar::Utf8(u8::try_from($c).unwrap())))
-  }};
-  (u $c:expr) => {{
-    $crate::MacroToken::Lit($crate::Lit::Char($crate::LitChar::Utf16(u16::try_from($c).unwrap())))
-  }};
-  (U $c:expr) => {{
-    $crate::MacroToken::Lit($crate::Lit::Char($crate::LitChar::Utf32(u32::from($c))))
-  }};
-  ($c:expr) => {{
-    $crate::MacroToken::Lit($crate::Lit::Char($crate::LitChar::Ordinary(u8::try_from($c).unwrap())))
-  }};
-}
-#[cfg(test)]
-pub(crate) use char;
-
-#[cfg(test)]
-macro_rules! int {
-  (ull $value:expr) => {{
-    $crate::MacroToken::Lit($crate::Lit::Int($crate::LitInt {
-      value: $value,
-      suffix: Some($crate::BuiltInType::ULongLong),
-    }))
-  }};
-  ($value:expr) => {{
-    $crate::MacroToken::Lit($crate::ast::Lit::Int($crate::ast::LitInt { value: $value, suffix: None }))
-  }};
-}
-#[cfg(test)]
-pub(crate) use int;
-
-#[cfg(test)]
-macro_rules! double {
-  ($value:expr) => {{
-    $crate::MacroToken::Lit($crate::ast::Lit::Float($crate::ast::LitFloat::Double($value)))
-  }};
-}
-#[cfg(test)]
-pub(crate) use double;
-
-#[cfg(test)]
-macro_rules! comment {
-  ($comment:expr) => {{
-    $crate::MacroToken::Comment($crate::ast::Comment::try_from($comment).unwrap())
-  }};
-}
-#[cfg(test)]
-pub(crate) use comment;
-
-#[cfg(test)]
-macro_rules! punct {
-  ($punct:expr) => {{
-    $crate::MacroToken::Punctuation($punct)
-  }};
-  ($($punct:tt)*) => {{
-    $crate::MacroToken::Punctuation(stringify!($($punct)*))
-  }};
-}
-#[cfg(test)]
-pub(crate) use punct;
-
-#[cfg(test)]
-macro_rules! tokens {
-  ($($token:expr),*) => {{
-    #[allow(unused)]
-    use $crate::macro_set::ToMacroToken;
-
-    &[
-      $(
-        $token.to_macro_token()
-      ),*
-    ]
-  }};
-}
-#[cfg(test)]
-pub(crate) use tokens;
-
-#[cfg(test)]
 macro_rules! token_vec {
   ($($token:expr),*) => {{
-    #[allow(unused)]
-    use $crate::macro_set::ToMacroToken;
-
     vec![
       $(
         $token
@@ -1057,6 +918,7 @@ macro_rules! token_vec {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::macro_token::*;
 
   #[test]
   fn macro_set() {

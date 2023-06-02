@@ -66,7 +66,7 @@ impl<'t> Decl<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_set::{id as macro_id, int as macro_int, punct as macro_punct, tokens};
+  use crate::macro_token::{id as macro_id, int as macro_int, punct as macro_punct, tokens};
 
   #[test]
   fn parse() {

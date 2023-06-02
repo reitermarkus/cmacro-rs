@@ -107,7 +107,7 @@ mod tests {
 
   use crate::{
     ast::arg,
-    macro_set::{arg as macro_arg, punct as macro_punct, tokens},
+    macro_token::{arg as macro_arg, punct as macro_punct, tokens},
   };
 
   #[test]
