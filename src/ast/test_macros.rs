@@ -1,9 +1,9 @@
 macro_rules! lit_id {
   (@ $name:ident) => {
-    $crate::ast::LitIdent { id: ::std::borrow::Cow::Owned(stringify!($name).into()) }
+    $crate::ast::Identifier { id: ::std::borrow::Cow::Owned(stringify!($name).into()) }
   };
   ($name:ident) => {
-    $crate::ast::LitIdent { id: ::std::borrow::Cow::Owned(stringify!($name).into()) }
+    $crate::ast::Identifier { id: ::std::borrow::Cow::Owned(stringify!($name).into()) }
   };
 }
 pub(crate) use lit_id;

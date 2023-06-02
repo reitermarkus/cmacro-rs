@@ -276,7 +276,7 @@ pub enum Type<'t> {
   Identifier { name: Box<Expr<'t>>, is_struct: bool },
   /// A type path.
   #[allow(missing_docs)]
-  Path { leading_colon: bool, segments: Vec<LitIdent<'t>> },
+  Path { leading_colon: bool, segments: Vec<Identifier<'t>> },
   /// A pointer type.
   #[allow(missing_docs)]
   Ptr { ty: Box<Self>, mutable: bool },
@@ -361,7 +361,7 @@ impl<'t> Type<'t> {
       }),
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
       syn::Type::Verbatim(ty) => Ok(Self::Identifier {
-        name: Box::new(Expr::Variable { name: LitIdent { id: ty.to_string().into() } }),
+        name: Box::new(Expr::Variable { name: Identifier { id: ty.to_string().into() } }),
         is_struct: false,
       }),
       syn::Type::Path(path_ty) => {
@@ -371,7 +371,7 @@ impl<'t> Type<'t> {
 
         Ok(Self::Path {
           leading_colon: path_ty.path.leading_colon.is_some(),
-          segments: path_ty.path.segments.iter().map(|s| LitIdent { id: s.ident.to_string().into() }).collect(),
+          segments: path_ty.path.segments.iter().map(|s| Identifier { id: s.ident.to_string().into() }).collect(),
         })
       },
       ty => Err(crate::CodegenError::UnsupportedType(ty.into_token_stream().to_string())),
@@ -440,8 +440,8 @@ impl FromStr for Type<'static> {
     let tokens = ty
       .split_whitespace()
       .map(|t| {
-        if let Ok(identifier) = LitIdent::try_from(t) {
-          MacroToken::Id(identifier)
+        if let Ok(identifier) = Identifier::try_from(t) {
+          MacroToken::Identifier(identifier)
         } else if is_punctuation(t) {
           MacroToken::Punctuation(t)
         } else {

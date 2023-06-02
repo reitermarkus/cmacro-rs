@@ -7,14 +7,14 @@ use nom::{
 
 use crate::MacroToken;
 
-use super::{Comment, LitIdent, MacroArg};
+use super::{Comment, Identifier, MacroArg};
 
 pub(crate) fn macro_arg<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], MacroArg> {
   map_opt(take_one, |token| if let MacroToken::Arg(macro_arg) = token { Some(macro_arg.clone()) } else { None })(tokens)
 }
 
-pub(crate) fn macro_id<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], LitIdent<'t>> {
-  map_opt(take_one, |token| if let MacroToken::Id(id) = token { Some(id.clone()) } else { None })(tokens)
+pub(crate) fn macro_id<'i, 't>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Identifier<'t>> {
+  map_opt(take_one, |token| if let MacroToken::Identifier(id) = token { Some(id.clone()) } else { None })(tokens)
 }
 
 pub(crate) fn take_one<I>(tokens: &[I]) -> IResult<&[I], &I>
@@ -62,16 +62,13 @@ where
   move |tokens| {
     value(
       id,
-      verify(
-        take_one,
-        move |token| {
-          if let MacroToken::Id(identifier) = token {
-            identifier.id.as_ref() == id
-          } else {
-            false
-          }
-        },
-      ),
+      verify(take_one, move |token| {
+        if let MacroToken::Identifier(identifier) = token {
+          identifier.id.as_ref() == id
+        } else {
+          false
+        }
+      }),
     )(tokens)
   }
 }

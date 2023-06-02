@@ -27,11 +27,11 @@ pub(crate) fn is_identifier(s: &str) -> bool {
 
 /// A literal identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LitIdent<'t> {
+pub struct Identifier<'t> {
   pub(crate) id: Cow<'t, str>,
 }
 
-impl<'t> LitIdent<'t> {
+impl<'t> Identifier<'t> {
   /// Get the string representation of this identifier.
   pub fn as_str(&self) -> &str {
     self.id.as_ref()
@@ -53,7 +53,7 @@ impl<'t> LitIdent<'t> {
 
         fold_many0(
           verify(identifier_char, |c| unicode_ident::is_xid_continue(*c)),
-          move || LitIdent { id: Cow::Owned(String::from(start_char)) },
+          move || Identifier { id: Cow::Owned(String::from(start_char)) },
           |mut id, c| {
             id.id.to_mut().push(c);
             id
@@ -63,12 +63,12 @@ impl<'t> LitIdent<'t> {
     ))(input)
   }
 
-  pub(crate) fn to_static(&self) -> LitIdent<'static> {
-    LitIdent { id: Cow::Owned(self.id.clone().into_owned()) }
+  pub(crate) fn to_static(&self) -> Identifier<'static> {
+    Identifier { id: Cow::Owned(self.id.clone().into_owned()) }
   }
 }
 
-impl<'t> TryFrom<&'t str> for LitIdent<'t> {
+impl<'t> TryFrom<&'t str> for Identifier<'t> {
   type Error = nom::Err<nom::error::Error<&'t str>>;
 
   fn try_from(s: &'t str) -> Result<Self, Self::Error> {
@@ -85,24 +85,24 @@ mod tests {
 
   #[test]
   fn parse_literal() {
-    let id = LitIdent::try_from("asdf").unwrap();
+    let id = Identifier::try_from("asdf").unwrap();
     assert_eq!(id, lit_id!(asdf));
 
-    let id = LitIdent::try_from("\\u0401").unwrap();
+    let id = Identifier::try_from("\\u0401").unwrap();
     assert_eq!(id, lit_id!(Ё));
 
-    let id = LitIdent::try_from("Δx").unwrap();
+    let id = Identifier::try_from("Δx").unwrap();
     assert_eq!(id, lit_id!(Δx));
 
-    let id = LitIdent::try_from("_123").unwrap();
+    let id = Identifier::try_from("_123").unwrap();
     assert_eq!(id, lit_id!(_123));
 
-    let id = LitIdent::try_from("__INT_MAX__").unwrap();
+    let id = Identifier::try_from("__INT_MAX__").unwrap();
     assert_eq!(id, lit_id!(__INT_MAX__));
   }
 
   #[test]
   fn parse_wrong() {
-    LitIdent::try_from("123def").unwrap_err();
+    Identifier::try_from("123def").unwrap_err();
   }
 }

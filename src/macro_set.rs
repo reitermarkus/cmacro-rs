@@ -7,7 +7,7 @@ use std::{
   mem,
 };
 
-use crate::ast::{Comment, Lit, LitChar, LitIdent, LitString, MacroArg};
+use crate::ast::{Comment, Identifier, Lit, LitChar, LitString, MacroArg};
 
 pub(crate) fn is_punctuation(s: &str) -> bool {
   matches!(
@@ -85,7 +85,7 @@ pub(crate) fn is_punctuation(s: &str) -> bool {
 ///
 /// ```
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use cmacro::{MacroArg, MacroSet, MacroToken, LitIdent, Lit};
+/// use cmacro::{MacroArg, MacroSet, MacroToken, Identifier, Lit};
 ///
 /// let mut macro_set = MacroSet::new();
 ///
@@ -93,7 +93,7 @@ pub(crate) fn is_punctuation(s: &str) -> bool {
 /// macro_set.define_fn_macro("TIMES_PI", &["n"], &["n", "*", "PI"]);
 ///
 /// let (args, body) = macro_set.expand_fn_macro("TIMES_PI")?;
-/// assert_eq!(args, vec![MacroToken::Id(LitIdent::try_from("n")?)]);
+/// assert_eq!(args, vec![MacroToken::Identifier(Identifier::try_from("n")?)]);
 /// assert_eq!(body, vec![
 ///   MacroToken::Arg(MacroArg::new(0)),
 ///   MacroToken::Punctuation("*"),
@@ -216,7 +216,7 @@ impl<'t> Token<'t> {
   pub fn from_str(token: &'t str) -> Self {
     if token == "__VA_ARGS__" {
       Token::VarArgs
-    } else if let Ok(identifier) = LitIdent::try_from(token) {
+    } else if let Ok(identifier) = Identifier::try_from(token) {
       Self::Identifier(identifier)
     } else if let Ok(literal) = Lit::try_from(token) {
       Self::Literal(literal, Cow::Borrowed(token))
@@ -258,7 +258,7 @@ impl<'t> Token<'t> {
     Some(match self {
       Self::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
       Self::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
-      Self::Identifier(id) => MacroToken::Id(id),
+      Self::Identifier(id) => MacroToken::Identifier(id),
       Self::Literal(lit, _) => MacroToken::Lit(lit),
       Self::Plain(t) => MacroToken::Token(t),
       Self::Punctuation(t) => MacroToken::Punctuation(t),
@@ -308,7 +308,7 @@ impl<'t> Token<'t> {
       (lhs, Token::NonReplacable(rhs)) => return lhs.concat(*rhs),
       (Self::Placemarker, rhs) => return Ok(rhs),
       (lhs, Self::Placemarker) => return Ok(lhs),
-      (Self::Identifier(mut lhs), Self::Identifier(LitIdent { id: rhs })) => {
+      (Self::Identifier(mut lhs), Self::Identifier(Identifier { id: rhs })) => {
         lhs.id.to_mut().push_str(rhs.as_ref());
         return Ok(Self::Identifier(lhs))
       },
@@ -355,7 +355,7 @@ impl<'t> Token<'t> {
             // Appending a float only works for scientific notation
             if rhs.as_ref().chars().all(unicode_ident::is_xid_continue) {
               lhs.id.to_mut().push_str(rhs.as_ref());
-              return Ok(Self::Identifier(LitIdent::try_from(lhs.id.as_ref()).unwrap().to_static()))
+              return Ok(Self::Identifier(Identifier::try_from(lhs.id.as_ref()).unwrap().to_static()))
             }
           },
         }
@@ -363,8 +363,8 @@ impl<'t> Token<'t> {
         return Err(ExpansionError::InvalidConcat)
       },
       (
-        Self::Identifier(LitIdent { id: mut lhs }) | Self::Literal(_, mut lhs) | Self::Plain(mut lhs),
-        Self::Identifier(LitIdent { id: ref rhs }) | Self::Literal(_, ref rhs) | Self::Plain(ref rhs),
+        Self::Identifier(Identifier { id: mut lhs }) | Self::Literal(_, mut lhs) | Self::Plain(mut lhs),
+        Self::Identifier(Identifier { id: ref rhs }) | Self::Literal(_, ref rhs) | Self::Plain(ref rhs),
       ) => {
         lhs.to_mut().push_str(rhs.as_ref());
         lhs.into_owned()
@@ -375,7 +375,7 @@ impl<'t> Token<'t> {
       | (_, Self::MacroArg(_) | Self::VarArgs | Self::Comment(_)) => unreachable!(),
     };
 
-    Ok(if let Ok(identifier) = LitIdent::try_from(new_token.as_ref()) {
+    Ok(if let Ok(identifier) = Identifier::try_from(new_token.as_ref()) {
       Self::Identifier(identifier.to_static())
     } else if let Ok(literal) = Lit::try_from(new_token.as_ref()) {
       Self::Literal(literal.into_static(), Cow::Owned(new_token))
@@ -437,7 +437,7 @@ pub enum MacroToken<'t> {
   /// A macro parameter for the argument at the given position.
   Arg(MacroArg),
   /// An identifier.
-  Id(LitIdent<'t>),
+  Identifier(Identifier<'t>),
   /// A literal.
   Lit(Lit<'t>),
   /// Punctuation.
@@ -459,7 +459,7 @@ enum Token<'t> {
   /// Punctuation.
   Punctuation(&'t str),
   /// An identifier.
-  Identifier(LitIdent<'t>),
+  Identifier(Identifier<'t>),
   /// A literal.
   Literal(Lit<'t>, Cow<'t, str>),
   /// An intermediary token which cannot be parsed yet.
@@ -943,7 +943,7 @@ pub(crate) use arg;
 #[cfg(test)]
 macro_rules! id {
   ($id:ident) => {{
-    $crate::MacroToken::Id($crate::LitIdent { id: ::std::borrow::Cow::Borrowed(stringify!($id)) })
+    $crate::MacroToken::Identifier($crate::Identifier { id: ::std::borrow::Cow::Borrowed(stringify!($id)) })
   }};
 }
 #[cfg(test)]

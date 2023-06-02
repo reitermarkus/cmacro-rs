@@ -22,7 +22,7 @@ use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken, UnaryOp};
 #[allow(missing_docs)]
 pub enum Expr<'t> {
   Arg(MacroArg),
-  Variable { name: LitIdent<'t> },
+  Variable { name: Identifier<'t> },
   FunctionCall(FunctionCall<'t>),
   Cast { expr: Box<Self>, ty: Type<'t> },
   Literal(Lit<'t>),
@@ -74,12 +74,12 @@ impl<'t> Expr<'t> {
             let (_, ids) = match token {
               MacroToken::Token(Cow::Borrowed(token2)) => many1(alt((
                 unsuffixed_int,
-                map_opt(LitIdent::parse_str, |id| Some(Self::Variable { name: id })),
+                map_opt(Identifier::parse_str, |id| Some(Self::Variable { name: id })),
               )))(token2)
               .ok()?,
               MacroToken::Token(Cow::Owned(token2)) => many1(alt((
                 unsuffixed_int,
-                map_opt(LitIdent::parse_str, |id| Some(Self::Variable { name: id.to_static() })),
+                map_opt(Identifier::parse_str, |id| Some(Self::Variable { name: id.to_static() })),
               )))(token2.as_ref())
               .ok()?,
               _ => return None,

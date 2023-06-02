@@ -22,7 +22,7 @@ use crate::{BuiltInType, CodegenContext, Expr, Lit, LocalContext, MacroToken, Ty
 
 use crate::ast::{
   tokens::{id, take_one},
-  LitIdent,
+  Identifier,
 };
 
 use super::escaped_char;
@@ -380,7 +380,7 @@ impl<'t> LitString<'t> {
       Self::Utf32(_) => Type::BuiltIn(BuiltInType::Char32T),
       Self::Wide(_) => {
         let mut ty = Type::Identifier {
-          name: Box::new(Expr::Variable { name: LitIdent { id: "wchar_t".to_owned().into() } }),
+          name: Box::new(Expr::Variable { name: Identifier { id: "wchar_t".to_owned().into() } }),
           is_struct: false,
         };
         ty.finish(ctx)?;
