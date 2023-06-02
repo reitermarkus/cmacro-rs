@@ -13,6 +13,13 @@ pub struct MacroArg {
 }
 
 impl MacroArg {
+  /// Create a new macro argument with the given index.
+  pub fn new(index: usize) -> Self {
+    Self { index }
+  }
+}
+
+impl MacroArg {
   pub(crate) fn index(&self) -> usize {
     self.index
   }

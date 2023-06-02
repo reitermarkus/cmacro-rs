@@ -83,6 +83,28 @@ pub(crate) fn is_punctuation(s: &str) -> bool {
 /// fully expand nested macros. This also includes expanding stringification (`#`)
 /// and concatenation (`##`), except when their respective operands are macro
 /// arguments.
+///
+/// # Example
+///
+/// ```
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// use cmacro::{MacroArg, MacroSet, MacroToken, LitIdent, Lit};
+///
+/// let mut macro_set = MacroSet::new();
+///
+/// macro_set.define_var_macro("PI", &["3.14"]);
+/// macro_set.define_fn_macro("TIMES_PI", &["n"], &["n", "*", "PI"]);
+///
+/// let (args, body) = macro_set.expand_fn_macro("TIMES_PI")?;
+/// assert_eq!(args, vec![MacroToken::Id(LitIdent::try_from("n")?)]);
+/// assert_eq!(body, vec![
+///   MacroToken::Arg(MacroArg::new(0)),
+///   MacroToken::Punctuation("*"),
+///   MacroToken::Lit(Lit::try_from("3.14")?),
+/// ]);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct MacroSet {
   var_macros: HashMap<String, Vec<String>>,
@@ -155,7 +177,15 @@ fn is_whitespace(s: &str) -> bool {
   s.is_empty() || is_comment(s)
 }
 
-fn tokenize<'t, T>(arg_names: &[String], tokens: &'t [T]) -> Vec<Token<'t>>
+fn tokenize_arg_names<'s, 't, T>(arg_names: &'s [T]) -> Vec<Token<'t>>
+where
+  's: 't,
+  T: AsRef<str> + 't,
+{
+  arg_names.iter().map(|arg_name| Token::from_str(arg_name.as_ref())).collect()
+}
+
+fn tokenize<'t, T>(arg_names: &[Token<'t>], tokens: &'t [T]) -> Vec<Token<'t>>
 where
   T: AsRef<str> + 't,
 {
@@ -163,7 +193,11 @@ where
     .iter()
     .map(|t| {
       let t = t.as_ref();
-      if let Some(arg_index) = arg_names.iter().position(|arg_name| t == arg_name) {
+      if let Some(arg_index) = arg_names
+        .iter()
+        .filter(|t| matches!(t, Token::Punctuation(_) | Token::Identifier(_)))
+        .position(|arg| if let Token::Identifier(id) = arg { id.as_str() == t } else { false })
+      {
         Token::MacroArg(arg_index)
       } else {
         Token::from_str(t)
@@ -223,7 +257,7 @@ impl<'t> Token<'t> {
     }
   }
 
-  pub fn detokenize(self, arg_names: &'t [String]) -> Option<MacroToken<'t>> {
+  pub fn detokenize(self, arg_names: &[Token<'t>]) -> Option<MacroToken<'t>> {
     Some(match self {
       Self::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
       Self::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
@@ -396,7 +430,7 @@ fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
   tokens
 }
 
-fn detokenize<'t>(arg_names: &'t [String], tokens: Vec<Token<'t>>) -> Vec<MacroToken<'t>> {
+fn detokenize<'t>(arg_names: &[Token<'t>], tokens: Vec<Token<'t>>) -> Vec<MacroToken<'t>> {
   tokens.into_iter().filter_map(|t| t.detokenize(arg_names)).collect()
 }
 
@@ -470,11 +504,12 @@ impl MacroSet {
             if it.peek() == Some(&Token::Punctuation("(")) {
               if let Some((arg_names, body)) = self.fn_macros.get(id.id.as_ref()) {
                 if let Ok(args) = self.collect_args(&mut it) {
-                  let body = tokenize(arg_names, body);
+                  let arg_names = tokenize_arg_names(arg_names);
+                  let body = tokenize(&arg_names, body);
                   let expanded_tokens = self.expand_fn_macro_body(
                     non_replaced_names.clone(),
                     id.id.as_ref(),
-                    arg_names,
+                    &arg_names,
                     Some(&args),
                     &body,
                   )?;
@@ -529,14 +564,14 @@ impl MacroSet {
     &'s self,
     mut non_replaced_names: HashSet<&'n str>,
     name: &'n str,
-    arg_names: &[String],
+    arg_names: &[Token<'t>],
     args: Option<&[Vec<Token<'t>>]>,
     body: &[Token<'t>],
   ) -> Result<Vec<Token<'t>>, ExpansionError>
   where
     's: 't,
   {
-    let is_variadic = arg_names.last().map(|arg_name| *arg_name == "...").unwrap_or(false);
+    let is_variadic = arg_names.last().map(|arg| matches!(arg, Token::Punctuation("..."))).unwrap_or(false);
 
     if !is_variadic {
       // A function-like macro shall only contain `__VA_ARGS__` if it uses ellipsis notation in the parameters.
@@ -559,12 +594,21 @@ impl MacroSet {
     }
 
     // Parameter names must be unique.
-    if let Some((_, duplicate_parameter)) = arg_names
-      .iter()
-      .enumerate()
-      .find(|(i, arg_name)| arg_names.iter().skip(i + 1).any(|arg_name2| *arg_name == arg_name2))
     {
-      return Err(ExpansionError::NonUniqueArgument(duplicate_parameter.clone()))
+      let arg_names = arg_names.iter().filter_map(|t| -> Option<&str> {
+        match t {
+          Token::Punctuation(p) => Some(p),
+          Token::Identifier(id) => Some(id.as_str()),
+          _ => None,
+        }
+      });
+      if let Some((_, duplicate_parameter)) = arg_names
+        .clone()
+        .enumerate()
+        .find(|(i, arg_name)| arg_names.clone().skip(i + 1).any(|arg_name2| *arg_name == arg_name2))
+      {
+        return Err(ExpansionError::NonUniqueArgument(duplicate_parameter.to_owned()))
+      }
     }
 
     let body = if let Some(args) = args {
@@ -648,7 +692,7 @@ impl MacroSet {
   fn expand_arguments<'s, 't>(
     &'s self,
     non_replaced_names: HashSet<&str>,
-    arg_names: &[String],
+    arg_names: &[Token<'t>],
     args: &[Vec<Token<'t>>],
     tokens: &[Token<'t>],
   ) -> Result<Vec<Token<'t>>, ExpansionError>
@@ -847,12 +891,15 @@ impl MacroSet {
     's: 't,
   {
     let (arg_names, body) = self.fn_macros.get(name).ok_or(ExpansionError::MacroNotFound)?;
-    let body = tokenize(arg_names, body);
-    let tokens = self.expand_fn_macro_body(HashSet::new(), name, arg_names, None, &body)?;
-    Ok((
-      detokenize(&[], arg_names.iter().map(|arg_name| Token::from_str(arg_name)).collect()),
-      detokenize(arg_names, tokens),
-    ))
+
+    let arg_names = tokenize_arg_names(arg_names);
+    let body = tokenize(&arg_names, body);
+    let tokens = self.expand_fn_macro_body(HashSet::new(), name, &arg_names, None, &body)?;
+
+    let tokens = detokenize(&arg_names, tokens);
+    let arg_names = detokenize(&[], arg_names);
+
+    Ok((arg_names, tokens))
   }
 
   /// Expand a macro expression using the macros defined in the set.
@@ -960,6 +1007,15 @@ macro_rules! double {
 pub(crate) use double;
 
 #[cfg(test)]
+macro_rules! comment {
+  ($comment:expr) => {{
+    $crate::MacroToken::Comment(Comment::try_from($comment).unwrap())
+  }};
+}
+#[cfg(test)]
+pub(crate) use comment;
+
+#[cfg(test)]
 macro_rules! punct {
   ($punct:expr) => {{
     $crate::MacroToken::Punctuation($punct)
@@ -1034,6 +1090,20 @@ mod tests {
     assert_eq!(
       macro_set.expand_var_macro("PLUS_VAR_VAR"),
       Ok(token_vec![int!(7), punct!("+"), int!(2), punct!("+"), int!(3)])
+    );
+  }
+
+  #[test]
+  fn parse_args_whitespace() {
+    let mut macro_set = MacroSet::new();
+
+    macro_set.define_fn_macro("TIMES", ["x", "/* X coordinate */", "y", "/* Y coordinate */"], ["x", "*", "y"]);
+    assert_eq!(
+      macro_set.expand_fn_macro("TIMES"),
+      Ok((
+        token_vec![id!(x), comment!("/* X coordinate */"), id!(y), comment!("/* Y coordinate */")],
+        token_vec![arg!(0), punct!("*"), arg!(1)]
+      ))
     );
   }
 
