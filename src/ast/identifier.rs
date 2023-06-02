@@ -25,7 +25,7 @@ pub(crate) fn is_identifier(s: &str) -> bool {
   false
 }
 
-/// A literal identifier.
+/// An identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identifier<'t> {
   pub(crate) id: Cow<'t, str>,

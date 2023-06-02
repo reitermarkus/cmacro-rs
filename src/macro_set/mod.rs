@@ -8,72 +8,12 @@ use std::{
 };
 
 use crate::{
-  ast::{Comment, Identifier, Lit, LitChar, LitString, MacroArg},
+  ast::{Comment, Identifier, Lit, LitChar, LitString, MacroArg, Punctuation},
   MacroToken,
 };
 
 #[cfg(test)]
 pub(crate) mod test_macros;
-
-pub(crate) fn is_punctuation(s: &str) -> bool {
-  matches!(
-    s,
-    "["
-      | "]"
-      | "("
-      | ")"
-      | "{"
-      | "}"
-      | "."
-      | "->"
-      | "++"
-      | "--"
-      | "&"
-      | "*"
-      | "+"
-      | "-"
-      | "~"
-      | "!"
-      | "/"
-      | "%"
-      | "<<"
-      | ">>"
-      | "<"
-      | ">"
-      | "<="
-      | ">="
-      | "=="
-      | "!="
-      | "^"
-      | "|"
-      | "&&"
-      | "||"
-      | "?"
-      | ":"
-      | ";"
-      | "..."
-      | "="
-      | "*="
-      | "/="
-      | "%="
-      | "+="
-      | "-="
-      | "<<="
-      | ">>="
-      | "&="
-      | "^="
-      | "|="
-      | ","
-      | "#"
-      | "##"
-      | "<:"
-      | ":>"
-      | "<%"
-      | "%>"
-      | "%:"
-      | "%:%:"
-  )
-}
 
 /// A set of macros.
 ///
@@ -91,7 +31,7 @@ pub(crate) fn is_punctuation(s: &str) -> bool {
 ///
 /// ```
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use cmacro::{MacroArg, MacroSet, MacroToken, Identifier, Lit};
+/// use cmacro::{MacroArg, MacroSet, MacroToken, Identifier, Lit, Punctuation};
 ///
 /// let mut macro_set = MacroSet::new();
 ///
@@ -102,7 +42,7 @@ pub(crate) fn is_punctuation(s: &str) -> bool {
 /// assert_eq!(args, vec![MacroToken::Identifier(Identifier::try_from("n")?)]);
 /// assert_eq!(body, vec![
 ///   MacroToken::Arg(MacroArg::new(0)),
-///   MacroToken::Punctuation("*"),
+///   MacroToken::Punctuation(Punctuation::try_from("*")?),
 ///   MacroToken::Lit(Lit::try_from("3.14")?),
 /// ]);
 /// # Ok(())
@@ -226,8 +166,8 @@ impl<'t> Token<'t> {
       Self::Identifier(identifier)
     } else if let Ok(literal) = Lit::try_from(token) {
       Self::Literal(literal, Cow::Borrowed(token))
-    } else if is_punctuation(token) {
-      Self::Punctuation(token)
+    } else if let Ok(p) = Punctuation::try_from(token) {
+      Self::Punctuation(p)
     } else if let Ok(comment) = Comment::try_from(token) {
       Self::Comment(comment)
     } else {
@@ -254,7 +194,7 @@ impl<'t> Token<'t> {
       Self::NonReplacable(t) => t.stringify(nested),
       Self::Literal(_, t) => Append(t.as_ref()),
       Self::Plain(t) => Append(t.as_ref()),
-      Self::Punctuation(t) => Append(t),
+      Self::Punctuation(t) => Append(t.as_str()),
       Self::Comment(_) => Skip,
       Self::Placemarker => Skip,
     }
@@ -277,40 +217,6 @@ impl<'t> Token<'t> {
     })
   }
 
-  fn concat_punctuation(lhs: &'t str, rhs: &'t str) -> Result<&'t str, ExpansionError> {
-    Ok(match (lhs, rhs) {
-      ("-", ">") => "->",
-      ("+", "+") => "++",
-      ("-", "-") => "--",
-      ("<", "<") => "<<",
-      (">", ">") => ">>",
-      ("<", "=") => "<=",
-      (">", "=") => ">=",
-      ("=", "=") => "==",
-      ("!", "=") => "!=",
-      ("&", "&") => "&&",
-      ("|", "|") => "||",
-      ("*", "=") => "*=",
-      ("/", "=") => "/=",
-      ("%", "=") => "%=",
-      ("+", "=") => "+=",
-      ("-", "=") => "-=",
-      ("<<", "=") | ("<", "<=") => "<<=",
-      (">>", "=") | (">", ">=") => ">>=",
-      ("&", "=") => "&=",
-      ("^", "=") => "^=",
-      ("|", "=") => "|=",
-      ("#", "#") => "##",
-      ("<", ":") => "<:",
-      (":", ">") => ":>",
-      ("<", "%") => "<%",
-      ("%", ">") => "%>",
-      ("%", ":") => "%:",
-      ("%:", "%:") => "%:%:",
-      _ => return Err(ExpansionError::InvalidConcat),
-    })
-  }
-
   pub fn concat(self, other: Self) -> Result<Self, ExpansionError> {
     let new_token = match (self, other) {
       (Token::NonReplacable(lhs), rhs) => return lhs.concat(rhs),
@@ -321,8 +227,10 @@ impl<'t> Token<'t> {
         lhs.id.to_mut().push_str(rhs.as_ref());
         return Ok(Self::Identifier(lhs))
       },
-      (Self::Punctuation(lhs), Self::Punctuation(rhs)) => {
-        return Ok(Self::NonReplacable(Box::new(Self::Punctuation(Self::concat_punctuation(lhs, rhs)?))))
+      (Self::Punctuation(lhs), Self::Punctuation(ref rhs)) => {
+        return Ok(Self::NonReplacable(Box::new(Self::Punctuation(
+          lhs.concat(rhs).ok_or(ExpansionError::InvalidConcat)?,
+        ))))
       },
       (Self::Literal(Lit::String(_) | Lit::Char(_), _), _) => {
         // Cannot concatenate anything to a string or char literal.
@@ -333,7 +241,7 @@ impl<'t> Token<'t> {
           match lit {
             Lit::String(_) | Lit::Char(_) => return Err(ExpansionError::InvalidConcat),
             Lit::Int(_) | Lit::Float(_) => {
-              let token = format!("{lhs}{rhs}");
+              let token = format!("{}{rhs}", lhs.as_str());
               if let Ok(literal) = Lit::try_from(token.as_str()) {
                 return Ok(Self::Literal(literal.into_static(), Cow::Owned(token)))
               }
@@ -405,7 +313,7 @@ fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
   for token in it {
     let token = match token.stringify(nested) {
       StringifyAction::Keep => {
-        tokens.push(Token::Punctuation("#"));
+        tokens.push(Token::Punctuation(Punctuation { punctuation: "#" }));
         tokens.push(token);
         continue
       },
@@ -449,7 +357,7 @@ enum Token<'t> {
   /// Variable macro arguments.
   VarArgs,
   /// Punctuation.
-  Punctuation(&'t str),
+  Punctuation(Punctuation<'t>),
   /// An identifier.
   Identifier(Identifier<'t>),
   /// A literal.
@@ -490,7 +398,7 @@ impl MacroSet {
             tokens.push(Token::NonReplacable(Box::new(token)));
           } else {
             // Treat as function-like macro call if immediately followed by `(`.
-            if it.peek() == Some(&Token::Punctuation("(")) {
+            if it.peek() == Some(&Token::Punctuation(Punctuation { punctuation: "(" })) {
               if let Some((arg_names, body)) = self.fn_macros.get(id.id.as_ref()) {
                 if let Ok(args) = self.collect_args(&mut it) {
                   let arg_names = tokenize_arg_names(arg_names);
@@ -560,7 +468,7 @@ impl MacroSet {
   where
     's: 't,
   {
-    let is_variadic = arg_names.last().map(|arg| matches!(arg, Token::Punctuation("..."))).unwrap_or(false);
+    let is_variadic = arg_names.last().map(|arg| matches!(arg, Token::Punctuation(p) if p == "...")).unwrap_or(false);
 
     if !is_variadic {
       // A function-like macro shall only contain `__VA_ARGS__` if it uses ellipsis notation in the parameters.
@@ -586,7 +494,7 @@ impl MacroSet {
     {
       let arg_names = arg_names.iter().filter_map(|t| -> Option<&str> {
         match t {
-          Token::Punctuation(p) => Some(p),
+          Token::Punctuation(p) => Some(p.as_str()),
           Token::Identifier(id) => Some(id.as_str()),
           _ => None,
         }
@@ -626,7 +534,7 @@ impl MacroSet {
     let mut it2 = it.clone();
 
     match it2.next() {
-      Some(Token::Punctuation("(")) => (),
+      Some(Token::Punctuation(p)) if p == "(" => (),
       _ => return Err(ExpansionError::MissingOpenParenthesis('(')),
     }
 
@@ -644,7 +552,7 @@ impl MacroSet {
             None => Err(ExpansionError::MissingOpenParenthesis(close)),
           };
 
-          match p {
+          match p.as_str() {
             "(" => parentheses.push('('),
             ")" => {
               if parentheses.is_empty() {
@@ -693,7 +601,7 @@ impl MacroSet {
 
     while let Some(token) = it.next() {
       match token {
-        Token::Punctuation("#") => match it.peek() {
+        Token::Punctuation(ref p) if p == "#" => match it.peek() {
           Some(Token::MacroArg(_) | Token::VarArgs) => {
             tokens.push(token.clone());
           },
@@ -707,7 +615,7 @@ impl MacroSet {
 
             for (i, arg) in args[(arg_names.len() - 1)..].iter().enumerate() {
               if i > 0 {
-                var_args.push(Token::Punctuation(","));
+                var_args.push(Token::Punctuation(Punctuation { punctuation: "," }));
               }
               var_args.extend(arg.clone());
             }
@@ -716,11 +624,11 @@ impl MacroSet {
           };
 
           match tokens.last() {
-            Some(Token::Punctuation("#")) => {
+            Some(Token::Punctuation(Punctuation { punctuation: "#" })) => {
               tokens.pop();
               tokens.extend(stringify(arg, non_replaced_names.len() > 1));
             },
-            Some(Token::Punctuation("##")) => {
+            Some(Token::Punctuation(Punctuation { punctuation: "##" })) => {
               let arg = self.expand_macro_body(non_replaced_names.clone(), &arg)?;
 
               if arg.is_empty() {
@@ -729,7 +637,7 @@ impl MacroSet {
                 tokens.extend(arg);
               }
             },
-            _ if it.peek() == Some(&Token::Punctuation("##")) => {
+            _ if it.peek() == Some(&Token::Punctuation(Punctuation { punctuation: "##" })) => {
               let arg = self.expand_macro_body(non_replaced_names.clone(), &arg)?;
 
               if arg.is_empty() {
@@ -754,7 +662,7 @@ impl MacroSet {
 
     while let Some(token) = it.next() {
       match token {
-        Token::Punctuation("##")
+        Token::Punctuation(Punctuation { punctuation: "##" })
           if !matches!(tokens.last(), Some(&Token::MacroArg(_) | &Token::VarArgs))
             && !matches!(it.peek(), Some(&Token::MacroArg(_) | &Token::VarArgs)) =>
         {
@@ -773,7 +681,7 @@ impl MacroSet {
 
           // Ignore whitespace between the last non-whitespace token and this `##`.
           let lhs = until_no_whitespace!(tokens.pop(), ConcatBegin);
-          let rhs = if it.peek() == Some(&Token::Punctuation("##")) {
+          let rhs = if it.peek() == Some(&Token::Punctuation(Punctuation { punctuation: "##" })) {
             // Treat consecutive `##` as one.
             Token::Placemarker
           } else {

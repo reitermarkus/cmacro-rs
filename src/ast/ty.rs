@@ -11,7 +11,7 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens, TokenStreamExt};
 
 use super::*;
-use crate::{macro_set::is_punctuation, CodegenContext, LocalContext, MacroToken};
+use crate::{CodegenContext, LocalContext, MacroToken};
 
 /// A built-in type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -442,8 +442,8 @@ impl FromStr for Type<'static> {
       .map(|t| {
         if let Ok(identifier) = Identifier::try_from(t) {
           MacroToken::Identifier(identifier)
-        } else if is_punctuation(t) {
-          MacroToken::Punctuation(t)
+        } else if let Ok(p) = Punctuation::try_from(t) {
+          MacroToken::Punctuation(p)
         } else {
           MacroToken::Token(Cow::Borrowed(t))
         }

@@ -7,7 +7,7 @@ mod asm;
 pub use asm::*;
 
 mod comment;
-pub use comment::Comment;
+pub use comment::*;
 
 mod unary_expr;
 pub use unary_expr::*;
@@ -17,7 +17,7 @@ mod ternary_expr;
 pub use ternary_expr::*;
 
 mod macro_arg;
-pub use macro_arg::MacroArg;
+pub use macro_arg::*;
 
 mod ty;
 pub use ty::*;
@@ -42,6 +42,9 @@ pub use statement::*;
 
 mod decl;
 pub use decl::*;
+
+mod punctuation;
+pub use punctuation::*;
 
 mod stringify;
 pub use stringify::*;

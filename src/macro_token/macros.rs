@@ -74,7 +74,7 @@ pub(crate) use comment;
 
 macro_rules! punct {
   ($punct:expr) => {{
-    $crate::MacroToken::Punctuation($punct)
+    $crate::MacroToken::Punctuation($crate::ast::Punctuation::try_from($punct).unwrap())
   }};
 }
 pub(crate) use punct;

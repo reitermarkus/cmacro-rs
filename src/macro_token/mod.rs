@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::ast::{Comment, Identifier, Lit, MacroArg};
+use crate::ast::{Comment, Identifier, Lit, MacroArg, Punctuation};
 
 #[cfg(test)]
 mod macros;
@@ -17,7 +17,7 @@ pub enum MacroToken<'t> {
   /// A literal.
   Lit(Lit<'t>),
   /// Punctuation.
-  Punctuation(&'t str),
+  Punctuation(Punctuation<'t>),
   /// A comment.
   Comment(Comment<'t>),
   /// An macro token.
