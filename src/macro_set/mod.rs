@@ -775,7 +775,7 @@ impl MacroSet {
   /// Undefine a variable-like macro with the given name.
   ///
   /// Returns true if the macro was undefined.
-  pub fn undefine_macro(&mut self, name: &str) -> bool {
+  pub fn undefine_var_macro(&mut self, name: &str) -> bool {
     self.var_macros.remove(name).is_some()
   }
 
