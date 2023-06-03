@@ -220,13 +220,6 @@ impl<'t> LitString<'t> {
         fold_many0(
           map_opt(take_one, |token| match token {
             MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => Some(Cow::Borrowed(bytes.as_ref())),
-            MacroToken::Token(token) => {
-              if let Ok((_, s)) = all_consuming(Self::parse_ordinary)(token.as_ref()) {
-                Some(s)
-              } else {
-                None
-              }
-            },
             _ => None,
           }),
           move || bytes.clone(),
@@ -249,13 +242,6 @@ impl<'t> LitString<'t> {
               map_opt(take_one, |token| match token {
                 MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
                   Some(Cow::Borrowed(str::from_utf8(bytes.as_ref()).ok()?))
-                },
-                MacroToken::Token(token) => {
-                  if let Ok((_, s)) = all_consuming(Self::parse_utf8)(token.as_ref()) {
-                    Some(s)
-                  } else {
-                    None
-                  }
                 },
                 _ => None,
               }),
@@ -282,13 +268,6 @@ impl<'t> LitString<'t> {
                 MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
                   Some(Cow::Borrowed(str::from_utf8(bytes.as_ref()).ok()?))
                 },
-                MacroToken::Token(token) => {
-                  if let Ok((_, s)) = all_consuming(Self::parse_utf16)(token.as_ref()) {
-                    Some(s)
-                  } else {
-                    None
-                  }
-                },
                 _ => None,
               }),
             ),
@@ -314,13 +293,6 @@ impl<'t> LitString<'t> {
                 MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
                   Some(Cow::Borrowed(str::from_utf8(bytes.as_ref()).ok()?))
                 },
-                MacroToken::Token(token) => {
-                  if let Ok((_, s)) = all_consuming(Self::parse_utf32)(token.as_ref()) {
-                    Some(s)
-                  } else {
-                    None
-                  }
-                },
                 _ => None,
               }),
             ),
@@ -345,13 +317,6 @@ impl<'t> LitString<'t> {
               map_opt(take_one, |token| match token {
                 MacroToken::Lit(Lit::String(LitString::Ordinary(bytes))) => {
                   Some(Cow::Owned(bytes.as_ref().iter().map(|b| u32::from(*b)).collect::<Vec<_>>()))
-                },
-                MacroToken::Token(token) => {
-                  if let Ok((_, s)) = all_consuming(Self::parse_wide)(token.as_ref()) {
-                    Some(Cow::Owned(s))
-                  } else {
-                    None
-                  }
                 },
                 _ => None,
               }),

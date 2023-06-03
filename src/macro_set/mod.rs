@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-  ast::{Comment, Identifier, Lit, LitChar, LitString, MacroArg, Punctuation},
+  ast::{Comment, Identifier, IdentifierContinue, Lit, LitChar, LitString, MacroArg, Punctuation},
   MacroToken,
 };
 
@@ -59,6 +59,8 @@ pub struct MacroSet {
 pub enum ExpansionError {
   /// Macro not found.
   MacroNotFound,
+  /// Invalid token.
+  InvalidToken,
   /// Function-like macro called with wrong number of arguments.
   FnMacroArgumentError {
     /// The macro name.
@@ -88,6 +90,7 @@ impl fmt::Display for ExpansionError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       Self::MacroNotFound => "macro not found".fmt(f),
+      Self::InvalidToken => "macro contains an invalid token".fmt(f),
       Self::FnMacroArgumentError { name, required, given } => {
         write!(f, "macro {name} requires {required} arguments, {given} given")
       },
@@ -191,6 +194,8 @@ impl<'t> Token<'t> {
       Self::Identifier(identifier)
     } else if let Ok(literal) = Lit::try_from(token) {
       Self::Literal(literal, Cow::Borrowed(token))
+    } else if let Ok(id_cont) = IdentifierContinue::try_from(token) {
+      Self::IdentifierContinue(id_cont)
     } else if let Ok(p) = Punctuation::try_from(token) {
       Self::Punctuation(p)
     } else if let Ok(comment) = Comment::try_from(token) {
@@ -216,6 +221,7 @@ impl<'t> Token<'t> {
         "__LINE__" | "__FILE__" if nested => Keep,
         t => Append(t),
       },
+      Self::IdentifierContinue(t) => Append(t.as_str()),
       Self::NonReplacable(t) => t.stringify(nested),
       Self::Literal(_, t) => Append(t.as_ref()),
       Self::Plain(t) => Append(t.as_ref()),
@@ -225,21 +231,19 @@ impl<'t> Token<'t> {
     }
   }
 
-  pub fn detokenize(self, arg_names: &[Token<'t>]) -> Option<MacroToken<'t>> {
-    Some(match self {
+  pub fn detokenize(self, arg_names: &[Token<'t>]) -> Result<Option<MacroToken<'t>>, ExpansionError> {
+    Ok(Some(match self {
       Self::MacroArg(arg_index) => MacroToken::Arg(MacroArg { index: arg_index }),
       Self::VarArgs => MacroToken::Arg(MacroArg { index: arg_names.len() - 1 }),
       Self::Identifier(id) => MacroToken::Identifier(id),
+      Self::IdentifierContinue(id_cont) => MacroToken::IdentifierContinue(id_cont),
       Self::Literal(lit, _) => MacroToken::Lit(lit),
-      Self::Plain(t) => {
-        // panic!("unparsed token: {t:?}");
-        MacroToken::Token(t)
-      },
+      Self::Plain(_) => return Err(ExpansionError::InvalidToken),
       Self::Punctuation(t) => MacroToken::Punctuation(t),
       Self::Comment(t) => MacroToken::Comment(t),
       Self::NonReplacable(t) => return t.detokenize(arg_names),
-      Self::Placemarker => return None,
-    })
+      Self::Placemarker => return Ok(None),
+    }))
   }
 
   pub fn concat(self, other: Self) -> Result<Self, ExpansionError> {
@@ -248,7 +252,10 @@ impl<'t> Token<'t> {
       (lhs, Token::NonReplacable(rhs)) => return lhs.concat(*rhs),
       (Self::Placemarker, rhs) => return Ok(rhs),
       (lhs, Self::Placemarker) => return Ok(lhs),
-      (Self::Identifier(mut lhs), Self::Identifier(Identifier { id: rhs })) => {
+      (
+        Self::Identifier(mut lhs),
+        Self::Identifier(Identifier { id: rhs }) | Self::IdentifierContinue(IdentifierContinue { id_cont: rhs }),
+      ) => {
         lhs.id.to_mut().push_str(rhs.as_ref());
         return Ok(Self::Identifier(lhs))
       },
@@ -305,8 +312,14 @@ impl<'t> Token<'t> {
         return Err(ExpansionError::InvalidConcat)
       },
       (
-        Self::Identifier(Identifier { id: mut lhs }) | Self::Literal(_, mut lhs) | Self::Plain(mut lhs),
-        Self::Identifier(Identifier { id: ref rhs }) | Self::Literal(_, ref rhs) | Self::Plain(ref rhs),
+        Self::Identifier(Identifier { id: mut lhs })
+        | Self::IdentifierContinue(IdentifierContinue { id_cont: mut lhs })
+        | Self::Literal(_, mut lhs)
+        | Self::Plain(mut lhs),
+        Self::Identifier(Identifier { id: ref rhs })
+        | Self::IdentifierContinue(IdentifierContinue { id_cont: ref rhs })
+        | Self::Literal(_, ref rhs)
+        | Self::Plain(ref rhs),
       ) => {
         lhs.to_mut().push_str(rhs.as_ref());
         lhs.into_owned()
@@ -321,6 +334,8 @@ impl<'t> Token<'t> {
       Self::Identifier(identifier.to_static())
     } else if let Ok(literal) = Lit::try_from(new_token.as_ref()) {
       Self::Literal(literal.into_static(), Cow::Owned(new_token))
+    } else if let Ok(id_cont) = IdentifierContinue::try_from(new_token.as_ref()) {
+      Self::IdentifierContinue(id_cont.into_static())
     } else {
       Self::Plain(Cow::Owned(new_token))
     })
@@ -369,8 +384,8 @@ fn stringify(tokens: Vec<Token<'_>>, nested: bool) -> Vec<Token<'_>> {
   tokens
 }
 
-fn detokenize<'t>(arg_names: &[Token<'t>], tokens: Vec<Token<'t>>) -> Vec<MacroToken<'t>> {
-  tokens.into_iter().filter_map(|t| t.detokenize(arg_names)).collect()
+fn detokenize<'t>(arg_names: &[Token<'t>], tokens: Vec<Token<'t>>) -> Result<Vec<MacroToken<'t>>, ExpansionError> {
+  tokens.into_iter().filter_map(|t| t.detokenize(arg_names).transpose()).collect()
 }
 
 enum CollectArgsError {
@@ -392,6 +407,8 @@ enum Token<'t> {
   Punctuation(Punctuation<'t>),
   /// An identifier.
   Identifier(Identifier<'t>),
+  /// An identifier continuation.
+  IdentifierContinue(IdentifierContinue<'t>),
   /// A literal.
   Literal(Lit<'t>, Cow<'t, str>),
   /// An intermediary token which cannot be parsed yet.
@@ -769,7 +786,7 @@ impl MacroSet {
     let body = self.var_macros.get(name).ok_or(ExpansionError::MacroNotFound)?;
     let body = tokenize(&[], body);
     let tokens = self.expand_var_macro_body(HashSet::new(), name, &body)?;
-    Ok(detokenize(&[], tokens))
+    detokenize(&[], tokens)
   }
 
   /// Undefine a variable-like macro with the given name.
@@ -827,8 +844,8 @@ impl MacroSet {
     let body = tokenize(&arg_names, body);
     let tokens = self.expand_fn_macro_body(HashSet::new(), name, &arg_names, None, &body)?;
 
-    let tokens = detokenize(&arg_names, tokens);
-    let arg_names = detokenize(&[], arg_names);
+    let tokens = detokenize(&arg_names, tokens)?;
+    let arg_names = detokenize(&[], arg_names)?;
 
     Ok((arg_names, tokens))
   }
@@ -849,7 +866,7 @@ impl MacroSet {
   {
     let body = tokenize(&[], body);
     let tokens: Vec<Token<'t>> = self.expand_var_macro_body(HashSet::new(), "", &body)?;
-    Ok(detokenize(&[], tokens))
+    detokenize(&[], tokens)
   }
 }
 

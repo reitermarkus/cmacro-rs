@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug, str::FromStr};
+use std::{fmt::Debug, str::FromStr};
 
 use nom::{
   branch::{alt, permutation},
@@ -441,14 +441,14 @@ impl FromStr for Type<'static> {
       .split_whitespace()
       .map(|t| {
         if let Ok(identifier) = Identifier::try_from(t) {
-          MacroToken::Identifier(identifier)
+          Ok(MacroToken::Identifier(identifier))
         } else if let Ok(p) = Punctuation::try_from(t) {
-          MacroToken::Punctuation(p)
+          Ok(MacroToken::Punctuation(p))
         } else {
-          MacroToken::Token(Cow::Borrowed(t))
+          Err(crate::CodegenError::UnsupportedType(s.to_owned()))
         }
       })
-      .collect::<Vec<_>>();
+      .collect::<Result<Vec<_>, _>>()?;
     let (_, ty) = Type::parse(&tokens).map_err(|_| crate::CodegenError::UnsupportedType(s.to_owned()))?;
 
     match ty.to_static() {

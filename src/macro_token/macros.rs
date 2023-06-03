@@ -5,12 +5,12 @@ macro_rules! arg {
 }
 pub(crate) use arg;
 
-macro_rules! token {
-  ($token:expr) => {{
-    $crate::MacroToken::Token(::std::borrow::Cow::Owned($token.into()))
+macro_rules! id_cont {
+  ($id_cont:expr) => {{
+    $crate::MacroToken::IdentifierContinue($crate::ast::IdentifierContinue::try_from($id_cont).unwrap())
   }};
 }
-pub(crate) use token;
+pub(crate) use id_cont;
 
 macro_rules! id {
   ($id:ident) => {{

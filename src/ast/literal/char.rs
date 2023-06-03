@@ -108,13 +108,6 @@ impl LitChar {
           )),
           map_opt(take_one, |token| match token {
             MacroToken::Lit(Lit::Char(LitChar::Ordinary(c))) => Some(u32::from(*c)),
-            MacroToken::Token(token) => {
-              if let Ok((_, c)) = all_consuming(Self::parse_unprefixed)(token.as_ref()) {
-                Some(c)
-              } else {
-                None
-              }
-            },
             _ => None,
           }),
         ),

@@ -72,16 +72,19 @@ impl<'t> Expr<'t> {
             }
 
             let (_, ids) = match token {
-              MacroToken::Token(Cow::Borrowed(token2)) => many1(alt((
-                unsuffixed_int,
-                map_opt(Identifier::parse_str, |id| Some(Self::Variable { name: id })),
-              )))(token2)
-              .ok()?,
-              MacroToken::Token(Cow::Owned(token2)) => many1(alt((
-                unsuffixed_int,
-                map_opt(Identifier::parse_str, |id| Some(Self::Variable { name: id.to_static() })),
-              )))(token2.as_ref())
-              .ok()?,
+              MacroToken::IdentifierContinue(IdentifierContinue { id_cont: Cow::Borrowed(token2) }) => {
+                many1(alt((unsuffixed_int, map_opt(Identifier::parse_str, |id| Some(Self::Variable { name: id })))))(
+                  token2,
+                )
+                .ok()?
+              },
+              MacroToken::IdentifierContinue(IdentifierContinue { id_cont: Cow::Owned(token2) }) => {
+                many1(alt((
+                  unsuffixed_int,
+                  map_opt(Identifier::parse_str, |id| Some(Self::Variable { name: id.to_static() })),
+                )))(token2.as_ref())
+                .ok()?
+              },
               _ => return None,
             };
 
@@ -919,8 +922,8 @@ mod tests {
   use super::*;
 
   use crate::macro_token::{
-    arg as macro_arg, char as macro_char, id as macro_id, int as macro_int, punct as macro_punct,
-    string as macro_string, token as macro_token, tokens,
+    arg as macro_arg, char as macro_char, id as macro_id, id_cont as macro_id_cont, int as macro_int,
+    punct as macro_punct, string as macro_string, tokens,
   };
 
   macro_rules! parse_expr {
@@ -971,13 +974,13 @@ mod tests {
     let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_id!(_def)]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), var!(_def)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_token!("123")]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_id_cont!("123")]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_token!("123def")]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_id_cont!("123def")]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def)]));
 
-    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_token!("123def456ghi")]).unwrap();
+    let (_, id) = Expr::parse(tokens![macro_arg!(0), macro_punct!("##"), macro_id_cont!("123def456ghi")]).unwrap();
     assert_eq!(id, Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def456ghi)]));
 
     let (_, id) = Expr::parse(tokens![macro_id!(__INT), macro_punct!("##"), macro_id!(_MAX__)]).unwrap();

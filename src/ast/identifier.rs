@@ -4,7 +4,7 @@ use nom::{
   branch::alt,
   character::complete::{anychar, char, satisfy},
   combinator::{all_consuming, map, map_opt, recognize, verify},
-  multi::fold_many0,
+  multi::{fold_many0, fold_many1},
   sequence::{pair, preceded},
   IResult,
 };
@@ -53,7 +53,7 @@ impl<'t> Identifier<'t> {
 
         fold_many0(
           verify(identifier_char, |c| unicode_ident::is_xid_continue(*c)),
-          move || Identifier { id: Cow::Owned(String::from(start_char)) },
+          move || Self { id: Cow::Owned(String::from(start_char)) },
           |mut id, c| {
             id.id.to_mut().push(c);
             id
@@ -74,6 +74,52 @@ impl<'t> TryFrom<&'t str> for Identifier<'t> {
   fn try_from(s: &'t str) -> Result<Self, Self::Error> {
     let (_, id) = all_consuming(Self::parse_str)(s)?;
     Ok(id)
+  }
+}
+
+/// An identifier continuation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentifierContinue<'t> {
+  pub(crate) id_cont: Cow<'t, str>,
+}
+
+impl<'t> IdentifierContinue<'t> {
+  /// Get the string representation of this identifier.
+  pub fn as_str(&self) -> &str {
+    self.id_cont.as_ref()
+  }
+
+  pub(crate) fn parse_str(input: &'t str) -> IResult<&'t str, Self> {
+    alt((
+      map(recognize(fold_many1(satisfy(unicode_ident::is_xid_continue), || (), |_, _| ())), |s| Self {
+        id_cont: Cow::Borrowed(s),
+      }),
+      |token| {
+        let identifier_char = alt((map_opt(preceded(char('\\'), universal_char), char::from_u32), anychar));
+
+        fold_many1(
+          verify(identifier_char, |c| unicode_ident::is_xid_continue(*c)),
+          move || Self { id_cont: Cow::Borrowed("") },
+          |mut id, c| {
+            id.id_cont.to_mut().push(c);
+            id
+          },
+        )(token)
+      },
+    ))(input)
+  }
+
+  pub(crate) fn into_static(self) -> IdentifierContinue<'static> {
+    IdentifierContinue { id_cont: Cow::Owned(self.id_cont.clone().into_owned()) }
+  }
+}
+
+impl<'t> TryFrom<&'t str> for IdentifierContinue<'t> {
+  type Error = nom::Err<nom::error::Error<&'t str>>;
+
+  fn try_from(s: &'t str) -> Result<Self, Self::Error> {
+    let (_, id_cont) = all_consuming(Self::parse_str)(s)?;
+    Ok(id_cont)
   }
 }
 

@@ -51,18 +51,6 @@ impl From<f64> for Lit<'_> {
   }
 }
 
-impl From<char> for Lit<'_> {
-  fn from(c: char) -> Self {
-    let c = c as u32;
-
-    if c <= 0xff {
-      Lit::Char(LitChar::Ordinary(c as u8))
-    } else {
-      panic!()
-    }
-  }
-}
-
 impl From<i32> for Lit<'_> {
   fn from(n: i32) -> Self {
     Lit::Int(LitInt { value: n.into(), suffix: None })
