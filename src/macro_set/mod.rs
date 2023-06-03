@@ -80,6 +80,8 @@ pub enum ExpansionError {
   StringifyNonArgument,
   /// Concatenation does not produce a valid pre-processing token.
   InvalidConcat,
+  /// Invalid token used in argument
+  InvalidArgumentName,
 }
 
 impl fmt::Display for ExpansionError {
@@ -93,8 +95,9 @@ impl fmt::Display for ExpansionError {
       Self::ConcatEnd => "macro ends with `##`".fmt(f),
       Self::NonVariadicVarArgs => "`__VA_ARGS__` found in non-variadic macro".fmt(f),
       Self::NonUniqueArgument(arg) => write!(f, "macro argument {arg} is not unique"),
-      Self::StringifyNonArgument => "`#` is not followed by a macro parameter".fmt(f),
+      Self::StringifyNonArgument => "`#` is not followed by a macro argument".fmt(f),
       Self::InvalidConcat => "concatenation does not produce a valid pre-processing token".fmt(f),
+      Self::InvalidArgumentName => "argument name is not an identifier".fmt(f),
     }
   }
 }
@@ -110,12 +113,44 @@ fn is_whitespace(s: &str) -> bool {
   s.is_empty() || is_comment(s)
 }
 
-fn tokenize_arg_names<'s, 't, T>(arg_names: &'s [T]) -> Vec<Token<'t>>
+fn tokenize_arg_names<'s, 't, T>(arg_names: &'s [T]) -> Result<Vec<Token<'t>>, ExpansionError>
 where
   's: 't,
   T: AsRef<str> + 't,
 {
-  arg_names.iter().map(|arg_name| Token::from_str(arg_name.as_ref())).collect()
+  let it = arg_names.iter();
+  let mut arg_names = vec![];
+
+  let mut is_variadic = false;
+
+  for token in it {
+    let token = Token::from_str(token.as_ref());
+
+    match token {
+      Token::Identifier(ref id) => {
+        if is_variadic {
+          return Err(ExpansionError::InvalidArgumentName)
+        }
+
+        if arg_names.contains(&token) {
+          return Err(ExpansionError::NonUniqueArgument(id.as_str().to_owned()))
+        }
+      },
+      Token::Punctuation(ref p) if p.as_str() == "..." => {
+        if is_variadic {
+          return Err(ExpansionError::NonUniqueArgument("...".into()))
+        }
+
+        is_variadic = true;
+      },
+      Token::Comment(_) => (),
+      _ => return Err(ExpansionError::InvalidArgumentName),
+    };
+
+    arg_names.push(token)
+  }
+
+  Ok(arg_names)
 }
 
 fn tokenize<'t, T>(arg_names: &[Token<'t>], tokens: &'t [T]) -> Vec<Token<'t>>
@@ -398,7 +433,7 @@ impl MacroSet {
             if it.peek() == Some(&Token::Punctuation(Punctuation { punctuation: "(" })) {
               if let Some((arg_names, body)) = self.fn_macros.get(id.id.as_ref()) {
                 if let Ok(args) = self.collect_args(&mut it) {
-                  let arg_names = tokenize_arg_names(arg_names);
+                  let arg_names = tokenize_arg_names(arg_names)?;
                   let body = tokenize(&arg_names, body);
                   let expanded_tokens = self.expand_fn_macro_body(
                     non_replaced_names.clone(),
@@ -465,7 +500,9 @@ impl MacroSet {
   where
     's: 't,
   {
-    let is_variadic = arg_names.last().map(|arg| matches!(arg, Token::Punctuation(p) if p == "...")).unwrap_or(false);
+    let arg_names: Vec<_> = arg_names.iter().filter(|t| !matches!(t, Token::Comment(_))).cloned().collect();
+
+    let is_variadic = matches!(arg_names.last(), Some(Token::Punctuation(p)) if p == "...");
 
     if !is_variadic {
       // A function-like macro shall only contain `__VA_ARGS__` if it uses ellipsis notation in the parameters.
@@ -506,7 +543,7 @@ impl MacroSet {
     }
 
     let body = if let Some(args) = args {
-      self.expand_arguments(non_replaced_names.clone(), arg_names, args, body)?
+      self.expand_arguments(non_replaced_names.clone(), &arg_names, args, body)?
     } else {
       body.to_vec()
     };
@@ -724,6 +761,24 @@ impl MacroSet {
     redefined
   }
 
+  /// Expand a variable-like macro.
+  pub fn expand_var_macro<'s, 't>(&'s self, name: &str) -> Result<Vec<MacroToken<'t>>, ExpansionError>
+  where
+    's: 't,
+  {
+    let body = self.var_macros.get(name).ok_or(ExpansionError::MacroNotFound)?;
+    let body = tokenize(&[], body);
+    let tokens = self.expand_var_macro_body(HashSet::new(), name, &body)?;
+    Ok(detokenize(&[], tokens))
+  }
+
+  /// Undefine a variable-like macro with the given name.
+  ///
+  /// Returns true if the macro was undefined.
+  pub fn undefine_macro(&mut self, name: &str) -> bool {
+    self.var_macros.remove(name).is_some()
+  }
+
   /// Define a function-like macro.
   ///
   /// Returns true if the macro was redefined.
@@ -758,24 +813,6 @@ impl MacroSet {
     redefined
   }
 
-  /// Undefine a macro with the given name.
-  ///
-  /// Returns true if the macro was undefined.
-  pub fn undefine_macro(&mut self, name: &str) -> bool {
-    self.var_macros.remove(name).is_some() || self.fn_macros.remove(name).is_some()
-  }
-
-  /// Expand a variable-like macro.
-  pub fn expand_var_macro<'s, 't>(&'s self, name: &str) -> Result<Vec<MacroToken<'t>>, ExpansionError>
-  where
-    's: 't,
-  {
-    let body = self.var_macros.get(name).ok_or(ExpansionError::MacroNotFound)?;
-    let body = tokenize(&[], body);
-    let tokens = self.expand_var_macro_body(HashSet::new(), name, &body)?;
-    Ok(detokenize(&[], tokens))
-  }
-
   /// Expand a function-like macro.
   pub fn expand_fn_macro<'s, 't>(
     &'s self,
@@ -786,7 +823,7 @@ impl MacroSet {
   {
     let (arg_names, body) = self.fn_macros.get(name).ok_or(ExpansionError::MacroNotFound)?;
 
-    let arg_names = tokenize_arg_names(arg_names);
+    let arg_names = tokenize_arg_names(arg_names)?;
     let body = tokenize(&arg_names, body);
     let tokens = self.expand_fn_macro_body(HashSet::new(), name, &arg_names, None, &body)?;
 
@@ -794,6 +831,13 @@ impl MacroSet {
     let arg_names = detokenize(&[], arg_names);
 
     Ok((arg_names, tokens))
+  }
+
+  /// Undefine a function-like macro with the given name.
+  ///
+  /// Returns true if the macro was undefined.
+  pub fn undefine_fn_macro(&mut self, name: &str) -> bool {
+    self.fn_macros.remove(name).is_some()
   }
 
   /// Expand a macro expression using the macros defined in the set.
@@ -855,6 +899,13 @@ mod tests {
       macro_set.expand_var_macro("PLUS_VAR_VAR"),
       Ok(token_vec![int!(7), punct!("+"), int!(2), punct!("+"), int!(3)])
     );
+  }
+
+  #[test]
+  fn non_unique_arg_name() {
+    let mut macro_set = MacroSet::new();
+    macro_set.define_fn_macro("X", ["x", "x"], ["x", "*", "x"]);
+    assert_eq!(macro_set.expand_fn_macro("X"), Err(ExpansionError::NonUniqueArgument("x".into())));
   }
 
   #[test]
