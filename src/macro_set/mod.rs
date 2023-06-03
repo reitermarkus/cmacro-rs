@@ -59,10 +59,6 @@ pub struct MacroSet {
 pub enum ExpansionError {
   /// Macro not found.
   MacroNotFound,
-  /// Open parenthesis not found.
-  MissingOpenParenthesis(char),
-  /// Unclosed parenthesis.
-  UnclosedParenthesis(char),
   /// Function-like macro called with wrong number of arguments.
   FnMacroArgumentError {
     /// The macro name.
@@ -90,12 +86,6 @@ impl fmt::Display for ExpansionError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       Self::MacroNotFound => "macro not found".fmt(f),
-      Self::MissingOpenParenthesis(c) => {
-        write!(f, "missing open parenthesis for {c}")
-      },
-      Self::UnclosedParenthesis(c) => {
-        write!(f, "missing closing parenthesis for {c}")
-      },
       Self::FnMacroArgumentError { name, required, given } => {
         write!(f, "macro {name} requires {required} arguments, {given} given")
       },
@@ -348,6 +338,13 @@ fn detokenize<'t>(arg_names: &[Token<'t>], tokens: Vec<Token<'t>>) -> Vec<MacroT
   tokens.into_iter().filter_map(|t| t.detokenize(arg_names)).collect()
 }
 
+enum CollectArgsError {
+  /// Open parenthesis not found.
+  MissingOpenParenthesis(char),
+  /// Unclosed parenthesis.
+  UnclosedParenthesis(char),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Token<'t> {
   /// A token that will not be considered for replacement again.
@@ -522,7 +519,7 @@ impl MacroSet {
     self.expand_macro_body(non_replaced_names, &body)
   }
 
-  fn collect_args<'s, 't, I>(&'s self, it: &mut I) -> Result<Vec<Vec<Token<'t>>>, ExpansionError>
+  fn collect_args<'s, 't, I>(&'s self, it: &mut I) -> Result<Vec<Vec<Token<'t>>>, CollectArgsError>
   where
     's: 't,
     I: Iterator<Item = Token<'t>> + Clone,
@@ -535,7 +532,7 @@ impl MacroSet {
 
     match it2.next() {
       Some(Token::Punctuation(p)) if p == "(" => (),
-      _ => return Err(ExpansionError::MissingOpenParenthesis('(')),
+      _ => return Err(CollectArgsError::MissingOpenParenthesis('(')),
     }
 
     while let Some(token) = it2.next() {
@@ -546,10 +543,10 @@ impl MacroSet {
               if p == open {
                 Ok(())
               } else {
-                Err(ExpansionError::UnclosedParenthesis(p))
+                Err(CollectArgsError::UnclosedParenthesis(p))
               }
             },
-            None => Err(ExpansionError::MissingOpenParenthesis(close)),
+            None => Err(CollectArgsError::MissingOpenParenthesis(close)),
           };
 
           match p.as_str() {
@@ -583,7 +580,7 @@ impl MacroSet {
       }
     }
 
-    Err(ExpansionError::UnclosedParenthesis('('))
+    Err(CollectArgsError::UnclosedParenthesis('('))
   }
 
   fn expand_arguments<'s, 't>(
