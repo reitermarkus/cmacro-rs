@@ -493,17 +493,7 @@ impl<'t> Expr<'t> {
           _ => Ok(None),
         }
       },
-      Self::FunctionCall(call) => {
-        let ty = call.finish(ctx)?;
-
-        match *call.name {
-          Self::Variable { ref name } if ctx.function(name.as_str()).is_some() => Ok(ty),
-          _ => {
-            // Type should only be set if calling an actual function, not a function macro.
-            Ok(ty)
-          },
-        }
-      },
+      Self::FunctionCall(call) => call.finish(ctx),
       // Convert character literals to casts.
       Self::Literal(lit) if matches!(lit, Lit::Char(..)) => {
         let ty = lit.finish(ctx)?;
