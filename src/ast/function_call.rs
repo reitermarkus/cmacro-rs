@@ -37,7 +37,7 @@ impl<'t> FunctionCall<'t> {
 
     let mut ty = None;
 
-    if let Expr::Variable { ref name } = *self.name {
+    if let Expr::Var(Var { ref name }) = *self.name {
       if let Some((known_args, known_ret_ty)) = ctx.function(name.as_str()) {
         if known_args.len() == self.args.len() {
           let ffi_prefix = ctx.ffi_prefix();

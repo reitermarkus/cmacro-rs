@@ -22,7 +22,7 @@ use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken, UnaryOp};
 #[allow(missing_docs)]
 pub enum Expr<'t> {
   Arg(MacroArg),
-  Variable { name: Identifier<'t> },
+  Var(Var<'t>),
   FunctionCall(FunctionCall<'t>),
   Cast { expr: Box<Self>, ty: Type<'t> },
   Literal(Lit<'t>),
@@ -31,15 +31,15 @@ pub enum Expr<'t> {
   Stringify(Stringify<'t>),
   ConcatIdent(Vec<Self>),
   ConcatString(Vec<Self>),
-  Unary(Box<UnaryExpr<'t>>),
-  Binary(Box<BinaryExpr<'t>>),
+  Unary(UnaryExpr<'t>),
+  Binary(BinaryExpr<'t>),
   Ternary(TernaryExpr<'t>),
 }
 
 impl<'t> Expr<'t> {
   pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
     match self {
-      Self::Literal(_) | Self::Arg(_) | Self::Variable { .. } | Self::ConcatIdent(_) => (0, None),
+      Self::Literal(_) | Self::Arg(_) | Self::Var(_) | Self::ConcatIdent(_) => (0, None),
       Self::FunctionCall(_) | Self::FieldAccess { .. } => (1, Some(true)),
       Self::Cast { .. } | Self::Stringify(_) | Self::ConcatString(_) => (3, Some(true)),
       Self::Ternary(..) => (0, None),
@@ -52,14 +52,14 @@ impl<'t> Expr<'t> {
 
   /// Parse identifier concatenation, e.g. `arg ## 2`.
   pub(crate) fn parse_concat_ident<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, id) = alt((map(macro_arg, Self::Arg), map(macro_id, |id| Self::Variable { name: id })))(tokens)?;
+    let (tokens, id) = alt((map(macro_arg, Self::Arg), map(macro_id, |id| Self::Var(Var { name: id }))))(tokens)?;
 
     fold_many0(
       preceded(
         delimited(meta, punct("##"), meta),
         alt((
           map(macro_arg, Self::Arg),
-          map(macro_id, |id| Self::Variable { name: id }),
+          map(macro_id, |id| Self::Var(Var { name: id })),
           // Split non-identifiers, e.g. `123def` into integer literals and identifiers.
           map_opt(take_one, |token| {
             fn unsuffixed_int<'e>(input: &str) -> IResult<&str, Expr<'e>> {
@@ -73,7 +73,7 @@ impl<'t> Expr<'t> {
 
             let (_, ids) = match token {
               MacroToken::IdentifierContinue(IdentifierContinue { id_cont: Cow::Borrowed(token2) }) => {
-                many1(alt((unsuffixed_int, map_opt(Identifier::parse_str, |id| Some(Self::Variable { name: id })))))(
+                many1(alt((unsuffixed_int, map_opt(Identifier::parse_str, |id| Some(Self::Var(Var { name: id }))))))(
                   token2,
                 )
                 .ok()?
@@ -81,7 +81,7 @@ impl<'t> Expr<'t> {
               MacroToken::IdentifierContinue(IdentifierContinue { id_cont: Cow::Owned(token2) }) => {
                 many1(alt((
                   unsuffixed_int,
-                  map_opt(Identifier::parse_str, |id| Some(Self::Variable { name: id.to_static() })),
+                  map_opt(Identifier::parse_str, |id| Some(Self::Var(Var { name: id.to_static() }))),
                 )))(token2.as_ref())
                 .ok()?
               },
@@ -148,12 +148,8 @@ impl<'t> Expr<'t> {
     let (tokens, factor) = Self::parse_factor(tokens)?;
 
     match factor {
-      Self::Arg(_)
-      | Self::Variable { .. }
-      | Self::FunctionCall(..)
-      | Self::FieldAccess { .. }
-      | Self::ArrayAccess { .. } => (),
-      Self::Unary(ref op) if matches!(&**op, UnaryExpr { op: UnaryOp::AddrOf, .. }) => (),
+      Self::Arg(_) | Self::Var(_) | Self::FunctionCall(_) | Self::FieldAccess { .. } | Self::ArrayAccess { .. } => (),
+      Self::Unary(UnaryExpr { op: UnaryOp::AddrOf, .. }) => (),
       _ => return Ok((tokens, factor)),
     }
 
@@ -194,14 +190,14 @@ impl<'t> Expr<'t> {
           Ok((
             match (expr, access) {
               // Postfix `++`/`--` cannot be chained.
-              (expr, Access::UnaryOp(op)) if !was_unary_op => Self::Unary(Box::new(UnaryExpr { expr, op })),
+              (expr, Access::UnaryOp(op)) if !was_unary_op => Self::Unary(UnaryExpr { op, expr: Box::new(expr) }),
               // TODO: Support calling expressions as functions.
-              (name @ Self::Arg(_) | name @ Self::Variable { .. }, Access::Fn(args)) => {
+              (name @ Self::Arg(_) | name @ Self::Var(_), Access::Fn(args)) => {
                 Self::FunctionCall(FunctionCall { name: Box::new(name), args })
               },
               // Field access cannot be chained after postfix `++`/`--`.
               (acc, Access::Field { field, deref }) if !was_unary_op || deref => {
-                let acc = if deref { Self::Unary(Box::new(UnaryExpr { op: UnaryOp::Deref, expr: acc })) } else { acc };
+                let acc = if deref { Self::Unary(UnaryExpr { op: UnaryOp::Deref, expr: Box::new(acc) }) } else { acc };
                 Self::FieldAccess { expr: Box::new(acc), field }
               },
               // Array access cannot be chained after postfix `++`/`--`.
@@ -239,7 +235,7 @@ impl<'t> Expr<'t> {
           ),
           Self::parse_term_prec2,
         ),
-        |(op, expr)| Self::Unary(Box::new(UnaryExpr { op, expr })),
+        |(op, expr)| Self::Unary(UnaryExpr { op, expr: Box::new(expr) }),
       ),
       Self::parse_term_prec1,
     ))(tokens)
@@ -258,7 +254,7 @@ impl<'t> Expr<'t> {
         Self::parse_term_prec2,
       ),
       move || term.clone(),
-      |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
+      |lhs, (op, rhs)| Self::Binary(BinaryExpr { lhs: Box::new(lhs), op, rhs: Box::new(rhs) }),
     )(tokens)
   }
 
@@ -271,7 +267,7 @@ impl<'t> Expr<'t> {
         Self::parse_term_prec3,
       ),
       move || term.clone(),
-      |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
+      |lhs, (op, rhs)| Self::Binary(BinaryExpr { lhs: Box::new(lhs), op, rhs: Box::new(rhs) }),
     )(tokens)
   }
 
@@ -284,7 +280,7 @@ impl<'t> Expr<'t> {
         Self::parse_term_prec4,
       ),
       move || term.clone(),
-      |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
+      |lhs, (op, rhs)| Self::Binary(BinaryExpr { lhs: Box::new(lhs), op, rhs: Box::new(rhs) }),
     )(tokens)
   }
 
@@ -306,7 +302,7 @@ impl<'t> Expr<'t> {
         Self::parse_term_prec5,
       ),
       move || term.clone(),
-      |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
+      |lhs, (op, rhs)| Self::Binary(BinaryExpr { lhs: Box::new(lhs), op, rhs: Box::new(rhs) }),
     )(tokens)
   }
 
@@ -319,7 +315,7 @@ impl<'t> Expr<'t> {
         Self::parse_term_prec6,
       ),
       move || term.clone(),
-      |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
+      |lhs, (op, rhs)| Self::Binary(BinaryExpr { lhs: Box::new(lhs), op, rhs: Box::new(rhs) }),
     )(tokens)
   }
 
@@ -329,7 +325,7 @@ impl<'t> Expr<'t> {
     fold_many0(
       preceded(delimited(meta, punct("&"), meta), Self::parse_term_prec7),
       move || term.clone(),
-      |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitAnd, rhs })),
+      |lhs, rhs| Self::Binary(BinaryExpr { lhs: Box::new(lhs), op: BinaryOp::BitAnd, rhs: Box::new(rhs) }),
     )(tokens)
   }
 
@@ -339,7 +335,7 @@ impl<'t> Expr<'t> {
     fold_many0(
       preceded(delimited(meta, punct("^"), meta), Self::parse_term_prec8),
       move || term.clone(),
-      |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitXor, rhs })),
+      |lhs, rhs| Self::Binary(BinaryExpr { lhs: Box::new(lhs), op: BinaryOp::BitXor, rhs: Box::new(rhs) }),
     )(tokens)
   }
 
@@ -349,7 +345,7 @@ impl<'t> Expr<'t> {
     fold_many0(
       preceded(delimited(meta, punct("|"), meta), Self::parse_term_prec9),
       move || term.clone(),
-      |lhs, rhs| Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::BitOr, rhs })),
+      |lhs, rhs| Self::Binary(BinaryExpr { lhs: Box::new(lhs), op: BinaryOp::BitOr, rhs: Box::new(rhs) }),
     )(tokens)
   }
 
@@ -399,7 +395,7 @@ impl<'t> Expr<'t> {
         Self::parse_term_prec14,
       ),
       move || term.clone(),
-      |lhs, (op, rhs)| Self::Binary(Box::new(BinaryExpr { lhs, op, rhs })),
+      |lhs, (op, rhs)| Self::Binary(BinaryExpr { lhs: Box::new(lhs), op, rhs: Box::new(rhs) }),
     )(tokens)
   }
 
@@ -423,7 +419,7 @@ impl<'t> Expr<'t> {
               // Arguments cannot be resolved as a type.
               true
             },
-            Self::Variable { ref name } => {
+            Self::Var(Var { ref name }) => {
               // Cannot resolve type.
               ctx.resolve_ty(name.as_str()).is_none()
             },
@@ -443,7 +439,7 @@ impl<'t> Expr<'t> {
               let lhs = (**name).clone();
               let rhs = expr.expr.clone();
 
-              *self = Self::Binary(Box::new(BinaryExpr { lhs, op, rhs }));
+              *self = Self::Binary(BinaryExpr { lhs: Box::new(lhs), op, rhs });
               return self.finish(ctx)
             }
           }
@@ -468,31 +464,7 @@ impl<'t> Expr<'t> {
 
         Ok(None)
       },
-      Self::Variable { ref mut name } => {
-        // Built-in macros.
-        match name.as_str() {
-          "__LINE__" => {
-            ctx.export_as_macro = true;
-
-            *self = Self::Cast {
-              ty: Type::BuiltIn(BuiltInType::UInt),
-              expr: Box::new(Self::Variable { name: name.clone() }),
-            };
-
-            Ok(Some(Type::BuiltIn(BuiltInType::UInt)))
-          },
-          "__FILE__" => {
-            ctx.export_as_macro = true;
-            Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
-          },
-          "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
-          "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),
-          "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
-          "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
-          "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
-          _ => Ok(None),
-        }
-      },
+      Self::Var(var) => var.finish(ctx),
       Self::FunctionCall(call) => call.finish(ctx),
       // Convert character literals to casts.
       Self::Literal(lit) if matches!(lit, Lit::Char(..)) => {
@@ -532,7 +504,7 @@ impl<'t> Expr<'t> {
               // `concat_idents!` arguments must be `ident`.
               *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
             },
-            Self::Variable { .. } => (),
+            Self::Var(_) => (),
             Self::Literal(Lit::Int(LitInt { suffix: None, value })) if *value >= 0 => {
               // NOTE: Not yet supported by the `concat_idents!` macro.
               return Err(crate::CodegenError::UnsupportedExpression)
@@ -589,7 +561,7 @@ impl<'t> Expr<'t> {
       Self::Unary(op) => {
         let ty = op.finish(ctx)?;
 
-        match (op.op, &op.expr) {
+        match (op.op, &*op.expr) {
           (UnaryOp::Plus, expr @ Self::Literal(Lit::Int(_)) | expr @ Self::Literal(Lit::Float(_))) => {
             *self = expr.clone();
           },
@@ -633,7 +605,7 @@ impl<'t> Expr<'t> {
                 _ => Self::Literal(Lit::Int(LitInt { value: 0, suffix: None })),
               };
 
-              *self = Self::Binary(Box::new(BinaryExpr { lhs, op: BinaryOp::Eq, rhs }))
+              *self = Self::Binary(BinaryExpr { lhs: Box::new(lhs), op: BinaryOp::Eq, rhs: Box::new(rhs) })
             }
           },
           (UnaryOp::Comp, Self::Literal(Lit::Float(_) | Lit::String(_))) => {
@@ -648,7 +620,7 @@ impl<'t> Expr<'t> {
         let (lhs_ty, rhs_ty) = op.finish(ctx)?;
 
         // Calculate numeric expression.
-        match (op.op, &op.lhs, &op.rhs) {
+        match (op.op, &*op.lhs, &*op.rhs) {
           (BinaryOp::Mul, Self::Literal(Lit::Float(lhs)), Self::Literal(Lit::Float(rhs))) => {
             *self = Self::Literal(Lit::Float(*lhs * *rhs));
             self.finish(ctx)
@@ -806,32 +778,8 @@ impl<'t> Expr<'t> {
           }
         },
       }),
-      Self::Variable { ref name } => {
-        let prefix = ctx.ffi_prefix().into_iter();
-
-        tokens.append_all(match name.as_str() {
-          "__LINE__" => quote! { line!() },
-          "__FILE__" => {
-            let ffi_prefix = ctx.ffi_prefix().into_iter();
-            let trait_prefix = ctx.trait_prefix().into_iter();
-
-            quote! {
-              {
-                const BYTES: &[u8] = #(#trait_prefix::)*concat!(file!(), '\0').as_bytes();
-                BYTES.as_ptr() as *const #(#ffi_prefix::)*c_char
-              }
-            }
-          },
-          "__SCHAR_MAX__" => quote! { #(#prefix::)*c_schar::MAX },
-          "__SHRT_MAX__" => quote! { #(#prefix::)*c_short::MAX },
-          "__INT_MAX__" => quote! { #(#prefix::)*c_int::MAX },
-          "__LONG_MAX__" => quote! { #(#prefix::)*c_long::MAX },
-          "__LONG_LONG_MAX__" => quote! { #(#prefix::)*c_longlong::MAX },
-          name => {
-            let name = Ident::new(name, Span::call_site());
-            quote! { #name }
-          },
-        })
+      Self::Var(var) => {
+        var.to_tokens(ctx, tokens);
       },
       Self::FunctionCall(ref call) => {
         call.to_tokens(ctx, tokens);
@@ -878,7 +826,7 @@ impl<'t> Expr<'t> {
         let names = names
           .iter()
           .map(|e| match e {
-            Self::Variable { name } => match name.as_str() {
+            Self::Var(Var { name }) => match name.as_str() {
               "__FILE__" => quote! { file!() },
               _ => e.to_token_stream(ctx),
             },
@@ -989,7 +937,7 @@ mod tests {
     assert_eq!(
       expr,
       Expr::FieldAccess {
-        expr: Box::new(Expr::Unary(Box::new(UnaryExpr { op: UnaryOp::Deref, expr: var!(a) }))),
+        expr: Box::new(Expr::Unary(UnaryExpr { op: UnaryOp::Deref, expr: Box::new(var!(a)) })),
         field: Box::new(var!(b))
       }
     );
@@ -1028,11 +976,15 @@ mod tests {
       Expr::parse(tokens![macro_id!(a), macro_punct!("="), macro_id!(b), macro_punct!("="), macro_id!(c)]).unwrap();
     assert_eq!(
       expr,
-      Expr::Binary(Box::new(BinaryExpr {
-        lhs: var!(a),
+      Expr::Binary(BinaryExpr {
+        lhs: Box::new(var!(a)),
         op: BinaryOp::Assign,
-        rhs: Expr::Binary(Box::new(BinaryExpr { lhs: var!(b), op: BinaryOp::Assign, rhs: var!(c) }),),
-      }))
+        rhs: Box::new(Expr::Binary(BinaryExpr {
+          lhs: Box::new(var!(b)),
+          op: BinaryOp::Assign,
+          rhs: Box::new(var!(c))
+        })),
+      })
     );
   }
 
@@ -1060,10 +1012,10 @@ mod tests {
         .unwrap();
     assert_eq!(
       expr,
-      Expr::Unary(Box::new(UnaryExpr {
+      Expr::Unary(UnaryExpr {
         op: UnaryOp::Minus,
-        expr: Expr::Literal(Lit::Int(LitInt { value: 123456789012, suffix: Some(BuiltInType::ULongLong) }))
-      }))
+        expr: Box::new(Expr::Literal(Lit::Int(LitInt { value: 123456789012, suffix: Some(BuiltInType::ULongLong) })))
+      })
     );
   }
 }

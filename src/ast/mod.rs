@@ -40,14 +40,17 @@ pub use literal::*;
 mod statement;
 pub use statement::*;
 
-mod decl;
-pub use decl::*;
+mod var_decl;
+pub use var_decl::*;
 
 mod punctuation;
 pub use punctuation::*;
 
 mod stringify;
 pub use stringify::*;
+
+mod var;
+pub use var::*;
 
 #[cfg(test)]
 mod test_macros;

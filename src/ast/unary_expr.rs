@@ -52,7 +52,7 @@ pub struct UnaryExpr<'t> {
   /// Expression operator.
   pub op: UnaryOp,
   /// Expression.
-  pub expr: Expr<'t>,
+  pub expr: Box<Expr<'t>>,
 }
 
 impl<'t> UnaryExpr<'t> {
@@ -138,13 +138,13 @@ mod tests {
   fn parentheses_deref_cast() {
     let expr1 = UnaryExpr {
       op: UnaryOp::Deref,
-      expr: Expr::Cast {
+      expr: Box::new(Expr::Cast {
         ty: Type::Ptr {
           ty: Box::new(Type::Identifier { name: Box::new(var!(MyType)), is_struct: false }),
           mutable: true,
         },
         expr: Box::new(lit!(1)),
-      },
+      }),
     };
     assert_eq_tokens!(expr1, "*(1u8 as *mut MyType)");
   }
@@ -153,7 +153,7 @@ mod tests {
   fn parentheses_deref_addr_of() {
     let expr1 = UnaryExpr {
       op: UnaryOp::Deref,
-      expr: Expr::Unary(Box::new(UnaryExpr { op: UnaryOp::AddrOf, expr: var!(my_var) })),
+      expr: Box::new(Expr::Unary(UnaryExpr { op: UnaryOp::AddrOf, expr: Box::new(var!(my_var)) })),
     };
     assert_eq_tokens!(expr1, "*ptr::addr_of_mut!(my_var)");
   }

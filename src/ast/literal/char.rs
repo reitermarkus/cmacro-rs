@@ -13,8 +13,8 @@ use quote::{quote, TokenStreamExt};
 
 use super::{escaped_char, unescaped_char};
 use crate::{
-  ast::{id, tokens::take_one},
-  BuiltInType, CodegenContext, Expr, Identifier, Lit, LocalContext, MacroToken, Type,
+  ast::tokens::{id, take_one},
+  BuiltInType, CodegenContext, Expr, Identifier, Lit, LocalContext, MacroToken, Type, Var,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -135,7 +135,7 @@ impl LitChar {
       LitChar::Utf32(_) => Some(Type::BuiltIn(BuiltInType::Char32T)),
       LitChar::Wide(_) => {
         let mut ty = Type::Identifier {
-          name: Box::new(Expr::Variable { name: Identifier { id: "wchar_t".to_owned().into() } }),
+          name: Box::new(Expr::Var(Var { name: Identifier { id: "wchar_t".to_owned().into() } })),
           is_struct: false,
         };
         ty.finish(ctx)?;

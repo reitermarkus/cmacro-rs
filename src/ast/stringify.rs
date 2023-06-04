@@ -11,9 +11,9 @@ use quote::{quote, TokenStreamExt};
 
 use super::{
   tokens::{macro_arg, macro_id, meta, punct},
-  BuiltInType, Type,
+  BuiltInType, Expr, Type, Var,
 };
-use crate::{CodegenContext, Expr, LocalContext, MacroArgType, MacroToken};
+use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken};
 
 /// Stringification of a macro argument.
 ///
@@ -32,7 +32,7 @@ impl<'t> Stringify<'t> {
       terminated(punct("#"), meta),
       alt((
         map(macro_arg, |arg| Self { arg: Box::new(Expr::Arg(arg)) }),
-        map(macro_id, |id| Self { arg: Box::new(Expr::Variable { name: id }) }),
+        map(macro_id, |id| Self { arg: Box::new(Expr::Var(Var { name: id })) }),
       )),
     )(tokens)
   }
@@ -48,7 +48,7 @@ impl<'t> Stringify<'t> {
           *arg_ty = MacroArgType::Expr;
         }
       },
-      Expr::Variable { name } if matches!(name.as_str(), "__LINE__" | "__FILE__") => (),
+      Expr::Var(Var { name }) if matches!(name.as_str(), "__LINE__" | "__FILE__") => (),
       _ => return Err(crate::CodegenError::UnsupportedExpression),
     }
 
@@ -65,7 +65,7 @@ impl<'t> Stringify<'t> {
         let id = Ident::new(ctx.arg_name(arg.index()), Span::call_site());
         Some(quote! { $#id })
       },
-      Expr::Variable { name } => match name.as_str() {
+      Expr::Var(Var { name }) => match name.as_str() {
         "__LINE__" => {
           let trait_prefix = ctx.trait_prefix().into_iter();
           Some(quote! { #(#trait_prefix::)*line!() })

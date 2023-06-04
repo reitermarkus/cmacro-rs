@@ -33,7 +33,7 @@ pub enum Statement<'t> {
   /// A function declaration.
   FunctionDecl(FunctionDecl<'t>),
   /// A variable declaration.
-  Decl(Decl<'t>),
+  VarDecl(VarDecl<'t>),
   /// A block containing multiple statements.
   Block(Vec<Self>),
   /// An if-condition.
@@ -78,7 +78,7 @@ impl<'t> Statement<'t> {
         Self::Block,
       ),
       map(terminated(FunctionDecl::parse, semicolon_or_eof), Self::FunctionDecl),
-      map(terminated(Decl::parse, semicolon_or_eof), Self::Decl),
+      map(terminated(VarDecl::parse, semicolon_or_eof), Self::VarDecl),
       map(terminated(Expr::parse, semicolon_or_eof), Self::Expr),
     ))(tokens)
   }
@@ -108,7 +108,7 @@ impl<'t> Statement<'t> {
       Self::FunctionDecl(f) => {
         f.finish(ctx)?;
       },
-      Self::Decl(d) => {
+      Self::VarDecl(d) => {
         d.finish(ctx)?;
       },
       Self::Block(block) => {
@@ -150,7 +150,7 @@ impl<'t> Statement<'t> {
         tokens.append_all(quote! { #expr; })
       },
       Self::FunctionDecl(f) => f.to_tokens(ctx, tokens),
-      Self::Decl(d) => {
+      Self::VarDecl(d) => {
         let decl = d.to_token_stream(ctx);
         tokens.append_all(quote! { #decl; })
       },
@@ -211,7 +211,11 @@ mod tests {
       Statement::parse(tokens![macro_id!(a), macro_punct!("+="), macro_int!(2), macro_punct!(";")]).unwrap();
     assert_eq!(
       stmt,
-      Statement::Expr(Expr::Binary(Box::new(BinaryExpr { lhs: var!(a), op: BinaryOp::AddAssign, rhs: lit!(2) })))
+      Statement::Expr(Expr::Binary(BinaryExpr {
+        lhs: Box::new(var!(a)),
+        op: BinaryOp::AddAssign,
+        rhs: Box::new(lit!(2))
+      }))
     );
   }
 
@@ -235,7 +239,7 @@ mod tests {
     .unwrap();
     assert_eq!(
       stmt,
-      Statement::Block(vec![Statement::Decl(Decl {
+      Statement::Block(vec![Statement::VarDecl(VarDecl {
         ty: ty!(BuiltInType::Int),
         name: var!(a),
         rhs: lit!(0),

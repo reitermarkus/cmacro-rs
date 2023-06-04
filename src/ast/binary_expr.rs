@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 
-use super::{BuiltInType, Lit, LitFloat, LitInt, Type};
+use super::{BuiltInType, Lit, LitFloat, LitInt, Type, Var};
 use crate::{CodegenContext, Expr, LocalContext};
 
 /// A binary expression operator.
@@ -145,11 +145,11 @@ impl ToTokens for BinaryOp {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BinaryExpr<'t> {
   /// Left-hand side expression.
-  pub lhs: Expr<'t>,
+  pub lhs: Box<Expr<'t>>,
   /// Expression operator.
   pub op: BinaryOp,
   /// Right-hand side expression.
-  pub rhs: Expr<'t>,
+  pub rhs: Box<Expr<'t>>,
 }
 
 impl<'t> BinaryExpr<'t> {
@@ -166,7 +166,7 @@ impl<'t> BinaryExpr<'t> {
     C: CodegenContext,
   {
     let max_ty_cast = |expr: &Expr| {
-      if let Expr::Variable { name } = expr {
+      if let Expr::Var(Var { name }) = expr {
         return Some(Type::BuiltIn(match name.as_str() {
           "__SCHAR_MAX__" => BuiltInType::UChar,
           "__SHRT_MAX__" => BuiltInType::UShort,
@@ -184,14 +184,14 @@ impl<'t> BinaryExpr<'t> {
     let mut rhs_ty = self.rhs.finish(ctx)?;
 
     // Cast mixed float and int expression.
-    match (&self.lhs, &self.rhs) {
+    match (&*self.lhs, &*self.rhs) {
       (Expr::Literal(Lit::Int(LitInt { value: lhs, suffix: None })), Expr::Literal(Lit::Float(_))) => {
         let f = if *lhs >= f32::MIN as i128 && *lhs <= f32::MAX as i128 {
           LitFloat::Float(*lhs as f32)
         } else {
           LitFloat::Double(*lhs as f64)
         };
-        self.lhs = Expr::Literal(Lit::Float(f));
+        self.lhs = Box::new(Expr::Literal(Lit::Float(f)));
         lhs_ty = self.lhs.finish(ctx)?;
       },
       (Expr::Literal(Lit::Float(_)), Expr::Literal(Lit::Int(LitInt { value: rhs, suffix: None }))) => {
@@ -200,18 +200,18 @@ impl<'t> BinaryExpr<'t> {
         } else {
           LitFloat::Double(*rhs as f64)
         };
-        self.rhs = Expr::Literal(Lit::Float(f));
+        self.rhs = Box::new(Expr::Literal(Lit::Float(f)));
         rhs_ty = self.rhs.finish(ctx)?;
       },
       (lhs, Expr::Literal(Lit::Int(_))) => {
         if let Some(lhs_ty2) = max_ty_cast(lhs) {
-          self.lhs = Expr::Cast { ty: lhs_ty2.clone(), expr: Box::new(lhs.clone()) };
+          self.lhs = Box::new(Expr::Cast { ty: lhs_ty2.clone(), expr: Box::new(lhs.clone()) });
           lhs_ty = Some(lhs_ty2);
         }
       },
       (Expr::Literal(Lit::Int(_)), rhs) => {
         if let Some(rhs_ty2) = max_ty_cast(rhs) {
-          self.rhs = Expr::Cast { ty: rhs_ty2.clone(), expr: Box::new(rhs.clone()) };
+          self.rhs = Box::new(Expr::Cast { ty: rhs_ty2.clone(), expr: Box::new(rhs.clone()) });
           rhs_ty = Some(rhs_ty2);
         }
       },
@@ -271,52 +271,52 @@ mod tests {
 
   #[test]
   fn parentheses_add_mul() {
-    let expr1 = BinaryExpr { lhs: lit!(1), op: BinaryOp::Add, rhs: lit!(2) };
+    let expr1 = BinaryExpr { lhs: Box::new(lit!(1)), op: BinaryOp::Add, rhs: Box::new(lit!(2)) };
     assert_eq_tokens!(expr1, "1 + 2");
 
-    let expr2 = BinaryExpr { lhs: Expr::Binary(Box::new(expr1.clone())), op: BinaryOp::Add, rhs: lit!(3) };
+    let expr2 = BinaryExpr { lhs: Box::new(Expr::Binary(expr1.clone())), op: BinaryOp::Add, rhs: Box::new(lit!(3)) };
     assert_eq_tokens!(expr2, "1 + 2 + 3");
 
-    let expr3 = BinaryExpr { lhs: Expr::Binary(Box::new(expr1.clone())), op: BinaryOp::Mul, rhs: lit!(3) };
+    let expr3 = BinaryExpr { lhs: Box::new(Expr::Binary(expr1.clone())), op: BinaryOp::Mul, rhs: Box::new(lit!(3)) };
     assert_eq_tokens!(expr3, "(1 + 2) * 3");
   }
 
   #[test]
   fn parentheses_neq() {
-    let expr1 = BinaryExpr { lhs: lit!(1), op: BinaryOp::Neq, rhs: lit!(2) };
+    let expr1 = BinaryExpr { lhs: Box::new(lit!(1)), op: BinaryOp::Neq, rhs: Box::new(lit!(2)) };
     assert_eq_tokens!(expr1, "1 != 2");
   }
 
   #[test]
   fn parentheses_eq() {
-    let expr1 = BinaryExpr { lhs: lit!(1), op: BinaryOp::BitAnd, rhs: lit!(2) };
+    let expr1 = BinaryExpr { lhs: Box::new(lit!(1)), op: BinaryOp::BitAnd, rhs: Box::new(lit!(2)) };
     assert_eq_tokens!(expr1, "1 & 2");
 
-    let expr2 = BinaryExpr { lhs: Expr::Binary(Box::new(expr1)), op: BinaryOp::Eq, rhs: lit!(3) };
+    let expr2 = BinaryExpr { lhs: Box::new(Expr::Binary(expr1)), op: BinaryOp::Eq, rhs: Box::new(lit!(3)) };
     assert_eq_tokens!(expr2, "1 & 2 == 3");
   }
 
   #[test]
   fn parentheses_rem_div() {
-    let expr1 = BinaryExpr { lhs: lit!(6), op: BinaryOp::Rem, rhs: lit!(9) };
+    let expr1 = BinaryExpr { lhs: Box::new(lit!(6)), op: BinaryOp::Rem, rhs: Box::new(lit!(9)) };
     assert_eq_tokens!(expr1, "6 % 9");
 
-    let expr2 = BinaryExpr { lhs: Expr::Binary(Box::new(expr1)), op: BinaryOp::Div, rhs: lit!(3) };
+    let expr2 = BinaryExpr { lhs: Box::new(Expr::Binary(expr1)), op: BinaryOp::Div, rhs: Box::new(lit!(3)) };
     assert_eq_tokens!(expr2, "6 % 9 / 3");
 
-    let expr3 = BinaryExpr { lhs: lit!(9), op: BinaryOp::Div, rhs: lit!(3) };
+    let expr3 = BinaryExpr { lhs: Box::new(lit!(9)), op: BinaryOp::Div, rhs: Box::new(lit!(3)) };
     assert_eq_tokens!(expr3, "9 / 3");
 
-    let expr4 = BinaryExpr { lhs: lit!(6), op: BinaryOp::Rem, rhs: Expr::Binary(Box::new(expr3)) };
+    let expr4 = BinaryExpr { lhs: Box::new(lit!(6)), op: BinaryOp::Rem, rhs: Box::new(Expr::Binary(expr3)) };
     assert_eq_tokens!(expr4, "6 % (9 / 3)");
   }
 
   #[test]
   fn parentheses_assign() {
-    let expr1 = BinaryExpr { lhs: var!(a), op: BinaryOp::Assign, rhs: var!(b) };
+    let expr1 = BinaryExpr { lhs: Box::new(var!(a)), op: BinaryOp::Assign, rhs: Box::new(var!(b)) };
     assert_eq_tokens!(expr1, "{ a = b; a }");
 
-    let expr2 = BinaryExpr { lhs: var!(c), op: BinaryOp::Assign, rhs: Expr::Binary(Box::new(expr1)) };
+    let expr2 = BinaryExpr { lhs: Box::new(var!(c)), op: BinaryOp::Assign, rhs: Box::new(Expr::Binary(expr1)) };
     assert_eq_tokens!(expr2, "{ c = { a = b; a }; c }");
   }
 }

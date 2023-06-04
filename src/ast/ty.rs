@@ -313,7 +313,7 @@ impl<'t> Type<'t> {
       Self::Identifier { name, .. } => {
         name.finish(ctx)?;
 
-        if let Expr::Variable { name: ref id } = **name {
+        if let Expr::Var(Var { name: ref id }) = **name {
           if let Some(ty) = ctx.resolve_ty(id.as_str()) {
             *self = Self::from_rust_ty(&ty, ctx.ffi_prefix().as_ref())?;
           }
@@ -361,7 +361,7 @@ impl<'t> Type<'t> {
       }),
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
       syn::Type::Verbatim(ty) => Ok(Self::Identifier {
-        name: Box::new(Expr::Variable { name: Identifier { id: ty.to_string().into() } }),
+        name: Box::new(Expr::Var(Var { name: Identifier { id: ty.to_string().into() } })),
         is_struct: false,
       }),
       syn::Type::Path(path_ty) => {
@@ -384,7 +384,7 @@ impl<'t> Type<'t> {
     Some(match self {
       Self::BuiltIn(ty) => ty.to_rust_ty(ffi_prefix),
       Self::Identifier { name, .. } => {
-        if let Expr::Variable { name } = &**name {
+        if let Expr::Var(Var { name }) = &**name {
           let name = Ident::new(name.as_str(), Span::call_site());
           syn::parse_quote! { #name }
         } else {
@@ -415,8 +415,8 @@ impl<'t> Type<'t> {
     match self {
       Self::BuiltIn(ty) => Some(Type::BuiltIn(*ty)),
       Self::Identifier { name, is_struct } => {
-        if let Expr::Variable { name } = &**name {
-          Some(Type::Identifier { name: Box::new(Expr::Variable { name: name.to_static() }), is_struct: *is_struct })
+        if let Expr::Var(Var { name }) = &**name {
+          Some(Type::Identifier { name: Box::new(Expr::Var(Var { name: name.to_static() })), is_struct: *is_struct })
         } else {
           // TODO: Implement `to_static` for `Expr`.
           None

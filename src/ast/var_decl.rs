@@ -14,14 +14,14 @@ use crate::{CodegenContext, LocalContext, MacroToken};
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
-pub struct Decl<'t> {
+pub struct VarDecl<'t> {
   pub ty: Type<'t>,
   pub name: Expr<'t>,
   pub rhs: Expr<'t>,
   pub is_static: bool,
 }
 
-impl<'t> Decl<'t> {
+impl<'t> VarDecl<'t> {
   /// Parse a variable declaration.
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, ((static_storage, ty), name, _, rhs)) =
@@ -71,11 +71,11 @@ mod tests {
   #[test]
   fn parse() {
     let (_, id) =
-      Decl::parse(tokens![macro_id!(int), macro_punct!("*"), macro_id!(abc), macro_punct!("="), macro_int!(123)])
+      VarDecl::parse(tokens![macro_id!(int), macro_punct!("*"), macro_id!(abc), macro_punct!("="), macro_int!(123)])
         .unwrap();
     assert_eq!(
       id,
-      Decl {
+      VarDecl {
         ty: Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Int)), mutable: true },
         name: var!(abc),
         rhs: Expr::Literal(Lit::Int(LitInt { value: 123, suffix: None })),
