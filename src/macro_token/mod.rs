@@ -3,9 +3,17 @@ use crate::ast::{
 };
 
 #[cfg(test)]
-mod macros;
+macro_rules! tokens {
+  ($($token:expr),*) => {{
+    vec![
+      $(
+        MacroToken::from($token)
+      ),*
+    ]
+  }};
+}
 #[cfg(test)]
-pub(crate) use macros::*;
+pub(crate) use tokens;
 
 /// A macro token.
 #[derive(Debug, Clone, PartialEq)]

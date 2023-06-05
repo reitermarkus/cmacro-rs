@@ -70,7 +70,7 @@ mod tests {
 
   #[test]
   fn parse() {
-    let (_, id) = VarDecl::parse(tokens![id!(int), punct!("*"), id!(abc), punct!("="), lit_int!(123)]).unwrap();
+    let (_, id) = VarDecl::parse(&tokens![id!(int), punct!("*"), id!(abc), punct!("="), lit_int!(123)]).unwrap();
     assert_eq!(
       id,
       VarDecl {

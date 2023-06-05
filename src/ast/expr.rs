@@ -781,7 +781,7 @@ mod tests {
     ([$($token:expr),* $(,)?] => $expr:expr) => {{
       use nom::combinator::all_consuming;
       let tokens = tokens![$($token),*];
-      let expr = all_consuming(Expr::parse)(tokens).map(|(_, expr)| expr);
+      let expr = all_consuming(Expr::parse)(&tokens).map(|(_, expr)| expr);
       assert_eq!(expr, Ok($expr))
     }};
   }

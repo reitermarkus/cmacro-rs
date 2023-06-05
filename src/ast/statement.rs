@@ -209,7 +209,7 @@ mod tests {
 
   #[test]
   fn parse_expr() {
-    let (_, stmt) = Statement::parse(tokens![id!(a), punct!("+="), lit_int!(2), punct!(";")]).unwrap();
+    let (_, stmt) = Statement::parse(&tokens![id!(a), punct!("+="), lit_int!(2), punct!(";")]).unwrap();
     assert_eq!(
       stmt,
       Statement::Expr(Expr::Binary(BinaryExpr {
@@ -222,14 +222,14 @@ mod tests {
 
   #[test]
   fn parse_empty_block() {
-    let (_, stmt) = Statement::parse(tokens![punct!("{"), punct!("}")]).unwrap();
+    let (_, stmt) = Statement::parse(&tokens![punct!("{"), punct!("}")]).unwrap();
     assert_eq!(stmt, Statement::Block(vec![]));
   }
 
   #[test]
   fn parse_block() {
     let (_, stmt) =
-      Statement::parse(tokens![punct!("{"), id!(int), id!(a), punct!("="), lit_int!(0), punct!(";"), punct!("}")])
+      Statement::parse(&tokens![punct!("{"), id!(int), id!(a), punct!("="), lit_int!(0), punct!(";"), punct!("}")])
         .unwrap();
     assert_eq!(
       stmt,
@@ -244,7 +244,7 @@ mod tests {
 
   #[test]
   fn parse_if_stmt() {
-    let (_, stmt) = Statement::parse(tokens![id!(if), punct!("("), id!(a), punct!(")"), id!(b), punct!(";")]).unwrap();
+    let (_, stmt) = Statement::parse(&tokens![id!(if), punct!("("), id!(a), punct!(")"), id!(b), punct!(";")]).unwrap();
     assert_eq!(
       stmt,
       Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
@@ -253,7 +253,7 @@ mod tests {
 
   #[test]
   fn parse_if_else_stmt() {
-    let (_, stmt) = Statement::parse(tokens![
+    let (_, stmt) = Statement::parse(&tokens![
       id!(if),
       punct!("("),
       id!(a),
@@ -277,7 +277,7 @@ mod tests {
 
   #[test]
   fn parse_if_block() {
-    let (_, stmt) = Statement::parse(tokens![
+    let (_, stmt) = Statement::parse(&tokens![
       id!(if),
       punct!("("),
       id!(a),
@@ -296,7 +296,7 @@ mod tests {
 
   #[test]
   fn parse_if_else_block() {
-    let (_, stmt) = Statement::parse(tokens![
+    let (_, stmt) = Statement::parse(&tokens![
       id!(if),
       punct!("("),
       id!(a),
@@ -325,13 +325,13 @@ mod tests {
   #[test]
   fn parse_do_while_stmt() {
     let (_, stmt) =
-      Statement::parse(tokens![id!(do), id!(a), punct!(";"), id!(while), punct!("("), id!(b), punct!(")")]).unwrap();
+      Statement::parse(&tokens![id!(do), id!(a), punct!(";"), id!(while), punct!("("), id!(b), punct!(")")]).unwrap();
     assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
   }
 
   #[test]
   fn parse_do_while_block() {
-    let (_, stmt) = Statement::parse(tokens![
+    let (_, stmt) = Statement::parse(&tokens![
       id!(do),
       punct!("{"),
       id!(a),

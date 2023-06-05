@@ -493,112 +493,112 @@ mod tests {
 
   #[test]
   fn parse_builtin() {
-    let (_, ty) = Type::parse(tokens![id!(float)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(float)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Float));
 
-    let (_, ty) = Type::parse(tokens![id!(double)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(double)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Double));
 
-    let (_, ty) = Type::parse(tokens![id!(long), id!(double)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(long), id!(double)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::LongDouble));
 
-    let (_, ty) = Type::parse(tokens![id!(bool)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(bool)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Bool));
 
-    let (_, ty) = Type::parse(tokens![id!(char)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(char)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Char));
 
-    let (_, ty) = Type::parse(tokens![id!(short)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(short)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Short));
 
-    let (_, ty) = Type::parse(tokens![id!(int)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(int)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Int));
 
-    let (_, ty) = Type::parse(tokens![id!(long)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(long)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Long));
 
-    let (_, ty) = Type::parse(tokens![id!(long), id!(long)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(long), id!(long)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::LongLong));
 
-    let (_, ty) = Type::parse(tokens![id!(void)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(void)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Void));
   }
 
   #[test]
   fn parse_identifier() {
-    let (_, ty) = Type::parse(tokens![id!(MyType)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(MyType)]).unwrap();
     assert_eq!(ty, ty!(MyType));
 
-    let (_, ty) = Type::parse(tokens![id!(struct), id!(MyType)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(struct), id!(MyType)]).unwrap();
     assert_eq!(ty, ty!(struct MyType));
   }
 
   #[test]
   fn parse_all_consuming() {
-    let (_, ty) = Type::parse(tokens![id!(int8_t)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(int8_t)]).unwrap();
     assert_eq!(ty, ty!(int8_t));
   }
 
   #[test]
   fn parse_signed_builtin() {
-    let (_, ty) = Type::parse(tokens![id!(signed), id!(char)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(signed), id!(char)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::SChar));
 
-    let (_, ty) = Type::parse(tokens![id!(signed), id!(short)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(signed), id!(short)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Short));
 
-    let (_, ty) = Type::parse(tokens![id!(signed), id!(int)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(signed), id!(int)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Int));
 
-    let (_, ty) = Type::parse(tokens![id!(signed), id!(long)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(signed), id!(long)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Long));
 
-    let (_, ty) = Type::parse(tokens![id!(signed), id!(long), id!(long)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(signed), id!(long), id!(long)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::LongLong));
   }
 
   #[test]
   fn parse_unsigned_builtin() {
-    let (_, ty) = Type::parse(tokens![id!(unsigned), id!(char)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(unsigned), id!(char)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::UChar));
 
-    let (_, ty) = Type::parse(tokens![id!(unsigned), id!(short)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(unsigned), id!(short)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::UShort));
 
-    let (_, ty) = Type::parse(tokens![id!(unsigned), id!(int)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(unsigned), id!(int)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::UInt));
 
-    let (_, ty) = Type::parse(tokens![id!(unsigned), id!(long)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(unsigned), id!(long)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::ULong));
 
-    let (_, ty) = Type::parse(tokens![id!(unsigned), id!(long), id!(long)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(unsigned), id!(long), id!(long)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::ULongLong));
   }
 
   #[test]
   fn parse_ptr() {
-    let (_, ty) = Type::parse(tokens![id!(void), punct!("*")]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(void), punct!("*")]).unwrap();
     assert_eq!(ty, ty!(*mut BuiltInType::Void));
 
-    let (_, ty) = Type::parse(tokens![id!(void), punct!("*"), id!(const)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(void), punct!("*"), id!(const)]).unwrap();
     assert_eq!(ty, ty!(*const BuiltInType::Void));
 
-    let (_, ty) = Type::parse(tokens![id!(void), punct!("*"), id!(const), punct!("*")]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(void), punct!("*"), id!(const), punct!("*")]).unwrap();
     assert_eq!(ty, ty!(*mut *const BuiltInType::Void));
   }
 
   #[test]
   fn parse_const() {
-    let (_, ty) = Type::parse(tokens![id!(const), id!(int)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(const), id!(int)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Int));
 
-    let (_, ty) = Type::parse(tokens![id!(int), id!(const)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(int), id!(const)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Int));
 
-    let (_, ty) = Type::parse(tokens![id!(const), id!(int), id!(const)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(const), id!(int), id!(const)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Int));
 
-    let (_, ty) = Type::parse(tokens![id!(const), id!(int), punct!("*"), id!(const)]).unwrap();
+    let (_, ty) = Type::parse(&tokens![id!(const), id!(int), punct!("*"), id!(const)]).unwrap();
     assert_eq!(ty, ty!(*const BuiltInType::Int));
   }
 

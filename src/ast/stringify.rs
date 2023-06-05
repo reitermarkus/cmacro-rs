@@ -112,7 +112,7 @@ mod tests {
 
   #[test]
   fn parse_stringify() {
-    let (_, ty) = Stringify::parse(tokens![punct!("#"), arg!(0)]).unwrap();
+    let (_, ty) = Stringify::parse(&tokens![punct!("#"), arg!(0)]).unwrap();
     assert_eq!(ty, Stringify { arg: Box::new(Expr::Arg(arg!(0))) });
   }
 }

@@ -328,7 +328,7 @@ mod tests {
 
   #[test]
   fn parse_asm() {
-    let (_, stmt) = Asm::parse(tokens![
+    let (_, stmt) = Asm::parse(&tokens![
       id!(__asm__),
       punct!("("),
       lit_string!("leal (%0,%0,4),%0"),
@@ -358,7 +358,7 @@ mod tests {
 
   #[test]
   fn parse_asm_memory_barrier() {
-    let (_, stmt) = Asm::parse(tokens![
+    let (_, stmt) = Asm::parse(&tokens![
       id!(__asm__),
       id!(volatile),
       punct!("("),
