@@ -10,4 +10,6 @@
 
 #define FIELD_ARRAY_ACCESS(a) a.field[0]
 
-#define NESTED_ARRAY_ACCESS(a) a[0][0]
+#define NESTED_ARRAY_ACCESS(a) a[1][2]
+
+#define NESTED_ARRAY_ACCESS_CONVOLUTED(a) (*(&a[1]))[2]

@@ -1,9 +1,11 @@
+
+
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
 use crate::{CodegenContext, Expr, LocalContext};
 
-use super::{Associativity, BuiltInType, Type};
+use super::{Associativity, BinaryExpr, BinaryOp, BuiltInType, Type};
 
 /// A unary expression operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,10 +80,11 @@ impl<'t> UnaryExpr<'t> {
           return Err(crate::CodegenError::UnsupportedExpression)
         }
 
-        if let Some(Type::Ptr { ty, .. }) = ty {
-          Ok(Some(*ty))
-        } else {
-          Ok(ty)
+        match ty {
+          Some(Type::Ptr { ty, .. }) => Ok(Some(*ty)),
+          None => Ok(None),
+          // Type can only be either a pointer-type or unknown.
+          _ => Err(crate::CodegenError::UnsupportedExpression),
         }
       },
       UnaryOp::AddrOf => Ok(ty.map(|ty| Type::Ptr { ty: Box::new(ty), mutable: true })),
@@ -92,6 +95,7 @@ impl<'t> UnaryExpr<'t> {
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     tokens.append_all(self.to_token_stream(ctx))
   }
+
   pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>) -> TokenStream {
     let (prec, _) = self.precedence();
     let (expr_prec, _) = self.expr.precedence();
@@ -121,7 +125,42 @@ impl<'t> UnaryExpr<'t> {
       UnaryOp::Comp => format!("!{expr}").parse::<TokenStream>().unwrap(),
       UnaryOp::Plus => format!("+{expr}").parse::<TokenStream>().unwrap(),
       UnaryOp::Minus => format!("-{expr}").parse::<TokenStream>().unwrap(),
-      UnaryOp::Deref => format!("*{expr}").parse::<TokenStream>().unwrap(),
+      UnaryOp::Deref => {
+        match &*self.expr {
+          Expr::Binary(BinaryExpr { lhs, op, rhs }) => {
+            let raw_lhs = lhs.to_token_stream(ctx);
+            let raw_rhs = rhs.to_token_stream(ctx);
+
+            let (lhs_prec, _) = lhs.precedence();
+
+            let lhs = if lhs_prec > prec || lhs_prec > 1 {
+              quote! { (#raw_lhs) }
+            } else {
+              raw_lhs
+            };
+
+            match op {
+              BinaryOp::Add => return quote! { *#lhs.add(#raw_rhs) },
+              BinaryOp::Sub => return quote! { *#lhs.sub(#raw_rhs) },
+              _ => (),
+            }
+          },
+          Expr::Unary(UnaryExpr { op, expr }) => {
+            let raw_expr = expr.to_token_stream(ctx);
+
+            match op {
+              UnaryOp::Inc => return quote! { *{ #raw_expr = #raw_expr.add(1); #raw_expr } },
+              UnaryOp::Dec => return quote! { *{ #raw_expr = #raw_expr.sub(1); #raw_expr } },
+              UnaryOp::PostInc => return quote! { *{ let prev = #raw_expr; #raw_expr = #raw_expr.add(1); prev } },
+              UnaryOp::PostDec => return quote! { *{ let prev = #raw_expr; #raw_expr = #raw_expr.sub(1); prev } },
+              _ => (),
+            }
+          },
+          _ => (),
+        }
+
+        format!("*{expr}").parse::<TokenStream>().unwrap()
+      },
       UnaryOp::AddrOf => {
         let trait_prefix = ctx.trait_prefix().into_iter();
         quote! { #(#trait_prefix::)*ptr::addr_of_mut!(#raw_expr) }

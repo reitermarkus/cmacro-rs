@@ -27,7 +27,6 @@ pub enum Expr<'t> {
   Cast(Cast<'t>),
   Literal(Lit<'t>),
   FieldAccess { expr: Box<Self>, field: Box<Self> },
-  ArrayAccess { expr: Box<Self>, index: Box<Self> },
   Stringify(Stringify<'t>),
   ConcatIdent(Vec<Self>),
   ConcatString(Vec<Self>),
@@ -44,8 +43,6 @@ impl<'t> Expr<'t> {
       Self::Stringify(_) | Self::ConcatString(_) => (3, Associativity::Left),
       Self::Cast(cast) => cast.precedence(),
       Self::Ternary(..) => (0, Associativity::None),
-      // While C array syntax is left associative, Rust precedence is the same as a dereference.
-      Self::ArrayAccess { .. } => UnaryOp::Deref.precedence(),
       Self::Unary(expr) => expr.precedence(),
       Self::Binary(expr) => expr.precedence(),
     }
@@ -148,12 +145,7 @@ impl<'t> Expr<'t> {
   fn parse_term_prec1<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, factor) = Self::parse_factor(tokens)?;
 
-    match factor {
-      Self::Arg(_) | Self::Var(_) | Self::FunctionCall(_) | Self::FieldAccess { .. } | Self::ArrayAccess { .. } => (),
-      Self::Unary(UnaryExpr { op: UnaryOp::AddrOf, .. }) => (),
-      _ => return Ok((tokens, factor)),
-    }
-
+    #[derive(Debug)]
     enum Access<'t> {
       Fn(Vec<Expr<'t>>),
       Field { field: Box<Expr<'t>>, deref: bool },
@@ -185,27 +177,35 @@ impl<'t> Expr<'t> {
         ),
         move || Ok((factor.clone(), false)),
         |acc, access| {
-          let (expr, was_unary_op) = acc?;
-          let is_unary_op = matches!(access, Access::UnaryOp(_));
+          let (expr, was_unary_postfix_op) = acc?;
+          let is_unary_postfix_op = matches!(access, Access::UnaryOp(UnaryOp::PostInc | UnaryOp::PostDec));
 
           Ok((
             match (expr, access) {
               // Postfix `++`/`--` cannot be chained.
-              (expr, Access::UnaryOp(op)) if !was_unary_op => Self::Unary(UnaryExpr { op, expr: Box::new(expr) }),
+              (expr, Access::UnaryOp(op)) if !was_unary_postfix_op => {
+                Self::Unary(UnaryExpr { op, expr: Box::new(expr) })
+              },
               // TODO: Support calling expressions as functions.
               (name @ Self::Arg(_) | name @ Self::Var(_), Access::Fn(args)) => {
                 Self::FunctionCall(FunctionCall { name: Box::new(name), args })
               },
               // Field access cannot be chained after postfix `++`/`--`.
-              (acc, Access::Field { field, deref }) if !was_unary_op || deref => {
+              (acc, Access::Field { field, deref }) if !was_unary_postfix_op || deref => {
                 let acc = if deref { Self::Unary(UnaryExpr { op: UnaryOp::Deref, expr: Box::new(acc) }) } else { acc };
                 Self::FieldAccess { expr: Box::new(acc), field }
               },
               // Array access cannot be chained after postfix `++`/`--`.
-              (acc, Access::Array { index }) if !was_unary_op => Self::ArrayAccess { expr: Box::new(acc), index },
+              (acc, Access::Array { index }) if !was_unary_postfix_op => {
+                // Array access is an addition followed by dereference.
+                Self::Unary(UnaryExpr {
+                  op: UnaryOp::Deref,
+                  expr: Box::new(Self::Binary(BinaryExpr { lhs: Box::new(acc), op: BinaryOp::Add, rhs: index })),
+                })
+              },
               _ => return Err(()),
             },
-            is_unary_op,
+            is_unary_postfix_op,
           ))
         },
       ),
@@ -482,17 +482,6 @@ impl<'t> Expr<'t> {
 
         Ok(None)
       },
-      Self::ArrayAccess { expr, index } => {
-        let expr_ty = expr.finish(ctx)?;
-        index.finish(ctx)?;
-
-        match expr_ty {
-          Some(Type::Ptr { ty, .. }) => Ok(Some(*ty)),
-          None => Ok(None),
-          // Type can only be either a pointer-type or unknown.
-          _ => Err(crate::CodegenError::UnsupportedExpression),
-        }
-      },
       Self::Stringify(stringify) => stringify.finish(ctx),
       Self::ConcatIdent(ref mut ids) => {
         for id in ids {
@@ -736,19 +725,6 @@ impl<'t> Expr<'t> {
 
         tokens.append_all(format!("{}.{}", expr, field).parse::<TokenStream>().unwrap())
       },
-      Self::ArrayAccess { ref expr, ref index } => {
-        let (expr_prec, _) = expr.precedence();
-
-        let mut expr = expr.to_token_stream(ctx);
-        // `self.precedence()` does not work here since array access is represented
-        // as a method call followed by a dereference.
-        if expr_prec > 1 {
-          expr = quote! { (#expr) };
-        }
-
-        let index = index.to_token_stream(ctx);
-        tokens.append_all(quote! { *#expr.offset(#index) })
-      },
       Self::Stringify(stringify) => {
         stringify.to_tokens(ctx, tokens);
       },
@@ -884,7 +860,13 @@ mod tests {
   #[test]
   fn parse_array_access() {
     let (_, expr) = Expr::parse(tokens![macro_id!(a), macro_punct!("["), macro_int!(0), macro_punct!("]")]).unwrap();
-    assert_eq!(expr, Expr::ArrayAccess { expr: Box::new(var!(a)), index: Box::new(lit!(0)) });
+    assert_eq!(
+      expr,
+      Expr::Unary(UnaryExpr {
+        op: UnaryOp::Deref,
+        expr: Box::new(Expr::Binary(BinaryExpr { lhs: Box::new(var!(a)), op: BinaryOp::Add, rhs: Box::new(lit!(0)) }))
+      })
+    );
 
     let (_, expr) = Expr::parse(tokens![
       macro_id!(a),
@@ -898,14 +880,31 @@ mod tests {
     .unwrap();
     assert_eq!(
       expr,
-      Expr::ArrayAccess {
-        expr: Box::new(Expr::ArrayAccess { expr: Box::new(var!(a)), index: Box::new(lit!(0)) }),
-        index: Box::new(lit!(1))
-      }
+      Expr::Unary(UnaryExpr {
+        op: UnaryOp::Deref,
+        expr: Box::new(Expr::Binary(BinaryExpr {
+          lhs: Box::new(Expr::Unary(UnaryExpr {
+            op: UnaryOp::Deref,
+            expr: Box::new(Expr::Binary(BinaryExpr {
+              lhs: Box::new(var!(a)),
+              op: BinaryOp::Add,
+              rhs: Box::new(lit!(0))
+            }))
+          })),
+          op: BinaryOp::Add,
+          rhs: Box::new(lit!(1))
+        }))
+      })
     );
 
     let (_, expr) = Expr::parse(tokens![macro_id!(a), macro_punct!("["), macro_id!(b), macro_punct!("]")]).unwrap();
-    assert_eq!(expr, Expr::ArrayAccess { expr: Box::new(var!(a)), index: Box::new(var!(b)) });
+    assert_eq!(
+      expr,
+      Expr::Unary(UnaryExpr {
+        op: UnaryOp::Deref,
+        expr: Box::new(Expr::Binary(BinaryExpr { lhs: Box::new(var!(a)), op: BinaryOp::Add, rhs: Box::new(var!(b)) }))
+      })
+    );
   }
 
   #[test]
