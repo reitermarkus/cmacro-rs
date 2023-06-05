@@ -25,6 +25,15 @@ macro_rules! __cmacro__access_pointer_field {
 }
 pub use __cmacro__access_pointer_field as access_pointer_field;
 
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cmacro__access_inc_pointer_field {
+  ($x:expr) => {
+    (*{ let prev = $x; $x = $x.add(1); prev }).field
+  };
+}
+pub use __cmacro__access_inc_pointer_field as access_inc_pointer_field;
+
 pub const old_name: _ = new_name;
 
 #[doc(hidden)]
