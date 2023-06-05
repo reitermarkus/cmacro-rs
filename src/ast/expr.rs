@@ -614,7 +614,7 @@ impl<'t> Expr<'t> {
         Ok(ty)
       },
       Self::Binary(op) => {
-        let (lhs_ty, rhs_ty) = op.finish(ctx)?;
+        let ty = op.finish(ctx)?;
 
         // Calculate numeric expression.
         match (op.op, &*op.lhs, &*op.rhs) {
@@ -686,13 +686,7 @@ impl<'t> Expr<'t> {
             _,
             _,
           ) => Ok(Some(Type::BuiltIn(BuiltInType::Bool))),
-          _ => {
-            if lhs_ty == rhs_ty {
-              Ok(lhs_ty)
-            } else {
-              Ok(lhs_ty.xor(rhs_ty))
-            }
-          },
+          _ => Ok(ty),
         }
       },
       Self::Ternary(expr) => expr.finish(ctx),

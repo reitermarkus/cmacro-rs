@@ -170,10 +170,7 @@ impl<'t> BinaryExpr<'t> {
     self.op.precedence()
   }
 
-  pub(crate) fn finish<C>(
-    &mut self,
-    ctx: &mut LocalContext<'_, 't, C>,
-  ) -> Result<(Option<Type<'t>>, Option<Type<'t>>), crate::CodegenError>
+  pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,
   {
@@ -234,7 +231,12 @@ impl<'t> BinaryExpr<'t> {
       _ => (),
     }
 
-    Ok((lhs_ty, rhs_ty))
+    if self.op == BinaryOp::MemberAccess {
+      // TODO: Get type of struct field.
+      return Ok(None)
+    }
+
+    Ok(lhs_ty.xor(rhs_ty))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
