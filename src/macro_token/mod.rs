@@ -1,6 +1,4 @@
-use crate::ast::{
-  Comment, Identifier, IdentifierContinue, Lit, LitChar, LitFloat, LitInt, LitString, MacroArg, Punctuation,
-};
+use crate::ast::{Comment, Identifier, IdentifierContinue, Lit, MacroArg, Punctuation};
 
 #[cfg(test)]
 macro_rules! tokens {
@@ -59,30 +57,6 @@ impl<'t> From<IdentifierContinue<'t>> for MacroToken<'t> {
 impl<'t> From<Lit<'t>> for MacroToken<'t> {
   fn from(lit: Lit<'t>) -> Self {
     Self::Lit(lit)
-  }
-}
-
-impl<'t> From<LitInt> for MacroToken<'t> {
-  fn from(lit: LitInt) -> Self {
-    Self::Lit(Lit::Int(lit))
-  }
-}
-
-impl<'t> From<LitFloat> for MacroToken<'t> {
-  fn from(lit: LitFloat) -> Self {
-    Self::Lit(Lit::Float(lit))
-  }
-}
-
-impl<'t> From<LitChar> for MacroToken<'t> {
-  fn from(lit: LitChar) -> Self {
-    Self::Lit(Lit::Char(lit))
-  }
-}
-
-impl<'t> From<LitString<'t>> for MacroToken<'t> {
-  fn from(lit: LitString<'t>) -> Self {
-    Self::Lit(Lit::String(lit))
   }
 }
 

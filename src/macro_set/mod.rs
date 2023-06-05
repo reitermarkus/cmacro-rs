@@ -873,18 +873,11 @@ impl MacroSet {
 #[cfg(test)]
 mod tests {
   use crate::{
-    ast::{arg, comment, id, lit_int, lit_string, punct},
+    ast::{arg, comment, id, lit_float, lit_int, lit_string, punct},
     macro_token::*,
   };
 
   use super::*;
-
-  macro_rules! double {
-    ($value:expr) => {{
-      $crate::MacroToken::Lit($crate::ast::Lit::Float($crate::ast::LitFloat::Double($value)))
-    }};
-  }
-  pub(crate) use double;
 
   #[test]
   fn macro_set() {
@@ -1166,7 +1159,7 @@ mod tests {
     let mut macro_set = MacroSet::new();
 
     macro_set.define_var_macro("CONCAT", [".", "##", "123e4"]);
-    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(tokens![double!(0.123e4)]));
+    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(tokens![lit_float!(0.123e4)]));
   }
 
   #[test]
@@ -1174,7 +1167,7 @@ mod tests {
     let mut macro_set = MacroSet::new();
 
     macro_set.define_var_macro("CONCAT", [".", "##", "01234"]);
-    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(tokens![double!(0.01234)]));
+    assert_eq!(macro_set.expand_var_macro("CONCAT"), Ok(tokens![lit_float!(0.01234)]));
   }
 
   #[test]

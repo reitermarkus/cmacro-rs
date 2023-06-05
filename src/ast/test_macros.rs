@@ -43,40 +43,50 @@ macro_rules! lit_int {
 }
 pub(crate) use lit_int;
 
+macro_rules! lit_float {
+  (f $value:expr) => {{
+    $crate::ast::Lit::Float($crate::ast::LitFloat::Float($value))
+  }};
+  ($value:expr) => {{
+    $crate::ast::Lit::Float($crate::ast::LitFloat::Double($value))
+  }};
+}
+pub(crate) use lit_float;
+
 macro_rules! lit_char {
   ($c:literal) => {
-    $crate::ast::LitChar::Ordinary(u8::try_from($c).unwrap())
+    $crate::ast::Lit::Char($crate::ast::LitChar::Ordinary(u8::try_from($c).unwrap()))
   };
   (u8 $c:literal) => {
-    $crate::ast::LitChar::Utf8(u8::try_from($c).unwrap())
+    $crate::ast::Lit::Char($crate::ast::LitChar::Utf8(u8::try_from($c).unwrap()))
   };
   (u $c:literal) => {
-    $crate::ast::LitChar::Utf16(u16::try_from($c).unwrap())
+    $crate::ast::Lit::Char($crate::ast::LitChar::Utf16(u16::try_from($c).unwrap()))
   };
   (U $c:literal) => {
-    $crate::ast::LitChar::Utf32(u32::try_from($c).unwrap())
+    $crate::ast::Lit::Char($crate::ast::LitChar::Utf32(u32::try_from($c).unwrap()))
   };
   (L $c:literal) => {
-    $crate::ast::LitChar::Wide(u32::try_from($c).unwrap())
+    $crate::ast::Lit::Char($crate::ast::LitChar::Wide(u32::try_from($c).unwrap()))
   };
 }
 pub(crate) use lit_char;
 
 macro_rules! lit_string {
   ($s:literal) => {
-    $crate::ast::LitString::Ordinary($s.as_bytes().into())
+    $crate::ast::Lit::String($crate::ast::LitString::Ordinary($s.as_bytes().into()))
   };
   (u8 $s:literal) => {
-    $crate::ast::LitString::Utf8($s.into())
+    $crate::ast::Lit::String($crate::ast::LitString::Utf8($s.into()))
   };
   (u $s:literal) => {
-    $crate::ast::LitString::Utf16($s.into())
+    $crate::ast::Lit::String($crate::ast::LitString::Utf16($s.into()))
   };
   (U $s:literal) => {
-    $crate::ast::LitString::Utf32($s.into())
+    $crate::ast::Lit::String($crate::ast::LitString::Utf32($s.into()))
   };
   (L $words:expr) => {
-    $crate::ast::LitString::Wide($words)
+    $crate::ast::Lit::String($crate::ast::LitString::Wide($words))
   };
 }
 pub(crate) use lit_string;

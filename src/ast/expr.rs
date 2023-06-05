@@ -765,20 +765,14 @@ impl<'t> Expr<'t> {
   }
 }
 
-impl<'t> From<LitInt> for Expr<'t> {
-  fn from(lit: LitInt) -> Self {
-    Self::Literal(Lit::Int(lit))
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
 
   #[test]
   fn parse_literal() {
-    parse_tokens!(Expr => [id!(u8), lit_char!('a')], Expr::Literal(Lit::Char(lit_char!(u8 'a'))));
-    parse_tokens!(Expr => [lit_char!(U '🍩')], Expr::Literal(Lit::Char(lit_char!(U '🍩'))));
+    parse_tokens!(Expr => [id!(u8), lit_char!('a')], Expr::Literal(lit_char!(u8 'a')));
+    parse_tokens!(Expr => [lit_char!(U '🍩')], Expr::Literal(lit_char!(U '🍩')));
   }
 
   #[test]
@@ -875,7 +869,7 @@ mod tests {
             }))
           })),
           op: BinaryOp::Add,
-          rhs: Box::new(lit!(1))
+          rhs: Box::new(Expr::Literal(lit_int!(1)))
         }))
       })
     );
