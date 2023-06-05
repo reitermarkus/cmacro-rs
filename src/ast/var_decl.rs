@@ -66,19 +66,16 @@ impl<'t> VarDecl<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_token::tokens;
-
   #[test]
   fn parse() {
-    let (_, id) = VarDecl::parse(&tokens![id!(int), punct!("*"), id!(abc), punct!("="), lit_int!(123)]).unwrap();
-    assert_eq!(
-      id,
+    parse_tokens!(
+      VarDecl => [id!(int), punct!("*"), id!(abc), punct!("="), lit_int!(123)],
       VarDecl {
         ty: Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Int)), mutable: true },
         name: var!(abc),
         rhs: Expr::Literal(Lit::Int(LitInt { value: 123, suffix: None })),
         is_static: false,
-      }
+      },
     );
   }
 }

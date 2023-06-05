@@ -105,14 +105,13 @@ impl<'t> Stringify<'t> {
 mod tests {
   use super::*;
 
-  use crate::{
-    ast::{arg, punct},
-    macro_token::tokens,
-  };
+  use crate::ast::{arg, parse_tokens, punct};
 
   #[test]
   fn parse_stringify() {
-    let (_, ty) = Stringify::parse(&tokens![punct!("#"), arg!(0)]).unwrap();
-    assert_eq!(ty, Stringify { arg: Box::new(Expr::Arg(arg!(0))) });
+    parse_tokens!(
+      Stringify => [punct!("#"), arg!(0)],
+      Stringify { arg: Box::new(Expr::Arg(arg!(0))) },
+    );
   }
 }

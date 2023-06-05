@@ -462,7 +462,7 @@ impl FromStr for Type<'static> {
 mod tests {
   use super::*;
 
-  use crate::macro_token::tokens;
+  use crate::ast::parse_tokens;
 
   #[test]
   fn parse_builtin_from_syn_type() {
@@ -493,113 +493,173 @@ mod tests {
 
   #[test]
   fn parse_builtin() {
-    let (_, ty) = Type::parse(&tokens![id!(float)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Float));
+    parse_tokens!(
+      Type => [id!(float)],
+      ty!(BuiltInType::Float),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(double)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Double));
+    parse_tokens!(
+      Type => [id!(double)],
+      ty!(BuiltInType::Double),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(long), id!(double)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::LongDouble));
+    parse_tokens!(
+      Type => [id!(long), id!(double)],
+      ty!(BuiltInType::LongDouble),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(bool)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Bool));
+    parse_tokens!(
+      Type => [id!(bool)],
+      ty!(BuiltInType::Bool),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(char)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Char));
+    parse_tokens!(
+      Type => [id!(char)],
+      ty!(BuiltInType::Char),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(short)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Short));
+    parse_tokens!(
+      Type => [id!(short)],
+      ty!(BuiltInType::Short),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(int)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Int));
+    parse_tokens!(
+      Type => [id!(int)],
+      ty!(BuiltInType::Int),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(long)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Long));
+    parse_tokens!(
+      Type => [id!(long)],
+      ty!(BuiltInType::Long),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(long), id!(long)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::LongLong));
+    parse_tokens!(
+      Type => [id!(long), id!(long)],
+      ty!(BuiltInType::LongLong),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(void)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Void));
+    parse_tokens!(
+      Type => [id!(void)],
+      ty!(BuiltInType::Void),
+    );
   }
 
   #[test]
   fn parse_identifier() {
-    let (_, ty) = Type::parse(&tokens![id!(MyType)]).unwrap();
-    assert_eq!(ty, ty!(MyType));
+    parse_tokens!(
+      Type => [id!(MyType)],
+      ty!(MyType),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(struct), id!(MyType)]).unwrap();
-    assert_eq!(ty, ty!(struct MyType));
+    parse_tokens!(
+      Type => [id!(struct), id!(MyType)],
+      ty!(struct MyType),
+    );
   }
 
   #[test]
   fn parse_all_consuming() {
-    let (_, ty) = Type::parse(&tokens![id!(int8_t)]).unwrap();
-    assert_eq!(ty, ty!(int8_t));
+    parse_tokens!(
+      Type => [id!(int8_t)],
+      ty!(int8_t),
+    );
   }
 
   #[test]
   fn parse_signed_builtin() {
-    let (_, ty) = Type::parse(&tokens![id!(signed), id!(char)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::SChar));
+    parse_tokens!(
+      Type => [id!(signed), id!(char)],
+      ty!(BuiltInType::SChar),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(signed), id!(short)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Short));
+    parse_tokens!(
+      Type => [id!(signed), id!(short)],
+      ty!(BuiltInType::Short),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(signed), id!(int)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Int));
+    parse_tokens!(
+      Type => [id!(signed), id!(int)],
+      ty!(BuiltInType::Int),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(signed), id!(long)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Long));
+    parse_tokens!(
+      Type => [id!(signed), id!(long)],
+      ty!(BuiltInType::Long),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(signed), id!(long), id!(long)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::LongLong));
+    parse_tokens!(
+      Type => [id!(signed), id!(long), id!(long)],
+      ty!(BuiltInType::LongLong),
+    );
   }
 
   #[test]
   fn parse_unsigned_builtin() {
-    let (_, ty) = Type::parse(&tokens![id!(unsigned), id!(char)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::UChar));
+    parse_tokens!(
+      Type => [id!(unsigned), id!(char)],
+      ty!(BuiltInType::UChar),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(unsigned), id!(short)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::UShort));
+    parse_tokens!(
+      Type => [id!(unsigned), id!(short)],
+      ty!(BuiltInType::UShort),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(unsigned), id!(int)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::UInt));
+    parse_tokens!(
+      Type => [id!(unsigned), id!(int)],
+      ty!(BuiltInType::UInt),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(unsigned), id!(long)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::ULong));
+    parse_tokens!(
+      Type => [id!(unsigned), id!(long)],
+      ty!(BuiltInType::ULong),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(unsigned), id!(long), id!(long)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::ULongLong));
+    parse_tokens!(
+      Type => [id!(unsigned), id!(long), id!(long)],
+      ty!(BuiltInType::ULongLong),
+    );
   }
 
   #[test]
   fn parse_ptr() {
-    let (_, ty) = Type::parse(&tokens![id!(void), punct!("*")]).unwrap();
-    assert_eq!(ty, ty!(*mut BuiltInType::Void));
+    parse_tokens!(
+      Type => [id!(void), punct!("*")],
+      ty!(*mut BuiltInType::Void),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(void), punct!("*"), id!(const)]).unwrap();
-    assert_eq!(ty, ty!(*const BuiltInType::Void));
+    parse_tokens!(
+      Type => [id!(void), punct!("*"), id!(const)],
+      ty!(*const BuiltInType::Void),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(void), punct!("*"), id!(const), punct!("*")]).unwrap();
-    assert_eq!(ty, ty!(*mut *const BuiltInType::Void));
+    parse_tokens!(
+      Type => [id!(void), punct!("*"), id!(const), punct!("*")],
+      ty!(*mut *const BuiltInType::Void),
+    );
   }
 
   #[test]
   fn parse_const() {
-    let (_, ty) = Type::parse(&tokens![id!(const), id!(int)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Int));
+    parse_tokens!(
+      Type => [id!(const), id!(int)],
+      ty!(BuiltInType::Int),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(int), id!(const)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Int));
+    parse_tokens!(
+      Type => [id!(int), id!(const)],
+      ty!(BuiltInType::Int),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(const), id!(int), id!(const)]).unwrap();
-    assert_eq!(ty, ty!(BuiltInType::Int));
+    parse_tokens!(
+      Type => [id!(const), id!(int), id!(const)],
+      ty!(BuiltInType::Int),
+    );
 
-    let (_, ty) = Type::parse(&tokens![id!(const), id!(int), punct!("*"), id!(const)]).unwrap();
-    assert_eq!(ty, ty!(*const BuiltInType::Int));
+    parse_tokens!(
+      Type => [id!(const), id!(int), punct!("*"), id!(const)],
+      ty!(*const BuiltInType::Int),
+    );
   }
 
   #[test]

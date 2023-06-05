@@ -205,68 +205,61 @@ impl<'t> Statement<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_token::tokens;
-
   #[test]
   fn parse_expr() {
-    let (_, stmt) = Statement::parse(&tokens![id!(a), punct!("+="), lit_int!(2), punct!(";")]).unwrap();
-    assert_eq!(
-      stmt,
+    parse_tokens!(
+      Statement => [id!(a), punct!("+="), lit_int!(2), punct!(";")],
       Statement::Expr(Expr::Binary(BinaryExpr {
         lhs: Box::new(var!(a)),
         op: BinaryOp::AddAssign,
         rhs: Box::new(lit!(2))
-      }))
+      })),
     );
   }
 
   #[test]
   fn parse_empty_block() {
-    let (_, stmt) = Statement::parse(&tokens![punct!("{"), punct!("}")]).unwrap();
-    assert_eq!(stmt, Statement::Block(vec![]));
+    parse_tokens!(
+      Statement => [punct!("{"), punct!("}")],
+      Statement::Block(vec![]),
+    );
   }
 
   #[test]
   fn parse_block() {
-    let (_, stmt) =
-      Statement::parse(&tokens![punct!("{"), id!(int), id!(a), punct!("="), lit_int!(0), punct!(";"), punct!("}")])
-        .unwrap();
-    assert_eq!(
-      stmt,
+    parse_tokens!(
+      Statement => [punct!("{"), id!(int), id!(a), punct!("="), lit_int!(0), punct!(";"), punct!("}")],
       Statement::Block(vec![Statement::VarDecl(VarDecl {
         ty: ty!(BuiltInType::Int),
         name: var!(a),
         rhs: lit!(0),
         is_static: false
-      })])
+      })]),
     );
   }
 
   #[test]
   fn parse_if_stmt() {
-    let (_, stmt) = Statement::parse(&tokens![id!(if), punct!("("), id!(a), punct!(")"), id!(b), punct!(";")]).unwrap();
-    assert_eq!(
-      stmt,
-      Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
+    parse_tokens!(
+      Statement => [id!(if), punct!("("), id!(a), punct!(")"), id!(b), punct!(";")],
+      Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] },
     );
   }
 
   #[test]
   fn parse_if_else_stmt() {
-    let (_, stmt) = Statement::parse(&tokens![
-      id!(if),
-      punct!("("),
-      id!(a),
-      punct!(")"),
-      id!(b),
-      punct!(";"),
-      id!(else),
-      id!(c),
-      punct!(";")
-    ])
-    .unwrap();
-    assert_eq!(
-      stmt,
+    parse_tokens!(
+      Statement => [
+        id!(if),
+        punct!("("),
+        id!(a),
+        punct!(")"),
+        id!(b),
+        punct!(";"),
+        id!(else),
+        id!(c),
+        punct!(";")
+      ],
       Statement::If {
         condition: var!(a),
         if_branch: vec![Statement::Expr(var!(b))],
@@ -277,72 +270,70 @@ mod tests {
 
   #[test]
   fn parse_if_block() {
-    let (_, stmt) = Statement::parse(&tokens![
-      id!(if),
-      punct!("("),
-      id!(a),
-      punct!(")"),
-      punct!("{"),
-      id!(b),
-      punct!(";"),
-      punct!("}")
-    ])
-    .unwrap();
-    assert_eq!(
-      stmt,
+    parse_tokens!(
+      Statement => [
+        id!(if),
+        punct!("("),
+        id!(a),
+        punct!(")"),
+        punct!("{"),
+        id!(b),
+        punct!(";"),
+        punct!("}")
+      ],
       Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
     );
   }
 
   #[test]
   fn parse_if_else_block() {
-    let (_, stmt) = Statement::parse(&tokens![
-      id!(if),
-      punct!("("),
-      id!(a),
-      punct!(")"),
-      punct!("{"),
-      id!(b),
-      punct!(";"),
-      punct!("}"),
-      id!(else),
-      punct!("{"),
-      id!(c),
-      punct!(";"),
-      punct!("}")
-    ])
-    .unwrap();
-    assert_eq!(
-      stmt,
+    parse_tokens!(
+      Statement => [
+        id!(if),
+        punct!("("),
+        id!(a),
+        punct!(")"),
+        punct!("{"),
+        id!(b),
+        punct!(";"),
+        punct!("}"),
+        id!(else),
+        punct!("{"),
+        id!(c),
+        punct!(";"),
+        punct!("}")
+      ],
       Statement::If {
         condition: var!(a),
         if_branch: vec![Statement::Expr(var!(b))],
-        else_branch: vec![Statement::Expr(var!(c))]
+        else_branch: vec![Statement::Expr(var!(c))],
       }
     );
   }
 
   #[test]
   fn parse_do_while_stmt() {
-    let (_, stmt) =
-      Statement::parse(&tokens![id!(do), id!(a), punct!(";"), id!(while), punct!("("), id!(b), punct!(")")]).unwrap();
-    assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
+    parse_tokens!(
+      Statement => [id!(do), id!(a), punct!(";"), id!(while), punct!("("), id!(b), punct!(")")],
+      Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) },
+    );
   }
 
   #[test]
   fn parse_do_while_block() {
-    let (_, stmt) = Statement::parse(&tokens![
-      id!(do),
-      punct!("{"),
-      id!(a),
-      punct!(";"),
-      punct!("}"),
-      id!(while),
-      punct!("("),
-      id!(b),
-      punct!(")")
-    ])
-    .unwrap();
-    assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
+    parse_tokens!(
+      Statement => [
+        id!(do),
+        punct!("{"),
+        id!(a),
+        punct!(";"),
+        punct!("}"),
+        id!(while),
+        punct!("("),
+        id!(b),
+        punct!(")")
+      ],
+      Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) },
+    );
   }
 }

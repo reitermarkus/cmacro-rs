@@ -116,6 +116,16 @@ macro_rules! punct {
 }
 pub(crate) use punct;
 
+macro_rules! parse_tokens {
+  ($ty:ty => [$($token:expr),* $(,)?], $expr:expr $(,)?) => {{
+    use nom::combinator::all_consuming;
+    let tokens = $crate::macro_token::tokens![$($token),*];
+    let expr = all_consuming(<$ty>::parse)(&tokens).map(|(_, expr)| expr);
+    assert_eq!(expr, Ok($expr))
+  }};
+}
+pub(crate) use parse_tokens;
+
 macro_rules! assert_eq_tokens {
   ($expr:expr, $expected:expr) => {
     let mut ctx = LocalContext {

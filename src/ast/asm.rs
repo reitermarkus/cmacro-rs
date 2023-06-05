@@ -313,9 +313,7 @@ impl<'t> Asm<'t> {
 mod tests {
   use super::*;
 
-  use crate::ast::{id, lit_string, punct, var};
-
-  use crate::macro_token::tokens;
+  use crate::ast::{id, lit_string, parse_tokens, punct, var};
 
   #[test]
   fn parse_template() {
@@ -328,25 +326,23 @@ mod tests {
 
   #[test]
   fn parse_asm() {
-    let (_, stmt) = Asm::parse(&tokens![
-      id!(__asm__),
-      punct!("("),
-      lit_string!("leal (%0,%0,4),%0"),
-      punct!(":"),
-      lit_string!("=r"),
-      punct!("("),
-      id!(n),
-      punct!(")"),
-      punct!(":"),
-      lit_string!("0"),
-      punct!("("),
-      id!(n),
-      punct!(")"),
-      punct!(")")
-    ])
-    .unwrap();
-    assert_eq!(
-      stmt,
+    parse_tokens!(
+      Asm => [
+        id!(__asm__),
+        punct!("("),
+        lit_string!("leal (%0,%0,4),%0"),
+        punct!(":"),
+        lit_string!("=r"),
+        punct!("("),
+        id!(n),
+        punct!(")"),
+        punct!(":"),
+        lit_string!("0"),
+        punct!("("),
+        id!(n),
+        punct!(")"),
+        punct!(")")
+      ],
       Asm {
         template: vec!["leal ({0},{0},4),{0}".into()],
         outputs: vec![(Dir::Out, RegConstraint::Reg, var!(n))],
@@ -358,20 +354,18 @@ mod tests {
 
   #[test]
   fn parse_asm_memory_barrier() {
-    let (_, stmt) = Asm::parse(&tokens![
-      id!(__asm__),
-      id!(volatile),
-      punct!("("),
-      lit_string!(""),
-      punct!(":"),
-      punct!(":"),
-      punct!(":"),
-      lit_string!("memory"),
-      punct!(")")
-    ])
-    .unwrap();
-    assert_eq!(
-      stmt,
+    parse_tokens!(
+      Asm => [
+        id!(__asm__),
+        id!(volatile),
+        punct!("("),
+        lit_string!(""),
+        punct!(":"),
+        punct!(":"),
+        punct!(":"),
+        lit_string!("memory"),
+        punct!(")")
+      ],
       Asm { template: vec!["".into()], outputs: vec![], inputs: vec![], clobbers: vec!["memory".into()] }
     );
   }
