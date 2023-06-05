@@ -313,9 +313,9 @@ impl<'t> Asm<'t> {
 mod tests {
   use super::*;
 
-  use crate::ast::var;
+  use crate::ast::{id, var};
 
-  use crate::macro_token::{id as macro_id, punct as macro_punct, string as macro_string, tokens};
+  use crate::macro_token::{punct as macro_punct, string as macro_string, tokens};
 
   #[test]
   fn parse_template() {
@@ -329,18 +329,18 @@ mod tests {
   #[test]
   fn parse_asm() {
     let (_, stmt) = Asm::parse(tokens![
-      macro_id!(__asm__),
+      id!(__asm__),
       macro_punct!("("),
       macro_string!("leal (%0,%0,4),%0"),
       macro_punct!(":"),
       macro_string!("=r"),
       macro_punct!("("),
-      macro_id!(n),
+      id!(n),
       macro_punct!(")"),
       macro_punct!(":"),
       macro_string!("0"),
       macro_punct!("("),
-      macro_id!(n),
+      id!(n),
       macro_punct!(")"),
       macro_punct!(")")
     ])
@@ -359,8 +359,8 @@ mod tests {
   #[test]
   fn parse_asm_memory_barrier() {
     let (_, stmt) = Asm::parse(tokens![
-      macro_id!(__asm__),
-      macro_id!(volatile),
+      id!(__asm__),
+      id!(volatile),
       macro_punct!("("),
       macro_string!(""),
       macro_punct!(":"),

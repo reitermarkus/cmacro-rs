@@ -875,7 +875,7 @@ macro_rules! token_vec {
   ($($token:expr),*) => {{
     vec![
       $(
-        $token
+        MacroToken::from($token)
       ),*
     ]
   }};
@@ -883,8 +883,12 @@ macro_rules! token_vec {
 
 #[cfg(test)]
 mod tests {
+  use crate::{
+    ast::{id, lit_int},
+    macro_token::*,
+  };
+
   use super::*;
-  use crate::macro_token::*;
 
   #[test]
   fn macro_set() {
@@ -899,22 +903,22 @@ mod tests {
     macro_set.define_var_macro("PLUS_PLUS_VAR", ["PLUS", "(", "PLUS", "(", "3", ",", "1", ")", ",", "8", ")"]);
     macro_set.define_var_macro("PLUS_VAR_VAR", ["PLUS", "(", "7", ",", "VAR", ")"]);
 
-    assert_eq!(macro_set.expand_var_macro("VAR"), Ok(token_vec![int!(2), punct!("+"), int!(3)]));
+    assert_eq!(macro_set.expand_var_macro("VAR"), Ok(token_vec![lit_int!(2), punct!("+"), lit_int!(3)]));
     assert_eq!(
       macro_set.expand_fn_macro("F1"),
       Ok((
         token_vec![id!(A), id!(B)],
-        token_vec![arg!(0), punct!("+"), int!(2), punct!("+"), int!(3), punct!("+"), arg!(1)]
+        token_vec![arg!(0), punct!("+"), lit_int!(2), punct!("+"), lit_int!(3), punct!("+"), arg!(1)]
       ))
     );
-    assert_eq!(macro_set.expand_var_macro("PLUS_VAR"), Ok(token_vec![int!(7), punct!("+"), int!(8)]));
+    assert_eq!(macro_set.expand_var_macro("PLUS_VAR"), Ok(token_vec![lit_int!(7), punct!("+"), lit_int!(8)]));
     assert_eq!(
       macro_set.expand_var_macro("PLUS_PLUS_VAR"),
-      Ok(token_vec![int!(3), punct!("+"), int!(1), punct!("+"), int!(8)])
+      Ok(token_vec![lit_int!(3), punct!("+"), lit_int!(1), punct!("+"), lit_int!(8)])
     );
     assert_eq!(
       macro_set.expand_var_macro("PLUS_VAR_VAR"),
-      Ok(token_vec![int!(7), punct!("+"), int!(2), punct!("+"), int!(3)])
+      Ok(token_vec![lit_int!(7), punct!("+"), lit_int!(2), punct!("+"), lit_int!(3)])
     );
   }
 
@@ -980,7 +984,7 @@ mod tests {
     macro_set.define_var_macro("FOUR", ["4"]);
     macro_set.define_var_macro("THREE_PLUS_FOUR", ["THREE_PLUS", "FOUR"]);
 
-    assert_eq!(macro_set.expand_var_macro("THREE_PLUS_FOUR"), Ok(token_vec![int!(3), punct!("+"), int!(4)]));
+    assert_eq!(macro_set.expand_var_macro("THREE_PLUS_FOUR"), Ok(token_vec![lit_int!(3), punct!("+"), lit_int!(4)]));
   }
 
   #[test]
@@ -989,7 +993,7 @@ mod tests {
 
     macro_set.define_fn_macro("FUNC", [] as [String; 0], ["123"]);
     macro_set.define_var_macro("ONE_TWO_THREE", ["FUNC", "(", ")"]);
-    assert_eq!(macro_set.expand_var_macro("ONE_TWO_THREE"), Ok(token_vec![int!(123)]));
+    assert_eq!(macro_set.expand_var_macro("ONE_TWO_THREE"), Ok(token_vec![lit_int!(123)]));
   }
 
   #[test]
@@ -1000,7 +1004,10 @@ mod tests {
     macro_set.define_var_macro("FUNC1_PARTIAL", ["FUNC1", "(", "1", ","]);
     macro_set.define_fn_macro("FUNC2", [] as [String; 0], ["FUNC1_PARTIAL", "2", ")"]);
 
-    assert_eq!(macro_set.expand_fn_macro("FUNC2"), Ok((token_vec![], token_vec![int!(1), punct!("+"), int!(2)])));
+    assert_eq!(
+      macro_set.expand_fn_macro("FUNC2"),
+      Ok((token_vec![], token_vec![lit_int!(1), punct!("+"), lit_int!(2)]))
+    );
   }
 
   #[test]
@@ -1011,7 +1018,7 @@ mod tests {
     macro_set.define_fn_macro("FOO", [] as [String; 0], ["BAR"]);
     macro_set.define_var_macro("APLUSB", ["FOO", "(", ")", "(", "3", ",", "1", ")"]);
 
-    assert_eq!(macro_set.expand_var_macro("APLUSB"), Ok(token_vec![int!(3), punct!("+"), int!(1)]));
+    assert_eq!(macro_set.expand_var_macro("APLUSB"), Ok(token_vec![lit_int!(3), punct!("+"), lit_int!(1)]));
   }
 
   #[test]
@@ -1029,7 +1036,7 @@ mod tests {
       macro_set.expand_fn_macro("FUNC2"),
       Ok((token_vec![id!(arg)], token_vec![id!(FUNC2), punct!("("), arg!(0), punct!(")")]))
     );
-    assert_eq!(macro_set.expand_var_macro("VAR1"), Ok(token_vec![int!(1), punct!("+"), id!(VAR1)]));
+    assert_eq!(macro_set.expand_var_macro("VAR1"), Ok(token_vec![lit_int!(1), punct!("+"), id!(VAR1)]));
   }
 
   #[test]
@@ -1227,28 +1234,28 @@ mod tests {
       Ok(token_vec![
         id!(f),
         punct!("("),
-        int!(2),
+        lit_int!(2),
         punct!("*"),
         punct!("("),
         id!(y),
         punct!("+"),
-        int!(1),
+        lit_int!(1),
         punct!(")"),
         punct!(")"),
         punct!("+"),
         id!(f),
         punct!("("),
-        int!(2),
+        lit_int!(2),
         punct!("*"),
         punct!("("),
         id!(f),
         punct!("("),
-        int!(2),
+        lit_int!(2),
         punct!("*"),
         punct!("("),
         id!(z),
         punct!("["),
-        int!(0),
+        lit_int!(0),
         punct!("]"),
         punct!(")"),
         punct!(")"),
@@ -1257,16 +1264,16 @@ mod tests {
         punct!("%"),
         id!(f),
         punct!("("),
-        int!(2),
+        lit_int!(2),
         punct!("*"),
         punct!("("),
-        int!(0),
+        lit_int!(0),
         punct!(")"),
         punct!(")"),
         punct!("+"),
         id!(t),
         punct!("("),
-        int!(1),
+        lit_int!(1),
         punct!(")"),
         punct!(";")
       ])
@@ -1279,49 +1286,49 @@ mod tests {
       Ok(token_vec![
         id!(f),
         punct!("("),
-        int!(2),
+        lit_int!(2),
         punct!("*"),
         punct!("("),
-        int!(2),
+        lit_int!(2),
         punct!("+"),
         punct!("("),
-        int!(3),
+        lit_int!(3),
         punct!(","),
-        int!(4),
+        lit_int!(4),
         punct!(")"),
         punct!("-"),
-        int!(0),
+        lit_int!(0),
         punct!(","),
-        int!(1),
+        lit_int!(1),
         punct!(")"),
         punct!(")"),
         punct!("|"),
         id!(f),
         punct!("("),
-        int!(2),
+        lit_int!(2),
         punct!("*"),
         punct!("("),
         punct!("~"),
-        int!(5),
+        lit_int!(5),
         punct!(")"),
         punct!(")"),
         punct!("&"),
         id!(f),
         punct!("("),
-        int!(2),
+        lit_int!(2),
         punct!("*"),
         punct!("("),
-        int!(0),
+        lit_int!(0),
         punct!(","),
-        int!(1),
+        lit_int!(1),
         punct!(")"),
         punct!(")"),
         punct!("^"),
         id!(m),
         punct!("("),
-        int!(0),
+        lit_int!(0),
         punct!(","),
-        int!(1),
+        lit_int!(1),
         punct!(")"),
         punct!(";")
       ])
@@ -1338,13 +1345,13 @@ mod tests {
         punct!("]"),
         punct!("="),
         punct!("{"),
-        int!(1),
+        lit_int!(1),
         punct!(","),
-        int!(23),
+        lit_int!(23),
         punct!(","),
-        int!(4),
+        lit_int!(4),
         punct!(","),
-        int!(5),
+        lit_int!(5),
         punct!(","),
         punct!("}"),
         punct!(";")
@@ -1358,10 +1365,10 @@ mod tests {
         id!(char),
         id!(c),
         punct!("["),
-        int!(2),
+        lit_int!(2),
         punct!("]"),
         punct!("["),
-        int!(6),
+        lit_int!(6),
         punct!("]"),
         punct!("="),
         punct!("{"),
@@ -1498,19 +1505,19 @@ mod tests {
         punct!("]"),
         punct!("="),
         punct!("{"),
-        int!(123),
+        lit_int!(123),
         punct!(","),
-        int!(45),
+        lit_int!(45),
         punct!(","),
-        int!(67),
+        lit_int!(67),
         punct!(","),
-        int!(89),
+        lit_int!(89),
         punct!(","),
-        int!(10),
+        lit_int!(10),
         punct!(","),
-        int!(11),
+        lit_int!(11),
         punct!(","),
-        int!(12),
+        lit_int!(12),
         punct!(","),
         punct!("}"),
         punct!(";")

@@ -127,24 +127,24 @@ impl<'t> TryFrom<&'t str> for IdentifierContinue<'t> {
 mod tests {
   use super::*;
 
-  use crate::lit_id;
+  use crate::ast::id;
 
   #[test]
   fn parse_literal() {
     let id = Identifier::try_from("asdf").unwrap();
-    assert_eq!(id, lit_id!(asdf));
+    assert_eq!(id, id!(asdf));
 
     let id = Identifier::try_from("\\u0401").unwrap();
-    assert_eq!(id, lit_id!(Ё));
+    assert_eq!(id, id!(Ё));
 
     let id = Identifier::try_from("Δx").unwrap();
-    assert_eq!(id, lit_id!(Δx));
+    assert_eq!(id, id!(Δx));
 
     let id = Identifier::try_from("_123").unwrap();
-    assert_eq!(id, lit_id!(_123));
+    assert_eq!(id, id!(_123));
 
     let id = Identifier::try_from("__INT_MAX__").unwrap();
-    assert_eq!(id, lit_id!(__INT_MAX__));
+    assert_eq!(id, id!(__INT_MAX__));
   }
 
   #[test]

@@ -12,13 +12,6 @@ macro_rules! id_cont {
 }
 pub(crate) use id_cont;
 
-macro_rules! id {
-  ($id:ident) => {{
-    $crate::MacroToken::Identifier($crate::ast::Identifier { id: ::std::borrow::Cow::Borrowed(stringify!($id)) })
-  }};
-}
-pub(crate) use id;
-
 macro_rules! string {
   (u8 $s:expr) => {{
     $crate::MacroToken::Lit($crate::ast::Lit::String($crate::ast::LitString::Utf8($s.into())))
@@ -44,19 +37,6 @@ macro_rules! char {
   }};
 }
 pub(crate) use char;
-
-macro_rules! int {
-  (ull $value:expr) => {{
-    $crate::MacroToken::Lit($crate::ast::Lit::Int($crate::ast::LitInt {
-      value: $value,
-      suffix: Some($crate::ast::BuiltInType::ULongLong),
-    }))
-  }};
-  ($value:expr) => {{
-    $crate::MacroToken::Lit($crate::ast::Lit::Int($crate::ast::LitInt { value: $value, suffix: None }))
-  }};
-}
-pub(crate) use int;
 
 macro_rules! double {
   ($value:expr) => {{

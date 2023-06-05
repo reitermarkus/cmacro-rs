@@ -65,6 +65,10 @@ impl<'t> VarMacro<'t> {
 
     let mut tokens = TokenStream::new();
 
+    if matches!(self.body, MacroBody::Statement(_)) {
+      ctx.export_as_macro = true;
+    }
+
     // Cannot generate non-expression variable-like macros.
     let value = self.value_mut().ok_or(crate::CodegenError::NonExpressionVarMacro)?;
 

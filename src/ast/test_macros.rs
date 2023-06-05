@@ -1,13 +1,3 @@
-macro_rules! lit_id {
-  (@ $name:ident) => {
-    $crate::ast::Identifier { id: ::std::borrow::Cow::Owned(stringify!($name).into()) }
-  };
-  ($name:ident) => {
-    $crate::ast::Identifier { id: ::std::borrow::Cow::Owned(stringify!($name).into()) }
-  };
-}
-pub(crate) use lit_id;
-
 macro_rules! arg {
   ($index:expr) => {
     $crate::ast::Expr::Arg($crate::ast::MacroArg { index: $index })
@@ -16,14 +6,28 @@ macro_rules! arg {
 pub(crate) use arg;
 
 macro_rules! var {
-  (@ $name:ident) => {
-    $crate::ast::Expr::Var($crate::ast::Var { name: $crate::ast::lit_id!(@ $name) })
-  };
   ($name:ident) => {
-    $crate::ast::Expr::Var($crate::ast::Var { name: $crate::ast::lit_id!($name) })
+    $crate::ast::Expr::Var($crate::ast::Var { name: $crate::ast::id!($name) })
   };
 }
 pub(crate) use var;
+
+macro_rules! id {
+  ($name:ident) => {
+    $crate::ast::Identifier { id: ::std::borrow::Cow::Borrowed(stringify!($name)) }
+  };
+}
+pub(crate) use id;
+
+macro_rules! lit_int {
+  (ull $value:expr) => {{
+    $crate::ast::Lit::Int($crate::ast::LitInt { value: $value, suffix: Some($crate::ast::BuiltInType::ULongLong) })
+  }};
+  ($value:expr) => {{
+    $crate::ast::Lit::Int($crate::ast::LitInt { value: $value, suffix: None })
+  }};
+}
+pub(crate) use lit_int;
 
 macro_rules! lit {
   (u8 $c:literal) => {

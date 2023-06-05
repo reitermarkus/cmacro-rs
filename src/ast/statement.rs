@@ -205,12 +205,11 @@ impl<'t> Statement<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_token::{id as macro_id, int as macro_int, punct as macro_punct, tokens};
+  use crate::macro_token::{punct as macro_punct, tokens};
 
   #[test]
   fn parse_expr() {
-    let (_, stmt) =
-      Statement::parse(tokens![macro_id!(a), macro_punct!("+="), macro_int!(2), macro_punct!(";")]).unwrap();
+    let (_, stmt) = Statement::parse(tokens![id!(a), macro_punct!("+="), lit_int!(2), macro_punct!(";")]).unwrap();
     assert_eq!(
       stmt,
       Statement::Expr(Expr::Binary(BinaryExpr {
@@ -231,10 +230,10 @@ mod tests {
   fn parse_block() {
     let (_, stmt) = Statement::parse(tokens![
       macro_punct!("{"),
-      macro_id!(int),
-      macro_id!(a),
+      id!(int),
+      id!(a),
       macro_punct!("="),
-      macro_int!(0),
+      lit_int!(0),
       macro_punct!(";"),
       macro_punct!("}")
     ])
@@ -252,15 +251,9 @@ mod tests {
 
   #[test]
   fn parse_if_stmt() {
-    let (_, stmt) = Statement::parse(tokens![
-      macro_id!(if),
-      macro_punct!("("),
-      macro_id!(a),
-      macro_punct!(")"),
-      macro_id!(b),
-      macro_punct!(";")
-    ])
-    .unwrap();
+    let (_, stmt) =
+      Statement::parse(tokens![id!(if), macro_punct!("("), id!(a), macro_punct!(")"), id!(b), macro_punct!(";")])
+        .unwrap();
     assert_eq!(
       stmt,
       Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
@@ -270,14 +263,14 @@ mod tests {
   #[test]
   fn parse_if_else_stmt() {
     let (_, stmt) = Statement::parse(tokens![
-      macro_id!(if),
+      id!(if),
       macro_punct!("("),
-      macro_id!(a),
+      id!(a),
       macro_punct!(")"),
-      macro_id!(b),
+      id!(b),
       macro_punct!(";"),
-      macro_id!(else),
-      macro_id!(c),
+      id!(else),
+      id!(c),
       macro_punct!(";")
     ])
     .unwrap();
@@ -294,12 +287,12 @@ mod tests {
   #[test]
   fn parse_if_block() {
     let (_, stmt) = Statement::parse(tokens![
-      macro_id!(if),
+      id!(if),
       macro_punct!("("),
-      macro_id!(a),
+      id!(a),
       macro_punct!(")"),
       macro_punct!("{"),
-      macro_id!(b),
+      id!(b),
       macro_punct!(";"),
       macro_punct!("}")
     ])
@@ -313,17 +306,17 @@ mod tests {
   #[test]
   fn parse_if_else_block() {
     let (_, stmt) = Statement::parse(tokens![
-      macro_id!(if),
+      id!(if),
       macro_punct!("("),
-      macro_id!(a),
+      id!(a),
       macro_punct!(")"),
       macro_punct!("{"),
-      macro_id!(b),
+      id!(b),
       macro_punct!(";"),
       macro_punct!("}"),
-      macro_id!(else),
+      id!(else),
       macro_punct!("{"),
-      macro_id!(c),
+      id!(c),
       macro_punct!(";"),
       macro_punct!("}")
     ])
@@ -341,12 +334,12 @@ mod tests {
   #[test]
   fn parse_do_while_stmt() {
     let (_, stmt) = Statement::parse(tokens![
-      macro_id!(do),
-      macro_id!(a),
+      id!(do),
+      id!(a),
       macro_punct!(";"),
-      macro_id!(while),
+      id!(while),
       macro_punct!("("),
-      macro_id!(b),
+      id!(b),
       macro_punct!(")")
     ])
     .unwrap();
@@ -356,14 +349,14 @@ mod tests {
   #[test]
   fn parse_do_while_block() {
     let (_, stmt) = Statement::parse(tokens![
-      macro_id!(do),
+      id!(do),
       macro_punct!("{"),
-      macro_id!(a),
+      id!(a),
       macro_punct!(";"),
       macro_punct!("}"),
-      macro_id!(while),
+      id!(while),
       macro_punct!("("),
-      macro_id!(b),
+      id!(b),
       macro_punct!(")")
     ])
     .unwrap();

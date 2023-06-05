@@ -21,3 +21,21 @@ pub enum MacroToken<'t> {
   /// A comment.
   Comment(Comment<'t>),
 }
+
+impl<'t> From<Identifier<'t>> for MacroToken<'t> {
+  fn from(lit: Identifier<'t>) -> Self {
+    Self::Identifier(lit)
+  }
+}
+
+impl<'t> From<IdentifierContinue<'t>> for MacroToken<'t> {
+  fn from(lit: IdentifierContinue<'t>) -> Self {
+    Self::IdentifierContinue(lit)
+  }
+}
+
+impl<'t> From<Lit<'t>> for MacroToken<'t> {
+  fn from(lit: Lit<'t>) -> Self {
+    Self::Lit(lit)
+  }
+}
