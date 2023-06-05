@@ -1,63 +1,9 @@
-macro_rules! arg {
-  ($index:expr) => {{
-    $crate::MacroToken::Arg($crate::ast::MacroArg { index: $index })
-  }};
-}
-pub(crate) use arg;
-
-macro_rules! id_cont {
-  ($id_cont:expr) => {{
-    $crate::MacroToken::IdentifierContinue($crate::ast::IdentifierContinue::try_from($id_cont).unwrap())
-  }};
-}
-pub(crate) use id_cont;
-
-macro_rules! string {
-  (u8 $s:expr) => {{
-    $crate::MacroToken::Lit($crate::ast::Lit::String($crate::ast::LitString::Utf8($s.into())))
-  }};
-  ($s:expr) => {{
-    $crate::MacroToken::Lit($crate::ast::Lit::String($crate::ast::LitString::Ordinary($s.as_bytes().into())))
-  }};
-}
-pub(crate) use string;
-
-macro_rules! char {
-  (u8 $c:expr) => {{
-    $crate::MacroToken::Lit($crate::ast::Lit::Char($crate::ast::LitChar::Utf8(u8::try_from($c).unwrap())))
-  }};
-  (u $c:expr) => {{
-    $crate::MacroToken::Lit($crate::ast::Lit::Char($crate::ast::LitChar::Utf16(u16::try_from($c).unwrap())))
-  }};
-  (U $c:expr) => {{
-    $crate::MacroToken::Lit($crate::ast::Lit::Char($crate::ast::LitChar::Utf32(u32::from($c))))
-  }};
-  ($c:expr) => {{
-    $crate::MacroToken::Lit($crate::ast::Lit::Char($crate::ast::LitChar::Ordinary(u8::try_from($c).unwrap())))
-  }};
-}
-pub(crate) use char;
-
 macro_rules! double {
   ($value:expr) => {{
     $crate::MacroToken::Lit($crate::ast::Lit::Float($crate::ast::LitFloat::Double($value)))
   }};
 }
 pub(crate) use double;
-
-macro_rules! comment {
-  ($comment:expr) => {{
-    $crate::MacroToken::Comment($crate::ast::Comment::try_from($comment).unwrap())
-  }};
-}
-pub(crate) use comment;
-
-macro_rules! punct {
-  ($punct:expr) => {{
-    $crate::MacroToken::Punctuation($crate::ast::Punctuation::try_from($punct).unwrap())
-  }};
-}
-pub(crate) use punct;
 
 macro_rules! tokens {
   ($($token:expr),*) => {{

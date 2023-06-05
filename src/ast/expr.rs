@@ -775,10 +775,7 @@ impl<'t> From<LitInt> for Expr<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_token::{
-    arg as macro_arg, char as macro_char, id_cont as macro_id_cont, punct as macro_punct, string as macro_string,
-    tokens,
-  };
+  use crate::macro_token::tokens;
 
   macro_rules! parse_expr {
     ([$($token:expr),* $(,)?] => $expr:expr) => {{
@@ -791,27 +788,27 @@ mod tests {
 
   #[test]
   fn parse_literal() {
-    parse_expr!([id!(u8), macro_char!('a')] => lit!(u8 'a'));
-    parse_expr!([macro_char!(U '🍩')] => lit!(U '🍩'));
+    parse_expr!([id!(u8), lit_char!('a')] => lit!(u8 'a'));
+    parse_expr!([lit_char!(U '🍩')] => lit!(U '🍩'));
   }
 
   #[test]
   fn parse_stringify() {
-    parse_expr!([macro_punct!("#"), macro_arg!(0)] => Expr::Stringify(Stringify { arg: Box::new(arg!(0)) }));
+    parse_expr!([punct!("#"), arg!(0)] => Expr::Stringify(Stringify { arg: Box::new(Expr::Arg(arg!(0))) }));
   }
 
   #[test]
   fn parse_concat() {
     parse_expr!(
-      [macro_string!("abc"), macro_string!("def")] =>
+      [lit_string!("abc"), lit_string!("def")] =>
       Expr::Literal(Lit::String(LitString::Ordinary("abcdef".as_bytes().into())))
     );
 
     parse_expr!(
-      [macro_string!("def"), macro_punct!("#"), macro_arg!(0)] =>
+      [lit_string!("def"), punct!("#"), arg!(0)] =>
       Expr::ConcatString(vec![
         Expr::Literal(Lit::String(LitString::Ordinary("def".as_bytes().into()))),
-        Expr::Stringify(Stringify { arg: Box::new(arg!(0)) }),
+        Expr::Stringify(Stringify { arg: Box::new(Expr::Arg(arg!(0))) }),
       ])
     );
   }
@@ -819,34 +816,34 @@ mod tests {
   #[test]
   fn parse_concat_ident() {
     parse_expr!(
-      [macro_arg!(0), macro_punct!("##"), id!(def)] =>
-      Expr::ConcatIdent(vec![arg!(0), var!(def)])
+      [arg!(0), punct!("##"), id!(def)] =>
+      Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), var!(def)])
     );
 
-    parse_expr!([macro_arg!(0), macro_punct!("##"), id!(def), macro_punct!("##"), id!(ghi)] => Expr::ConcatIdent(vec![arg!(0), var!(def), var!(ghi)]));
+    parse_expr!([arg!(0), punct!("##"), id!(def), punct!("##"), id!(ghi)] => Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), var!(def), var!(ghi)]));
 
     parse_expr!(
-      [macro_arg!(0), macro_punct!("##"), id!(_def)] =>
-      Expr::ConcatIdent(vec![arg!(0), var!(_def)])
-    );
-
-    parse_expr!(
-      [macro_arg!(0), macro_punct!("##"), macro_id_cont!("123")] =>
-      Expr::ConcatIdent(vec![arg!(0), lit!(123)])
+      [arg!(0), punct!("##"), id!(_def)] =>
+      Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), var!(_def)])
     );
 
     parse_expr!(
-      [macro_arg!(0), macro_punct!("##"), macro_id_cont!("123def")] =>
-      Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def)])
+      [arg!(0), punct!("##"), id_cont!("123")] =>
+      Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), lit!(123)])
     );
 
     parse_expr!(
-      [macro_arg!(0), macro_punct!("##"), macro_id_cont!("123def456ghi")] =>
-      Expr::ConcatIdent(vec![arg!(0), lit!(123), var!(def456ghi)])
+      [arg!(0), punct!("##"), id_cont!("123def")] =>
+      Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), lit!(123), var!(def)])
     );
 
     parse_expr!(
-      [id!(__INT), macro_punct!("##"), id!(_MAX__)] =>
+      [arg!(0), punct!("##"), id_cont!("123def456ghi")] =>
+      Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), lit!(123), var!(def456ghi)])
+    );
+
+    parse_expr!(
+      [id!(__INT), punct!("##"), id!(_MAX__)] =>
       Expr::ConcatIdent(vec![var!(__INT), var!(_MAX__)])
     );
   }
@@ -854,7 +851,7 @@ mod tests {
   #[test]
   fn parse_field_access() {
     parse_expr!(
-      [id!(a), macro_punct!("."), id!(b)] =>
+      [id!(a), punct!("."), id!(b)] =>
       Expr::Binary(BinaryExpr { lhs: Box::new(var!(a)), op: BinaryOp::MemberAccess, rhs: Box::new(var!(b)) })
     );
   }
@@ -862,7 +859,7 @@ mod tests {
   #[test]
   fn parse_pointer_access() {
     parse_expr!(
-      [id!(a), macro_punct!("->"), id!(b)] =>
+      [id!(a), punct!("->"), id!(b)] =>
       Expr::Binary(BinaryExpr {
         lhs: Box::new(Expr::Unary(UnaryExpr { op: UnaryOp::Deref, expr: Box::new(var!(a)) })),
         op: BinaryOp::MemberAccess,
@@ -874,7 +871,7 @@ mod tests {
   #[test]
   fn parse_array_access() {
     parse_expr!(
-      [id!(a), macro_punct!("["), lit_int!(0), macro_punct!("]")] =>
+      [id!(a), punct!("["), lit_int!(0), punct!("]")] =>
       Expr::Unary(UnaryExpr {
         op: UnaryOp::Deref,
         expr: Box::new(Expr::Binary(BinaryExpr { lhs: Box::new(var!(a)), op: BinaryOp::Add, rhs: Box::new(lit!(0)) }))
@@ -884,12 +881,12 @@ mod tests {
     parse_expr!(
       [
         id!(a),
-        macro_punct!("["),
+        punct!("["),
         lit_int!(0),
-        macro_punct!("]"),
-        macro_punct!("["),
+        punct!("]"),
+        punct!("["),
         lit_int!(1),
-        macro_punct!("]"),
+        punct!("]"),
       ] =>
       Expr::Unary(UnaryExpr {
         op: UnaryOp::Deref,
@@ -909,7 +906,7 @@ mod tests {
     );
 
     parse_expr!(
-      [id!(a), macro_punct!("["), id!(b), macro_punct!("]")] =>
+      [id!(a), punct!("["), id!(b), punct!("]")] =>
       Expr::Unary(UnaryExpr {
         op: UnaryOp::Deref,
         expr: Box::new(Expr::Binary(BinaryExpr { lhs: Box::new(var!(a)), op: BinaryOp::Add, rhs: Box::new(var!(b)) }))
@@ -920,7 +917,7 @@ mod tests {
   #[test]
   fn parse_assignment() {
     parse_expr!(
-      [id!(a), macro_punct!("="), id!(b), macro_punct!("="), id!(c)] =>
+      [id!(a), punct!("="), id!(b), punct!("="), id!(c)] =>
       Expr::Binary(BinaryExpr {
         lhs: Box::new(var!(a)),
         op: BinaryOp::Assign,
@@ -938,11 +935,11 @@ mod tests {
     parse_expr!(
       [
         id!(my_function),
-        macro_punct!("("),
+        punct!("("),
         id!(arg1),
-        macro_punct!(","),
+        punct!(","),
         id!(arg2),
-        macro_punct!(")")
+        punct!(")")
       ] =>
       Expr::FunctionCall(FunctionCall { name: Box::new(var!(my_function)), args: vec![var!(arg1), var!(arg2)] })
     );
@@ -951,7 +948,7 @@ mod tests {
   #[test]
   fn parse_paren() {
     parse_expr!(
-      [macro_punct!("("), macro_punct!("-"), lit_int!(ull 123456789012), macro_punct!(")")] =>
+      [punct!("("), punct!("-"), lit_int!(ull 123456789012), punct!(")")] =>
       Expr::Unary(UnaryExpr {
         op: UnaryOp::Minus,
         expr: Box::new(Expr::Literal(Lit::Int(LitInt { value: 123456789012, suffix: Some(BuiltInType::ULongLong) })))

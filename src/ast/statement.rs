@@ -205,11 +205,11 @@ impl<'t> Statement<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_token::{punct as macro_punct, tokens};
+  use crate::macro_token::tokens;
 
   #[test]
   fn parse_expr() {
-    let (_, stmt) = Statement::parse(tokens![id!(a), macro_punct!("+="), lit_int!(2), macro_punct!(";")]).unwrap();
+    let (_, stmt) = Statement::parse(tokens![id!(a), punct!("+="), lit_int!(2), punct!(";")]).unwrap();
     assert_eq!(
       stmt,
       Statement::Expr(Expr::Binary(BinaryExpr {
@@ -222,22 +222,15 @@ mod tests {
 
   #[test]
   fn parse_empty_block() {
-    let (_, stmt) = Statement::parse(tokens![macro_punct!("{"), macro_punct!("}")]).unwrap();
+    let (_, stmt) = Statement::parse(tokens![punct!("{"), punct!("}")]).unwrap();
     assert_eq!(stmt, Statement::Block(vec![]));
   }
 
   #[test]
   fn parse_block() {
-    let (_, stmt) = Statement::parse(tokens![
-      macro_punct!("{"),
-      id!(int),
-      id!(a),
-      macro_punct!("="),
-      lit_int!(0),
-      macro_punct!(";"),
-      macro_punct!("}")
-    ])
-    .unwrap();
+    let (_, stmt) =
+      Statement::parse(tokens![punct!("{"), id!(int), id!(a), punct!("="), lit_int!(0), punct!(";"), punct!("}")])
+        .unwrap();
     assert_eq!(
       stmt,
       Statement::Block(vec![Statement::VarDecl(VarDecl {
@@ -251,9 +244,7 @@ mod tests {
 
   #[test]
   fn parse_if_stmt() {
-    let (_, stmt) =
-      Statement::parse(tokens![id!(if), macro_punct!("("), id!(a), macro_punct!(")"), id!(b), macro_punct!(";")])
-        .unwrap();
+    let (_, stmt) = Statement::parse(tokens![id!(if), punct!("("), id!(a), punct!(")"), id!(b), punct!(";")]).unwrap();
     assert_eq!(
       stmt,
       Statement::If { condition: var!(a), if_branch: vec![Statement::Expr(var!(b))], else_branch: vec![] }
@@ -264,14 +255,14 @@ mod tests {
   fn parse_if_else_stmt() {
     let (_, stmt) = Statement::parse(tokens![
       id!(if),
-      macro_punct!("("),
+      punct!("("),
       id!(a),
-      macro_punct!(")"),
+      punct!(")"),
       id!(b),
-      macro_punct!(";"),
+      punct!(";"),
       id!(else),
       id!(c),
-      macro_punct!(";")
+      punct!(";")
     ])
     .unwrap();
     assert_eq!(
@@ -288,13 +279,13 @@ mod tests {
   fn parse_if_block() {
     let (_, stmt) = Statement::parse(tokens![
       id!(if),
-      macro_punct!("("),
+      punct!("("),
       id!(a),
-      macro_punct!(")"),
-      macro_punct!("{"),
+      punct!(")"),
+      punct!("{"),
       id!(b),
-      macro_punct!(";"),
-      macro_punct!("}")
+      punct!(";"),
+      punct!("}")
     ])
     .unwrap();
     assert_eq!(
@@ -307,18 +298,18 @@ mod tests {
   fn parse_if_else_block() {
     let (_, stmt) = Statement::parse(tokens![
       id!(if),
-      macro_punct!("("),
+      punct!("("),
       id!(a),
-      macro_punct!(")"),
-      macro_punct!("{"),
+      punct!(")"),
+      punct!("{"),
       id!(b),
-      macro_punct!(";"),
-      macro_punct!("}"),
+      punct!(";"),
+      punct!("}"),
       id!(else),
-      macro_punct!("{"),
+      punct!("{"),
       id!(c),
-      macro_punct!(";"),
-      macro_punct!("}")
+      punct!(";"),
+      punct!("}")
     ])
     .unwrap();
     assert_eq!(
@@ -333,16 +324,8 @@ mod tests {
 
   #[test]
   fn parse_do_while_stmt() {
-    let (_, stmt) = Statement::parse(tokens![
-      id!(do),
-      id!(a),
-      macro_punct!(";"),
-      id!(while),
-      macro_punct!("("),
-      id!(b),
-      macro_punct!(")")
-    ])
-    .unwrap();
+    let (_, stmt) =
+      Statement::parse(tokens![id!(do), id!(a), punct!(";"), id!(while), punct!("("), id!(b), punct!(")")]).unwrap();
     assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });
   }
 
@@ -350,14 +333,14 @@ mod tests {
   fn parse_do_while_block() {
     let (_, stmt) = Statement::parse(tokens![
       id!(do),
-      macro_punct!("{"),
+      punct!("{"),
       id!(a),
-      macro_punct!(";"),
-      macro_punct!("}"),
+      punct!(";"),
+      punct!("}"),
       id!(while),
-      macro_punct!("("),
+      punct!("("),
       id!(b),
-      macro_punct!(")")
+      punct!(")")
     ])
     .unwrap();
     assert_eq!(stmt, Statement::DoWhile { block: vec![Statement::Expr(var!(a))], condition: var!(b) });

@@ -66,12 +66,11 @@ impl<'t> VarDecl<'t> {
 mod tests {
   use super::*;
 
-  use crate::macro_token::{punct as macro_punct, tokens};
+  use crate::macro_token::tokens;
 
   #[test]
   fn parse() {
-    let (_, id) =
-      VarDecl::parse(tokens![id!(int), macro_punct!("*"), id!(abc), macro_punct!("="), lit_int!(123)]).unwrap();
+    let (_, id) = VarDecl::parse(tokens![id!(int), punct!("*"), id!(abc), punct!("="), lit_int!(123)]).unwrap();
     assert_eq!(
       id,
       VarDecl {

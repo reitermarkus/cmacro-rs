@@ -462,7 +462,7 @@ impl FromStr for Type<'static> {
 mod tests {
   use super::*;
 
-  use crate::macro_token::{punct as macro_punct, tokens};
+  use crate::macro_token::tokens;
 
   #[test]
   fn parse_builtin_from_syn_type() {
@@ -577,13 +577,13 @@ mod tests {
 
   #[test]
   fn parse_ptr() {
-    let (_, ty) = Type::parse(tokens![id!(void), macro_punct!("*")]).unwrap();
+    let (_, ty) = Type::parse(tokens![id!(void), punct!("*")]).unwrap();
     assert_eq!(ty, ty!(*mut BuiltInType::Void));
 
-    let (_, ty) = Type::parse(tokens![id!(void), macro_punct!("*"), id!(const)]).unwrap();
+    let (_, ty) = Type::parse(tokens![id!(void), punct!("*"), id!(const)]).unwrap();
     assert_eq!(ty, ty!(*const BuiltInType::Void));
 
-    let (_, ty) = Type::parse(tokens![id!(void), macro_punct!("*"), id!(const), macro_punct!("*")]).unwrap();
+    let (_, ty) = Type::parse(tokens![id!(void), punct!("*"), id!(const), punct!("*")]).unwrap();
     assert_eq!(ty, ty!(*mut *const BuiltInType::Void));
   }
 
@@ -598,7 +598,7 @@ mod tests {
     let (_, ty) = Type::parse(tokens![id!(const), id!(int), id!(const)]).unwrap();
     assert_eq!(ty, ty!(BuiltInType::Int));
 
-    let (_, ty) = Type::parse(tokens![id!(const), id!(int), macro_punct!("*"), id!(const)]).unwrap();
+    let (_, ty) = Type::parse(tokens![id!(const), id!(int), punct!("*"), id!(const)]).unwrap();
     assert_eq!(ty, ty!(*const BuiltInType::Int));
   }
 

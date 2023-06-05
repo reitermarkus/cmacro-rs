@@ -1,6 +1,13 @@
+macro_rules! comment {
+  ($comment:expr) => {{
+    $crate::ast::Comment::try_from($comment).unwrap()
+  }};
+}
+pub(crate) use comment;
+
 macro_rules! arg {
   ($index:expr) => {
-    $crate::ast::Expr::Arg($crate::ast::MacroArg { index: $index })
+    $crate::ast::MacroArg { index: $index }
   };
 }
 pub(crate) use arg;
@@ -19,6 +26,13 @@ macro_rules! id {
 }
 pub(crate) use id;
 
+macro_rules! id_cont {
+  ($id_cont:expr) => {
+    $crate::ast::IdentifierContinue::try_from($id_cont).unwrap()
+  };
+}
+pub(crate) use id_cont;
+
 macro_rules! lit_int {
   (ull $value:expr) => {{
     $crate::ast::Lit::Int($crate::ast::LitInt { value: $value, suffix: Some($crate::ast::BuiltInType::ULongLong) })
@@ -28,6 +42,44 @@ macro_rules! lit_int {
   }};
 }
 pub(crate) use lit_int;
+
+macro_rules! lit_char {
+  ($c:literal) => {
+    $crate::ast::LitChar::Ordinary(u8::try_from($c).unwrap())
+  };
+  (u8 $c:literal) => {
+    $crate::ast::LitChar::Utf8(u8::try_from($c).unwrap())
+  };
+  (u $c:literal) => {
+    $crate::ast::LitChar::Utf16(u16::try_from($c).unwrap())
+  };
+  (U $c:literal) => {
+    $crate::ast::LitChar::Utf32(u32::try_from($c).unwrap())
+  };
+  (L $c:literal) => {
+    $crate::ast::LitChar::Wide(u32::try_from($c).unwrap())
+  };
+}
+pub(crate) use lit_char;
+
+macro_rules! lit_string {
+  ($s:literal) => {
+    $crate::ast::LitString::Ordinary($s.as_bytes().into())
+  };
+  (u8 $s:literal) => {
+    $crate::ast::LitString::Utf8($s.into())
+  };
+  (u $s:literal) => {
+    $crate::ast::LitString::Utf16($s.into())
+  };
+  (U $s:literal) => {
+    $crate::ast::LitString::Utf32($s.into())
+  };
+  (L $words:expr) => {
+    $crate::ast::LitString::Wide($words)
+  };
+}
+pub(crate) use lit_string;
 
 macro_rules! lit {
   (u8 $c:literal) => {
@@ -56,6 +108,13 @@ macro_rules! ty {
   ($ty:path) => { Type::BuiltIn($ty) };
 }
 pub(crate) use ty;
+
+macro_rules! punct {
+  ($punct:expr) => {{
+    $crate::ast::Punctuation::try_from($punct).unwrap()
+  }};
+}
+pub(crate) use punct;
 
 macro_rules! assert_eq_tokens {
   ($expr:expr, $expected:expr) => {

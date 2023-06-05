@@ -313,9 +313,9 @@ impl<'t> Asm<'t> {
 mod tests {
   use super::*;
 
-  use crate::ast::{id, var};
+  use crate::ast::{id, lit_string, punct, var};
 
-  use crate::macro_token::{punct as macro_punct, string as macro_string, tokens};
+  use crate::macro_token::tokens;
 
   #[test]
   fn parse_template() {
@@ -330,19 +330,19 @@ mod tests {
   fn parse_asm() {
     let (_, stmt) = Asm::parse(tokens![
       id!(__asm__),
-      macro_punct!("("),
-      macro_string!("leal (%0,%0,4),%0"),
-      macro_punct!(":"),
-      macro_string!("=r"),
-      macro_punct!("("),
+      punct!("("),
+      lit_string!("leal (%0,%0,4),%0"),
+      punct!(":"),
+      lit_string!("=r"),
+      punct!("("),
       id!(n),
-      macro_punct!(")"),
-      macro_punct!(":"),
-      macro_string!("0"),
-      macro_punct!("("),
+      punct!(")"),
+      punct!(":"),
+      lit_string!("0"),
+      punct!("("),
       id!(n),
-      macro_punct!(")"),
-      macro_punct!(")")
+      punct!(")"),
+      punct!(")")
     ])
     .unwrap();
     assert_eq!(
@@ -361,13 +361,13 @@ mod tests {
     let (_, stmt) = Asm::parse(tokens![
       id!(__asm__),
       id!(volatile),
-      macro_punct!("("),
-      macro_string!(""),
-      macro_punct!(":"),
-      macro_punct!(":"),
-      macro_punct!(":"),
-      macro_string!("memory"),
-      macro_punct!(")")
+      punct!("("),
+      lit_string!(""),
+      punct!(":"),
+      punct!(":"),
+      punct!(":"),
+      lit_string!("memory"),
+      punct!(")")
     ])
     .unwrap();
     assert_eq!(
