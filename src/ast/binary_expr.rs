@@ -236,7 +236,12 @@ impl<'t> BinaryExpr<'t> {
       return Ok(None)
     }
 
-    Ok(lhs_ty.xor(rhs_ty))
+    // Type can only be inferred if both sides have the same type.
+    if lhs_ty == rhs_ty {
+      return Ok(lhs_ty)
+    }
+
+    Ok(None)
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
