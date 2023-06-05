@@ -403,6 +403,26 @@ impl<'t> Expr<'t> {
     Self::parse_term_prec14(tokens)
   }
 
+  pub(crate) fn finish_condition<C>(
+    &mut self,
+    ctx: &mut LocalContext<'_, 't, C>,
+  ) -> Result<Option<Type<'t>>, crate::CodegenError>
+  where
+    C: CodegenContext,
+  {
+    let ty = Some(Type::BuiltIn(BuiltInType::Bool));
+
+    if self.finish(ctx)? != ty {
+      *self = Expr::Binary(BinaryExpr {
+        lhs: Box::new(self.clone()),
+        op: BinaryOp::Neq,
+        rhs: Box::new(Expr::Literal(Lit::Int(LitInt { value: 0, suffix: None }))),
+      });
+    }
+
+    Ok(ty)
+  }
+
   pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
   where
     C: CodegenContext,

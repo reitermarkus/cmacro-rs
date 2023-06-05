@@ -7,9 +7,11 @@ macro_rules! __cmacro__vTaskDelayUntil {
         drop(xTaskDelayUntil(($pxPreviousWakeTime).into(), ($xTimeIncrement).into()))
       };
 
-      if 0 == Default::default() {
-        break
+      if 0 != 0 {
+        continue
       }
+
+      break
     }
   };
 }

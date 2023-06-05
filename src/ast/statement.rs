@@ -117,7 +117,7 @@ impl<'t> Statement<'t> {
         }
       },
       Self::If { condition, if_branch, else_branch } => {
-        condition.finish(ctx)?;
+        condition.finish_condition(ctx)?;
 
         for stmt in if_branch {
           stmt.finish(ctx)?;
@@ -132,7 +132,7 @@ impl<'t> Statement<'t> {
           stmt.finish(ctx)?;
         }
 
-        condition.finish(ctx)?;
+        condition.finish_condition(ctx)?;
       },
     }
 
@@ -183,9 +183,11 @@ impl<'t> Statement<'t> {
           loop {
             #(#block)*
 
-            if #condition == Default::default() {
-              break
+            if #condition {
+              continue
             }
+
+            break
           }
         })
       },
