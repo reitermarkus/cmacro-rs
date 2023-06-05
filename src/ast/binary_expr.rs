@@ -3,8 +3,9 @@ use std::fmt::Debug;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 
+use crate::{CodegenContext, Expr, LocalContext, MacroArgType};
+
 use super::{BuiltInType, Cast, Lit, LitFloat, LitInt, Type, Var};
-use crate::{CodegenContext, Expr, LocalContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Associativity {
@@ -74,11 +75,14 @@ pub enum BinaryOp {
   BitXorAssign,
   /// `lhs |= rhs`
   BitOrAssign,
+  /// `lhs.rhs`
+  MemberAccess,
 }
 
 impl BinaryOp {
   pub(crate) const fn precedence(&self) -> (u8, Associativity) {
     match self {
+      Self::MemberAccess => (1, Associativity::Left),
       Self::Mul | Self::Div | Self::Rem => (5, Associativity::Left),
       Self::Add | Self::Sub => (6, Associativity::Left),
       Self::Shl | Self::Shr => (7, Associativity::Left),
@@ -138,6 +142,7 @@ impl ToTokens for BinaryOp {
       Self::BitAndAssign => quote! { &= },
       Self::BitXorAssign => quote! { ^= },
       Self::BitOrAssign => quote! { |= },
+      Self::MemberAccess => quote! { . },
     })
   }
 }
@@ -192,6 +197,10 @@ impl<'t> BinaryExpr<'t> {
 
     // Cast mixed float and int expression.
     match (&*self.lhs, &*self.rhs) {
+      (_, Expr::Arg(arg)) if self.op == BinaryOp::MemberAccess => {
+        // Arg must be an identifier for use as a member name.
+        *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
+      },
       (Expr::Literal(Lit::Int(LitInt { value: lhs, suffix: None })), Expr::Literal(Lit::Float(_))) => {
         let f = if *lhs >= f32::MIN as i128 && *lhs <= f32::MAX as i128 {
           LitFloat::Float(*lhs as f32)
@@ -231,6 +240,7 @@ impl<'t> BinaryExpr<'t> {
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     tokens.append_all(self.to_token_stream(ctx))
   }
+
   pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>) -> TokenStream {
     let mut lhs = self.lhs.to_token_stream(ctx);
     let op = self.op;

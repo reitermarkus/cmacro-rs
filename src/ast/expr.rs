@@ -26,7 +26,6 @@ pub enum Expr<'t> {
   FunctionCall(FunctionCall<'t>),
   Cast(Cast<'t>),
   Literal(Lit<'t>),
-  FieldAccess { expr: Box<Self>, field: Box<Self> },
   Stringify(Stringify<'t>),
   ConcatIdent(Vec<Self>),
   ConcatString(Vec<Self>),
@@ -39,12 +38,12 @@ impl<'t> Expr<'t> {
   pub(crate) const fn precedence(&self) -> (u8, Associativity) {
     match self {
       Self::Literal(_) | Self::Arg(_) | Self::Var(_) | Self::ConcatIdent(_) => (0, Associativity::None),
-      Self::FunctionCall(_) | Self::FieldAccess { .. } => (1, Associativity::Left),
+      Self::FunctionCall(_) => (1, Associativity::Left),
       Self::Stringify(_) | Self::ConcatString(_) => (3, Associativity::Left),
       Self::Cast(cast) => cast.precedence(),
-      Self::Ternary(..) => (0, Associativity::None),
       Self::Unary(expr) => expr.precedence(),
       Self::Binary(expr) => expr.precedence(),
+      Self::Ternary(_) => (0, Associativity::None),
     }
   }
 
@@ -193,7 +192,7 @@ impl<'t> Expr<'t> {
               // Field access cannot be chained after postfix `++`/`--`.
               (acc, Access::Field { field, deref }) if !was_unary_postfix_op || deref => {
                 let acc = if deref { Self::Unary(UnaryExpr { op: UnaryOp::Deref, expr: Box::new(acc) }) } else { acc };
-                Self::FieldAccess { expr: Box::new(acc), field }
+                Self::Binary(BinaryExpr { lhs: Box::new(acc), op: BinaryOp::MemberAccess, rhs: field })
               },
               // Array access cannot be chained after postfix `++`/`--`.
               (acc, Access::Array { index }) if !was_unary_postfix_op => {
@@ -354,9 +353,9 @@ impl<'t> Expr<'t> {
 
     // Parse ternary.
     if let Ok((tokens, _)) = delimited(meta, punct("?"), meta)(tokens) {
-      let (tokens, if_branch) = Self::parse_term_prec7(tokens)?;
+      let (tokens, if_branch) = Self::parse(tokens)?;
       let (tokens, _) = delimited(meta, punct(":"), meta)(tokens)?;
-      let (tokens, else_branch) = Self::parse_term_prec7(tokens)?;
+      let (tokens, else_branch) = Self::parse_term_prec13(tokens)?;
       return Ok((
         tokens,
         Self::Ternary(TernaryExpr {
@@ -472,16 +471,6 @@ impl<'t> Expr<'t> {
         Ok(ty)
       },
       Self::Literal(lit) => lit.finish(ctx),
-      Self::FieldAccess { expr, field } => {
-        expr.finish(ctx)?;
-        field.finish(ctx)?;
-
-        if let Self::Arg(ref arg) = **field {
-          *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
-        }
-
-        Ok(None)
-      },
       Self::Stringify(stringify) => stringify.finish(ctx),
       Self::ConcatIdent(ref mut ids) => {
         for id in ids {
@@ -712,19 +701,6 @@ impl<'t> Expr<'t> {
         call.to_tokens(ctx, tokens);
       },
       Self::Literal(ref lit) => lit.to_tokens(ctx, tokens),
-      Self::FieldAccess { ref expr, ref field } => {
-        let (prec, _) = self.precedence();
-        let (expr_prec, _) = expr.precedence();
-
-        let mut expr = expr.to_token_stream(ctx);
-        if expr_prec > prec {
-          expr = quote! { (#expr) };
-        }
-
-        let field = field.to_token_stream(ctx);
-
-        tokens.append_all(format!("{}.{}", expr, field).parse::<TokenStream>().unwrap())
-      },
       Self::Stringify(stringify) => {
         stringify.to_tokens(ctx, tokens);
       },
@@ -842,7 +818,10 @@ mod tests {
   #[test]
   fn parse_field_access() {
     let (_, expr) = Expr::parse(tokens![macro_id!(a), macro_punct!("."), macro_id!(b)]).unwrap();
-    assert_eq!(expr, Expr::FieldAccess { expr: Box::new(var!(a)), field: Box::new(var!(b)) });
+    assert_eq!(
+      expr,
+      Expr::Binary(BinaryExpr { lhs: Box::new(var!(a)), op: BinaryOp::MemberAccess, rhs: Box::new(var!(b)) })
+    );
   }
 
   #[test]
@@ -850,10 +829,11 @@ mod tests {
     let (_, expr) = Expr::parse(tokens![macro_id!(a), macro_punct!("->"), macro_id!(b)]).unwrap();
     assert_eq!(
       expr,
-      Expr::FieldAccess {
-        expr: Box::new(Expr::Unary(UnaryExpr { op: UnaryOp::Deref, expr: Box::new(var!(a)) })),
-        field: Box::new(var!(b))
-      }
+      Expr::Binary(BinaryExpr {
+        lhs: Box::new(Expr::Unary(UnaryExpr { op: UnaryOp::Deref, expr: Box::new(var!(a)) })),
+        op: BinaryOp::MemberAccess,
+        rhs: Box::new(var!(b))
+      })
     );
   }
 

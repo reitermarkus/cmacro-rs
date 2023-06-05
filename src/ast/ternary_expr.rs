@@ -3,7 +3,7 @@ use quote::{quote, TokenStreamExt};
 
 use crate::{CodegenContext, LocalContext};
 
-use super::{Expr, Type};
+use super::{BinaryExpr, BinaryOp, BuiltInType, Expr, Lit, LitInt, Type};
 
 /// A ternary expression.
 ///
@@ -25,7 +25,13 @@ impl<'t> TernaryExpr<'t> {
   where
     C: CodegenContext,
   {
-    self.condition.finish(ctx)?;
+    if self.condition.finish(ctx)? != Some(Type::BuiltIn(BuiltInType::Bool)) {
+      self.condition = Box::new(Expr::Binary(BinaryExpr {
+        lhs: self.condition.clone(),
+        op: BinaryOp::Neq,
+        rhs: Box::new(Expr::Literal(Lit::Int(LitInt { value: 0, suffix: None }))),
+      }));
+    }
 
     let lhs_ty = self.if_branch.finish(ctx)?;
     let rhs_ty = self.else_branch.finish(ctx)?;

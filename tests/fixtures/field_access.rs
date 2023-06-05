@@ -2,7 +2,7 @@
 #[macro_export]
 macro_rules! __cmacro__access {
   ($x:expr, $field:ident) => {
-    $x.$field
+    $x. $field
   };
 }
 pub use __cmacro__access as access;
