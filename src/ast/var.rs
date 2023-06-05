@@ -24,12 +24,6 @@ impl<'t> Var<'t> {
     match self.name.as_str() {
       "__LINE__" => {
         ctx.export_as_macro = true;
-
-        // *self = Expr::Cast {
-        //   ty: Type::BuiltIn(BuiltInType::UInt),
-        //   expr: Box::new(Expr::Var(self.clone())),
-        // };
-
         Ok(Some(Type::BuiltIn(BuiltInType::UInt)))
       },
       "__FILE__" => {
