@@ -3,8 +3,15 @@ use std::fmt::Debug;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 
-use super::{BuiltInType, Lit, LitFloat, LitInt, Type, Var};
+use super::{BuiltInType, Cast, Lit, LitFloat, LitInt, Type, Var};
 use crate::{CodegenContext, Expr, LocalContext};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Associativity {
+  None,
+  Left,
+  Right,
+}
 
 /// A binary expression operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,20 +77,20 @@ pub enum BinaryOp {
 }
 
 impl BinaryOp {
-  pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
+  pub(crate) const fn precedence(&self) -> (u8, Associativity) {
     match self {
-      Self::Mul | Self::Div | Self::Rem => (5, Some(true)),
-      Self::Add | Self::Sub => (6, Some(true)),
-      Self::Shl | Self::Shr => (7, Some(true)),
+      Self::Mul | Self::Div | Self::Rem => (5, Associativity::Left),
+      Self::Add | Self::Sub => (6, Associativity::Left),
+      Self::Shl | Self::Shr => (7, Associativity::Left),
 
-      Self::BitAnd => (8, Some(true)),
-      Self::BitXor => (9, Some(true)),
-      Self::BitOr => (10, Some(true)),
+      Self::BitAnd => (8, Associativity::Left),
+      Self::BitXor => (9, Associativity::Left),
+      Self::BitOr => (10, Associativity::Left),
 
-      Self::Eq | Self::Neq | Self::Lt | Self::Gt | Self::Lte | Self::Gte => (11, None),
+      Self::Eq | Self::Neq | Self::Lt | Self::Gt | Self::Lte | Self::Gte => (11, Associativity::None),
 
-      Self::And => (12, Some(true)),
-      Self::Or => (13, Some(true)),
+      Self::And => (12, Associativity::Left),
+      Self::Or => (13, Associativity::Left),
       Self::Assign
       | Self::AddAssign
       | Self::SubAssign
@@ -94,7 +101,7 @@ impl BinaryOp {
       | Self::ShrAssign
       | Self::BitAndAssign
       | Self::BitXorAssign
-      | Self::BitOrAssign => (14, Some(false)),
+      | Self::BitOrAssign => (14, Associativity::Right),
     }
   }
 }
@@ -154,7 +161,7 @@ pub struct BinaryExpr<'t> {
 
 impl<'t> BinaryExpr<'t> {
   #[inline]
-  pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
+  pub(crate) const fn precedence(&self) -> (u8, Associativity) {
     self.op.precedence()
   }
 
@@ -205,13 +212,13 @@ impl<'t> BinaryExpr<'t> {
       },
       (lhs, Expr::Literal(Lit::Int(_))) => {
         if let Some(lhs_ty2) = max_ty_cast(lhs) {
-          self.lhs = Box::new(Expr::Cast { ty: lhs_ty2.clone(), expr: Box::new(lhs.clone()) });
+          self.lhs = Box::new(Expr::Cast(Cast { ty: lhs_ty2.clone(), expr: Box::new(lhs.clone()) }));
           lhs_ty = Some(lhs_ty2);
         }
       },
       (Expr::Literal(Lit::Int(_)), rhs) => {
         if let Some(rhs_ty2) = max_ty_cast(rhs) {
-          self.rhs = Box::new(Expr::Cast { ty: rhs_ty2.clone(), expr: Box::new(rhs.clone()) });
+          self.rhs = Box::new(Expr::Cast(Cast { ty: rhs_ty2.clone(), expr: Box::new(rhs.clone()) }));
           rhs_ty = Some(rhs_ty2);
         }
       },
@@ -234,9 +241,9 @@ impl<'t> BinaryExpr<'t> {
     let (rhs_prec, _) = self.rhs.precedence();
 
     let (lhs_parens, rhs_parens) = match (prec, assoc) {
-      (_, None) => (lhs_prec >= prec, rhs_prec >= prec),
-      (_, Some(true)) => (lhs_prec > prec, rhs_prec >= prec),
-      (_, Some(false)) => (lhs_prec <= prec, rhs_prec < prec),
+      (_, Associativity::None) => (lhs_prec >= prec, rhs_prec >= prec),
+      (_, Associativity::Left) => (lhs_prec > prec, rhs_prec >= prec),
+      (_, Associativity::Right) => (lhs_prec <= prec, rhs_prec < prec),
     };
 
     match self.op {

@@ -8,7 +8,7 @@ use nom::{
   sequence::{delimited, pair, preceded, terminated, tuple},
   IResult,
 };
-use proc_macro2::{Ident, Literal, Span, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use super::{
@@ -24,7 +24,7 @@ pub enum Expr<'t> {
   Arg(MacroArg),
   Var(Var<'t>),
   FunctionCall(FunctionCall<'t>),
-  Cast { expr: Box<Self>, ty: Type<'t> },
+  Cast(Cast<'t>),
   Literal(Lit<'t>),
   FieldAccess { expr: Box<Self>, field: Box<Self> },
   ArrayAccess { expr: Box<Self>, index: Box<Self> },
@@ -37,16 +37,17 @@ pub enum Expr<'t> {
 }
 
 impl<'t> Expr<'t> {
-  pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
+  pub(crate) const fn precedence(&self) -> (u8, Associativity) {
     match self {
-      Self::Literal(_) | Self::Arg(_) | Self::Var(_) | Self::ConcatIdent(_) => (0, None),
-      Self::FunctionCall(_) | Self::FieldAccess { .. } => (1, Some(true)),
-      Self::Cast { .. } | Self::Stringify(_) | Self::ConcatString(_) => (3, Some(true)),
-      Self::Ternary(..) => (0, None),
+      Self::Literal(_) | Self::Arg(_) | Self::Var(_) | Self::ConcatIdent(_) => (0, Associativity::None),
+      Self::FunctionCall(_) | Self::FieldAccess { .. } => (1, Associativity::Left),
+      Self::Stringify(_) | Self::ConcatString(_) => (3, Associativity::Left),
+      Self::Cast(cast) => cast.precedence(),
+      Self::Ternary(..) => (0, Associativity::None),
       // While C array syntax is left associative, Rust precedence is the same as a dereference.
       Self::ArrayAccess { .. } => UnaryOp::Deref.precedence(),
-      Self::Unary(expr) => expr.op.precedence(),
-      Self::Binary(expr) => expr.op.precedence(),
+      Self::Unary(expr) => expr.precedence(),
+      Self::Binary(expr) => expr.precedence(),
     }
   }
 
@@ -214,9 +215,8 @@ impl<'t> Expr<'t> {
 
   fn parse_term_prec2<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
-      map(pair(parenthesized(Type::parse), Self::parse_term_prec2), |(ty, term)| Self::Cast {
-        expr: Box::new(term),
-        ty,
+      map(pair(parenthesized(Type::parse), Self::parse_term_prec2), |(ty, term)| {
+        Self::Cast(Cast { ty, expr: Box::new(term) })
       }),
       map(
         pair(
@@ -409,11 +409,11 @@ impl<'t> Expr<'t> {
     C: CodegenContext,
   {
     match self {
-      Self::Cast { expr, ty } => {
-        expr.finish(ctx)?;
+      Self::Cast(cast) => {
+        let ty = cast.finish(ctx)?;
 
         // Handle ambiguous cast vs. binary operation, e.g. `(ty)&var` vs `(var1) & var2`.
-        if let (Self::Unary(expr), Type::Identifier { name, is_struct: false }) = (&**expr, &ty) {
+        if let (Self::Unary(expr), Type::Identifier { name, is_struct: false }) = (&*cast.expr, &cast.ty) {
           let treat_as_binop = match **name {
             Self::Arg(_) => {
               // Arguments cannot be resolved as a type.
@@ -447,15 +447,14 @@ impl<'t> Expr<'t> {
 
         // Remove redundant casts from string literals, e.g. `(char*)"adsf"`.
         if matches!(
-          (&**expr, &ty), (Expr::Literal(Lit::String(LitString::Ordinary(_))), Type::Ptr { ty, .. })
+          (&*cast.expr, &cast.ty), (Expr::Literal(Lit::String(LitString::Ordinary(_))), Type::Ptr { ty, .. })
           if matches!(**ty, Type::BuiltIn(BuiltInType::Char))
         ) {
-          *self = (**expr).clone();
+          *self = (*cast.expr).clone();
           return self.finish(ctx)
         }
 
-        ty.finish(ctx)?;
-        Ok(Some(ty.clone()))
+        Ok(ty)
       },
       Self::Arg(arg) => {
         if let MacroArgType::Known(arg_ty) = ctx.arg_type_mut(arg.index()) {
@@ -469,7 +468,7 @@ impl<'t> Expr<'t> {
       // Convert character literals to casts.
       Self::Literal(lit) if matches!(lit, Lit::Char(..)) => {
         let ty = lit.finish(ctx)?;
-        *self = Self::Cast { expr: Box::new(Self::Literal(lit.clone())), ty: ty.clone().unwrap() };
+        *self = Self::Cast(Cast { expr: Box::new(Self::Literal(lit.clone())), ty: ty.clone().unwrap() });
         Ok(ty)
       },
       Self::Literal(lit) => lit.finish(ctx),
@@ -704,68 +703,7 @@ impl<'t> Expr<'t> {
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     match self {
-      Self::Cast { ref expr, ref ty } => tokens.append_all(match (ty, &**expr) {
-        (Type::Ptr { mutable, .. }, Expr::Literal(Lit::Int(LitInt { value: 0, .. }))) => {
-          let prefix = ctx.trait_prefix().into_iter();
-
-          if *mutable {
-            quote! { #(#prefix::)*ptr::null_mut() }
-          } else {
-            quote! { #(#prefix::)*ptr::null() }
-          }
-        },
-        (ty, expr) => {
-          if ty.is_void() {
-            let expr = expr.to_token_stream(ctx);
-            quote! { { drop(#expr) } }
-          } else {
-            let (prec, _) = self.precedence();
-            let (expr_prec, _) = expr.precedence();
-
-            let expr = match expr {
-              // When casting a negative integer, we need to generate it with a suffix, since
-              // directly casting to an unsigned integer (i.e. `-1 as u32`) doesn't work.
-              // The same is true when casting a big number to a type which is too small,
-              // so we output the number with the smallest possible explicit type.
-              Expr::Literal(Lit::Int(LitInt { value, .. })) => {
-                let expr = if *value < i64::MIN as i128 {
-                  Literal::i128_suffixed(*value)
-                } else if *value < i32::MIN as i128 {
-                  Literal::i64_suffixed(*value as i64)
-                } else if *value < i16::MIN as i128 {
-                  Literal::i32_suffixed(*value as i32)
-                } else if *value < i8::MIN as i128 {
-                  Literal::i16_suffixed(*value as i16)
-                } else if *value < 0 {
-                  Literal::i8_suffixed(*value as i8)
-                } else if *value <= u8::MAX as i128 {
-                  Literal::u8_suffixed(*value as u8)
-                } else if *value <= u16::MAX as i128 {
-                  Literal::u16_suffixed(*value as u16)
-                } else if *value <= u32::MAX as i128 {
-                  Literal::u32_suffixed(*value as u32)
-                } else if *value <= u64::MAX as i128 {
-                  Literal::u64_suffixed(*value as u64)
-                } else {
-                  Literal::i128_suffixed(*value)
-                };
-
-                quote! { #expr }
-              },
-              _ => {
-                let mut expr = expr.to_token_stream(ctx);
-                if expr_prec > prec {
-                  expr = quote! { (#expr) };
-                }
-                expr
-              },
-            };
-
-            let ty = ty.to_token_stream(ctx);
-            quote! { #expr as #ty }
-          }
-        },
-      }),
+      Self::Cast(cast) => cast.to_tokens(ctx, tokens),
       Self::Arg(arg) => tokens.append_all(match ctx.arg_name(arg.index()) {
         "..." => quote! { $($__VA_ARGS__),* },
         name => {

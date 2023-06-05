@@ -1,8 +1,9 @@
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
-use super::{BuiltInType, Type};
 use crate::{CodegenContext, Expr, LocalContext};
+
+use super::{Associativity, BuiltInType, Type};
 
 /// A unary expression operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,11 +31,13 @@ pub enum UnaryOp {
 }
 
 impl UnaryOp {
-  pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
+  pub(crate) const fn precedence(&self) -> (u8, Associativity) {
     match self {
-      Self::PostInc | Self::PostDec => (1, Some(true)),
-      Self::Inc | Self::Dec | Self::Plus | Self::Minus | Self::Not | Self::Comp | Self::Deref => (2, Some(false)),
-      Self::AddrOf => (0, Some(false)),
+      Self::PostInc | Self::PostDec => (1, Associativity::Left),
+      Self::Inc | Self::Dec | Self::Plus | Self::Minus | Self::Not | Self::Comp | Self::Deref => {
+        (2, Associativity::Right)
+      },
+      Self::AddrOf => (0, Associativity::Right),
     }
   }
 }
@@ -57,7 +60,7 @@ pub struct UnaryExpr<'t> {
 
 impl<'t> UnaryExpr<'t> {
   #[inline]
-  pub(crate) const fn precedence(&self) -> (u8, Option<bool>) {
+  pub(crate) const fn precedence(&self) -> (u8, Associativity) {
     self.op.precedence()
   }
 
@@ -130,7 +133,7 @@ impl<'t> UnaryExpr<'t> {
 #[cfg(test)]
 mod tests {
   use super::{
-    super::{assert_eq_tokens, lit, var},
+    super::{assert_eq_tokens, lit, var, Cast},
     *,
   };
 
@@ -138,13 +141,13 @@ mod tests {
   fn parentheses_deref_cast() {
     let expr1 = UnaryExpr {
       op: UnaryOp::Deref,
-      expr: Box::new(Expr::Cast {
+      expr: Box::new(Expr::Cast(Cast {
         ty: Type::Ptr {
           ty: Box::new(Type::Identifier { name: Box::new(var!(MyType)), is_struct: false }),
           mutable: true,
         },
         expr: Box::new(lit!(1)),
-      }),
+      })),
     };
     assert_eq_tokens!(expr1, "*(1u8 as *mut MyType)");
   }

@@ -54,7 +54,7 @@ pub struct MacroSet {
   fn_macros: HashMap<String, (Vec<String>, Vec<String>)>,
 }
 
-/// Error during macro expansion.
+/// An error during macro expansion.
 #[derive(Debug, PartialEq)]
 pub enum ExpansionError {
   /// Macro not found.

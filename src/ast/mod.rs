@@ -6,6 +6,9 @@ pub(crate) use tokens::*;
 mod asm;
 pub use asm::*;
 
+mod cast;
+pub use cast::*;
+
 mod comment;
 pub use comment::*;
 

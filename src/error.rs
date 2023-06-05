@@ -1,6 +1,6 @@
 use std::fmt;
 
-/// A parsing or codegen error.
+/// An error during parsing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParserError {
   /// Invalid macro name.
@@ -23,7 +23,7 @@ impl fmt::Display for ParserError {
 
 impl std::error::Error for ParserError {}
 
-/// A code generation error.
+/// An error during code generation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodegenError {
   /// Recursive macro definition.

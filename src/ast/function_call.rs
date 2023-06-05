@@ -68,7 +68,7 @@ impl<'t> FunctionCall<'t> {
     self.name.to_tokens(ctx, &mut name);
 
     let args = self.args.iter().map(|arg| match arg {
-      Expr::Cast { ty: Type::Ptr { mutable, .. }, expr } => match **expr {
+      Expr::Cast(Cast { ty: Type::Ptr { mutable, .. }, expr }) => match **expr {
         Expr::Literal(Lit::Int(LitInt { value: 0, .. })) => {
           let prefix = ctx.trait_prefix().into_iter();
 
