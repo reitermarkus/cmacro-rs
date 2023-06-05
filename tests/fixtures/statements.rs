@@ -4,7 +4,7 @@ macro_rules! __cmacro__vTaskDelayUntil {
   ($pxPreviousWakeTime:expr, $xTimeIncrement:expr) => {
     loop {
       {
-        drop(xTaskDelayUntil(($pxPreviousWakeTime).into(), ($xTimeIncrement).into()))
+        let _ = xTaskDelayUntil(($pxPreviousWakeTime).into(), ($xTimeIncrement).into());
       };
 
       if 0 != 0 {

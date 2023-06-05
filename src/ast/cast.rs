@@ -47,7 +47,7 @@ impl<'t> Cast<'t> {
       (ty, expr) => {
         if ty.is_void() {
           let expr = expr.to_token_stream(ctx);
-          quote! { { drop(#expr) } }
+          quote! { { let _ = #expr; } }
         } else {
           let (prec, _) = self.precedence();
           let (expr_prec, _) = expr.precedence();
