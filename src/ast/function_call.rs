@@ -45,13 +45,16 @@ impl<'t> FunctionCall<'t> {
           ty = Some(Type::from_rust_ty(&known_ret_ty, ffi_prefix.as_ref())?);
 
           for (arg, known_arg_type) in self.args.iter_mut().zip(known_args.iter()) {
-            // If the current argument to this function is a macro argument,
-            // we can infer the type of the macro argument.
-            if let Expr::Arg(arg) = arg {
-              let arg_type = ctx.arg_type_mut(arg.index());
-              if *arg_type == MacroArgType::Unknown {
-                *arg_type = MacroArgType::Known(Type::from_rust_ty(known_arg_type, ffi_prefix.as_ref())?);
-              }
+            match arg {
+              // If the current argument to this function is a macro argument,
+              // we can infer the type of the macro argument.
+              Expr::Arg(arg) => {
+                let arg_type = ctx.arg_type_mut(arg.index());
+                if *arg_type == MacroArgType::Unknown {
+                  *arg_type = MacroArgType::Known(Type::from_rust_ty(known_arg_type, ffi_prefix.as_ref())?);
+                }
+              },
+              _ => (),
             }
           }
         }

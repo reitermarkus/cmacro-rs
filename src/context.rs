@@ -87,6 +87,10 @@ where
     self.global_context.macro_arg_ty(macro_name, arg_name)
   }
 
+  fn resolve_enum_variant(&self, variant: &str) -> Option<syn::Expr> {
+    self.global_context.resolve_enum_variant(variant)
+  }
+
   fn resolve_ty(&self, ty: &str) -> Option<syn::Type> {
     self.global_context.resolve_ty(ty)
   }
@@ -118,6 +122,14 @@ pub trait CodegenContext {
   /// Get the type for the given macro argument.
   #[allow(unused_variables)]
   fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<syn::Type> {
+    None
+  }
+
+  /// Resolve the given enum variant.
+  ///
+  /// Enum variants may not have the same name in Rust, depending on how they are represented.
+  #[allow(unused_variables)]
+  fn resolve_enum_variant(&self, variant: &str) -> Option<syn::Expr> {
     None
   }
 
@@ -170,6 +182,10 @@ where
 
   fn macro_arg_ty(&self, macro_name: &str, arg_name: &str) -> Option<syn::Type> {
     T::macro_arg_ty(self, macro_name, arg_name)
+  }
+
+  fn resolve_enum_variant(&self, variant: &str) -> Option<syn::Expr> {
+    T::resolve_enum_variant(self, variant)
   }
 
   fn resolve_ty(&self, ty: &str) -> Option<syn::Type> {

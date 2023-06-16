@@ -61,8 +61,12 @@ impl<'t> Var<'t> {
       "__LONG_MAX__" => quote! { #(#ffi_prefix::)*c_long::MAX },
       "__LONG_LONG_MAX__" => quote! { #(#ffi_prefix::)*c_longlong::MAX },
       name => {
-        let name = Ident::new(name, Span::call_site());
-        quote! { #name }
+        if let Some(enum_variant) = ctx.resolve_enum_variant(name) {
+          quote! { #enum_variant }
+        } else {
+          let name = Ident::new(name, Span::call_site());
+          quote! { #name }
+        }
       },
     })
   }
