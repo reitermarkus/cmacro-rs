@@ -60,6 +60,25 @@ impl<'t> FunctionCall<'t> {
         }
       } else {
         ctx.export_as_macro = true;
+
+        match name.as_str() {
+          "__builtin_offsetof" if self.args.len() == 2 => {
+            if let Expr::Arg(arg) = &mut self.args[0] {
+              let arg_type = ctx.arg_type_mut(arg.index());
+              if *arg_type == MacroArgType::Unknown {
+                *arg_type = MacroArgType::Ty;
+              }
+            }
+
+            if let Expr::Arg(arg) = &mut self.args[1] {
+              let arg_type = ctx.arg_type_mut(arg.index());
+              if *arg_type == MacroArgType::Unknown {
+                *arg_type = MacroArgType::Tt;
+              }
+            }
+          },
+          _ => (),
+        }
       }
     }
 
@@ -67,8 +86,13 @@ impl<'t> FunctionCall<'t> {
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
-    let mut name = TokenStream::new();
-    self.name.to_tokens(ctx, &mut name);
+    let (name, args_into) = match &*self.name {
+      Expr::Var(Var { ref name }) if name.as_str() == "__builtin_offsetof" && self.args.len() == 2 => {
+        let prefix = ctx.trait_prefix().into_iter();
+        (quote! { #(#prefix::)*mem::offsetof! }, false)
+      },
+      name => (name.to_token_stream(ctx), true),
+    };
 
     let args = self.args.iter().map(|arg| match arg {
       Expr::Cast(Cast { ty: Type::Ptr { mutable, .. }, expr }) => match **expr {
@@ -100,9 +124,13 @@ impl<'t> FunctionCall<'t> {
         let arg = arg.to_token_stream(ctx);
         quote! { #arg }
       },
-      _ => {
+      arg if args_into => {
         let arg = arg.to_token_stream(ctx);
         quote! { (#arg).into() }
+      },
+      arg => {
+        let arg = arg.to_token_stream(ctx);
+        quote! { #arg }
       },
     });
 

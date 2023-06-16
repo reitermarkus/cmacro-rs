@@ -197,10 +197,12 @@ impl<'t> FnMacro<'t> {
             let id = Ident::new(arg, Span::call_site());
             let ty = ctx.arg_type(index);
 
-            if matches!(ty, MacroArgType::Ident) {
-              quote! { $#id:ident }
-            } else {
-              quote! { $#id:expr }
+            match ty {
+              MacroArgType::Ident => quote! { $#id:ident },
+              MacroArgType::Expr => quote! { $#id:expr },
+              MacroArgType::Ty => quote! { $#id:ty },
+              MacroArgType::Tt => quote! { $#id:tt },
+              _ => quote! { $#id:expr },
             }
           }
         })

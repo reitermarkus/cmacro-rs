@@ -7,6 +7,10 @@ pub(crate) enum MacroArgType<'t> {
   Ident,
   /// `expr` type
   Expr,
+  /// `ty` type
+  Ty,
+  /// `tt` type
+  Tt,
   /// known type
   Known(Type<'t>),
   /// unknown type
