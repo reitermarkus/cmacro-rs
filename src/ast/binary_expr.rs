@@ -5,7 +5,7 @@ use quote::{quote, ToTokens, TokenStreamExt};
 
 use crate::{CodegenContext, Expr, LocalContext, MacroArgType};
 
-use super::{Lit, LitFloat, LitInt, Type};
+use super::{BuiltInType, Cast, Lit, LitFloat, LitInt, Type, Var};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Associativity {
@@ -174,6 +174,21 @@ impl<'t> BinaryExpr<'t> {
   where
     C: CodegenContext,
   {
+    let max_ty_cast = |expr: &Expr| {
+      if let Expr::Var(Var { name }) = expr {
+        return Some(Type::BuiltIn(match name.as_str() {
+          "__SCHAR_MAX__" => BuiltInType::UChar,
+          "__SHRT_MAX__" => BuiltInType::UShort,
+          "__INT_MAX__" => BuiltInType::UInt,
+          "__LONG_MAX__" => BuiltInType::ULong,
+          "__LONG_LONG_MAX__" => BuiltInType::ULongLong,
+          _ => return None,
+        }))
+      }
+
+      None
+    };
+
     let mut lhs_ty = self.lhs.finish(ctx)?;
     let mut rhs_ty = self.rhs.finish(ctx)?;
 
@@ -200,6 +215,18 @@ impl<'t> BinaryExpr<'t> {
         };
         self.rhs = Box::new(Expr::Literal(Lit::Float(f)));
         rhs_ty = self.rhs.finish(ctx)?;
+      },
+      (lhs, Expr::Literal(Lit::Int(_))) if matches!(self.op, BinaryOp::Mul | BinaryOp::Add) => {
+        if let Some(lhs_ty2) = max_ty_cast(lhs) {
+          self.lhs = Box::new(Expr::Cast(Cast { ty: lhs_ty2.clone(), expr: Box::new(lhs.clone()) }));
+          lhs_ty = Some(lhs_ty2);
+        }
+      },
+      (Expr::Literal(Lit::Int(_)), rhs) if matches!(self.op, BinaryOp::Mul | BinaryOp::Add) => {
+        if let Some(rhs_ty2) = max_ty_cast(rhs) {
+          self.rhs = Box::new(Expr::Cast(Cast { ty: rhs_ty2.clone(), expr: Box::new(rhs.clone()) }));
+          rhs_ty = Some(rhs_ty2);
+        }
       },
       _ => (),
     }
