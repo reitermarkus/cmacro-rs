@@ -369,10 +369,15 @@ impl<'t> Type<'t> {
           return Ok(Self::BuiltIn(ty))
         }
 
-        Ok(Self::Path {
-          leading_colon: path_ty.path.leading_colon.is_some(),
-          segments: path_ty.path.segments.iter().map(|s| Identifier { id: s.ident.to_string().into() }).collect(),
-        })
+        let leading_colon = path_ty.path.leading_colon.is_some();
+        let mut segments =
+          path_ty.path.segments.iter().map(|s| Identifier { id: s.ident.to_string().into() }).collect::<Vec<_>>();
+
+        if !leading_colon && segments.len() == 1 {
+          Ok(Self::Identifier { name: Box::new(Expr::Var(Var { name: segments.remove(0) })), is_struct: false })
+        } else {
+          Ok(Self::Path { leading_colon, segments })
+        }
       },
       ty => Err(crate::CodegenError::UnsupportedType(ty.into_token_stream().to_string())),
     }

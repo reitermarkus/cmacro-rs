@@ -99,6 +99,10 @@ where
     self.global_context.resolve_ty(ty)
   }
 
+  fn resolve_field_ty(&self, ty: &str, field: &str) -> Option<syn::Type> {
+    self.global_context.resolve_field_ty(ty, field)
+  }
+
   fn function(&self, name: &str) -> Option<(Vec<syn::Type>, syn::Type)> {
     self.global_context.function(name)
   }
@@ -145,10 +149,31 @@ pub trait CodegenContext {
   /// typedef unsigned long MyType;
   /// ```
   ///
-  /// is defined, this should return `Some("unsigned long".into())`
+  /// is defined, this should return `Some(syn::parse_quote! { c_ulong })`
   /// when `ty` is `"MyType"`.
+  ///
+  /// Note: The types returned from this function should include the `ffi_prefix` if they refer to C primitive types.
   #[allow(unused_variables)]
   fn resolve_ty(&self, ty: &str) -> Option<syn::Type> {
+    None
+  }
+
+  /// Resolve the type of a field.
+  ///
+  /// For example, given
+  ///
+  /// ```c
+  /// struct MyStruct {
+  ///   int my_field;
+  /// };
+  /// ```
+  ///
+  /// is defined, this should return `Some(syn::parse_quote! { c_int })`
+  /// when `ty` is `"MyStruct"` and `field` is `"my_field"`.
+  ///
+  /// Note: The types returned from this function should include the `ffi_prefix` if they refer to C primitive types.
+  #[allow(unused_variables)]
+  fn resolve_field_ty(&self, ty: &str, field: &str) -> Option<syn::Type> {
     None
   }
 
@@ -194,6 +219,10 @@ where
 
   fn resolve_ty(&self, ty: &str) -> Option<syn::Type> {
     T::resolve_ty(self, ty)
+  }
+
+  fn resolve_field_ty(&self, ty: &str, field: &str) -> Option<syn::Type> {
+    T::resolve_field_ty(self, ty, field)
   }
 
   fn function(&self, name: &str) -> Option<(Vec<syn::Type>, syn::Type)> {

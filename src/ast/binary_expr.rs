@@ -232,7 +232,20 @@ impl<'t> BinaryExpr<'t> {
     }
 
     if self.op == BinaryOp::MemberAccess {
-      // TODO: Get type of struct field.
+      if let Some(Type::Identifier { name: ty_name, .. }) = lhs_ty {
+        if let Expr::Var(Var { name: ty_name }) = &*ty_name {
+          let ty = ty_name.as_str();
+
+          if let Expr::Var(Var { name: field_name }) = &*self.rhs {
+            let field = field_name.as_str();
+
+            if let Some(ty) = ctx.resolve_field_ty(ty, field) {
+              return Ok(Some(Type::from_rust_ty(&ty, ctx.ffi_prefix().as_ref())?))
+            }
+          }
+        }
+      };
+
       return Ok(None)
     }
 
