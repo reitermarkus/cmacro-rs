@@ -108,6 +108,23 @@ impl BinaryOp {
       | Self::BitOrAssign => (14, Associativity::Right),
     }
   }
+
+  pub(crate) const fn is_assignment(&self) -> bool {
+    matches!(
+      self,
+      Self::Assign
+        | Self::AddAssign
+        | Self::SubAssign
+        | Self::MulAssign
+        | Self::DivAssign
+        | Self::RemAssign
+        | Self::ShlAssign
+        | Self::ShrAssign
+        | Self::BitAndAssign
+        | Self::BitXorAssign
+        | Self::BitOrAssign
+    )
+  }
 }
 
 impl ToTokens for BinaryOp {
@@ -192,12 +209,20 @@ impl<'t> BinaryExpr<'t> {
     let mut lhs_ty = self.lhs.finish(ctx)?;
     let mut rhs_ty = self.rhs.finish(ctx)?;
 
+    // Arg must be an identifier for use as a member name.
+    if self.op == BinaryOp::MemberAccess {
+      if let Expr::Arg(arg) = &*self.rhs {
+        *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
+      }
+    }
+
+    // Must export as a macro in order to be able to assign to a macro argument.
+    if self.op.is_assignment() && matches!(&*self.lhs, Expr::Arg(arg)) {
+      ctx.export_as_macro = true;
+    }
+
     // Cast mixed float and int expression.
     match (&*self.lhs, &*self.rhs) {
-      (_, Expr::Arg(arg)) if self.op == BinaryOp::MemberAccess => {
-        // Arg must be an identifier for use as a member name.
-        *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
-      },
       (Expr::Literal(Lit::Int(LitInt { value: lhs, suffix: None })), Expr::Literal(Lit::Float(_))) => {
         let f = if *lhs >= f32::MIN as i128 && *lhs <= f32::MAX as i128 {
           LitFloat::Float(*lhs as f32)
