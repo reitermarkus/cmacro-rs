@@ -152,8 +152,8 @@ impl BuiltInType {
     }
   }
 
-  fn to_rust_ty(self, ffi_prefix: Option<syn::Path>) -> syn::Type {
-    let ffi_prefix = ffi_prefix.into_iter();
+  fn to_rust_ty<C: CodegenContext>(self, ctx: &C) -> syn::Type {
+    let ffi_prefix = ctx.ffi_prefix().into_iter();
 
     match self {
       Self::Float => syn::parse_quote! { f32 },
@@ -173,15 +173,28 @@ impl BuiltInType {
       Self::ULong => syn::parse_quote! { #(#ffi_prefix::)*c_ulong },
       Self::LongLong => syn::parse_quote! { #(#ffi_prefix::)*c_longlong },
       Self::ULongLong => syn::parse_quote! { #(#ffi_prefix::)*c_ulonglong },
-      Self::SizeT => syn::parse_quote! { #(#ffi_prefix::)*size_t },
+      Self::SizeT => {
+        if let Some(ty) = ctx.resolve_ty("size_t") {
+          ty
+        } else {
+          if ctx.rust_target().map(|t| t.contains("nightly")).unwrap_or(true) {
+            syn::parse_quote! { #(#ffi_prefix::)*c_size_t }
+          } else {
+            syn::parse_quote! { usize }
+          }
+        }
+      },
       Self::SSizeT => syn::parse_quote! { #(#ffi_prefix::)*ssize_t },
       Self::Void => syn::parse_quote! { #(#ffi_prefix::)*c_void },
     }
   }
 
+  pub(crate) fn to_token_stream<C: CodegenContext>(self, ctx: &mut LocalContext<'_, '_, C>) -> TokenStream {
+    self.to_rust_ty(ctx).to_token_stream()
+  }
+
   pub(crate) fn to_tokens<C: CodegenContext>(self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {
-    let ffi_prefix = ctx.ffi_prefix();
-    self.to_rust_ty(ffi_prefix).to_tokens(tokens);
+    self.to_rust_ty(ctx).to_tokens(tokens);
   }
 }
 
@@ -385,9 +398,9 @@ impl<'t> Type<'t> {
 
   // Only used for tests.
   #[doc(hidden)]
-  pub fn to_rust_ty(&self, ffi_prefix: Option<syn::Path>) -> Option<syn::Type> {
+  pub fn to_rust_ty<C: CodegenContext>(&self, ctx: &C) -> Option<syn::Type> {
     Some(match self {
-      Self::BuiltIn(ty) => ty.to_rust_ty(ffi_prefix),
+      Self::BuiltIn(ty) => ty.to_rust_ty(ctx),
       Self::Identifier { name, .. } => {
         if let Expr::Var(Var { name }) = &**name {
           let name = Ident::new(name.as_str(), Span::call_site());
@@ -410,7 +423,7 @@ impl<'t> Type<'t> {
           quote! { *const }
         };
 
-        let ty = ty.to_rust_ty(ffi_prefix)?;
+        let ty = ty.to_rust_ty(ctx)?;
         syn::parse_quote! { #constness #ty }
       },
     })

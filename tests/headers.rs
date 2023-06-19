@@ -126,7 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
         let parse_type = |ty: &str| {
           let ty = ty.parse::<cmacro::Type>().ok()?;
-          let ty = ty.to_rust_ty(self.ffi_prefix())?;
+          let ty = ty.to_rust_ty(self)?;
           Some(ty)
         };
 

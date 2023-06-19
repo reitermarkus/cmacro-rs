@@ -45,7 +45,7 @@ impl<'t> Expr<'t> {
       Self::Unary(expr) => expr.precedence(),
       Self::Binary(expr) => expr.precedence(),
       Self::Ternary(_) => (0, Associativity::None),
-      Self::SizeOf(_) => (0, Associativity::None),
+      Self::SizeOf(_) => (3, Associativity::Left), // Same as `Cast`.
     }
   }
 
@@ -760,9 +760,10 @@ impl<'t> Expr<'t> {
         let trait_prefix = ctx.trait_prefix().into_iter();
 
         let ty = ty.to_token_stream(ctx);
+        let size_t = BuiltInType::SizeT.to_token_stream(ctx);
 
         tokens.append_all(quote! {
-          #(#trait_prefix::)*mem::size_of::<#ty>()
+          #(#trait_prefix::)*mem::size_of::<#ty>() as #size_t
         })
       },
     }
