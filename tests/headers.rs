@@ -94,6 +94,29 @@ fn file_visit_macros<F: FnMut(EntityKind, String, Option<Vec<String>>, Vec<Strin
   });
 }
 
+#[derive(Debug, Default)]
+struct TestContext {
+  pub macros: Vec<String>,
+  pub functions: HashMap<String, (Vec<String>, String)>,
+  pub macro_set: MacroSet,
+}
+
+impl CodegenContext for TestContext {
+  fn function(&self, name: &str) -> Option<(Vec<syn::Type>, syn::Type)> {
+    let (arg_tys, ret_ty) = self.functions.get(name)?;
+
+    let parse_type = |ty: &str| {
+      let ty = ty.parse::<cmacro::Type>().ok()?;
+      let ty = ty.to_rust_ty(self)?;
+      Some(ty)
+    };
+
+    let arg_tys = arg_tys.iter().map(|ty| parse_type(ty.as_str())).collect::<Option<Vec<_>>>()?;
+
+    Some((arg_tys, parse_type(ret_ty.as_str())?))
+  }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
   let test_name: Option<String> = env::args().nth(1);
 
@@ -113,30 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     print!("test {} ... ", header_name);
 
-    #[derive(Debug, Default)]
-    struct Context {
-      pub macros: Vec<String>,
-      pub functions: HashMap<String, (Vec<String>, String)>,
-      pub macro_set: MacroSet,
-    }
-
-    impl CodegenContext for Context {
-      fn function(&self, name: &str) -> Option<(Vec<syn::Type>, syn::Type)> {
-        let (arg_tys, ret_ty) = self.functions.get(name)?;
-
-        let parse_type = |ty: &str| {
-          let ty = ty.parse::<cmacro::Type>().ok()?;
-          let ty = ty.to_rust_ty(self)?;
-          Some(ty)
-        };
-
-        let arg_tys = arg_tys.iter().map(|ty| parse_type(ty.as_str())).collect::<Option<Vec<_>>>()?;
-
-        Some((arg_tys, parse_type(ret_ty.as_str())?))
-      }
-    }
-
-    let mut context = Context::default();
+    let mut context = TestContext::default();
 
     file_visit_macros(&header_path, |kind, name, args, mut value| match kind {
       EntityKind::FunctionDecl => {
