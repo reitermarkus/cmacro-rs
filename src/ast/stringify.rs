@@ -48,7 +48,9 @@ impl<'t> Stringify<'t> {
           *arg_ty = MacroArgType::Expr;
         }
       },
-      Expr::Var(Var { name }) if matches!(name.as_str(), "__LINE__" | "__FILE__") => (),
+      Expr::Var(Var { name }) if matches!(name.as_str(), "__LINE__" | "__FILE__") => {
+        ctx.export_as_macro = true;
+      },
       _ => return Err(crate::CodegenError::UnsupportedExpression),
     }
 

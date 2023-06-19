@@ -44,13 +44,19 @@ impl<'t> Var<'t> {
 
     tokens.append_all(match self.name.as_str() {
       "__LINE__" => {
-        quote! { line!() as #(#ffi_prefix::)*c_uint }
+        let trait_prefix = ctx.trait_prefix().into_iter();
+        quote! { #(#trait_prefix::)*line!() as #(#ffi_prefix::)*c_uint }
       },
       "__FILE__" => {
+        let file = {
+          let trait_prefix = ctx.trait_prefix().into_iter();
+          quote! { #(#trait_prefix::)*file!() }
+        };
+
         let trait_prefix = ctx.trait_prefix().into_iter();
         quote! {
           {
-            const BYTES: &[u8] = #(#trait_prefix::)*concat!(file!(), '\0').as_bytes();
+            const BYTES: &[u8] = #(#trait_prefix::)*concat!(#file, '\0').as_bytes();
             BYTES.as_ptr() as *const #(#ffi_prefix::)*c_char
           }
         }

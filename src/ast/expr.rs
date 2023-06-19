@@ -738,7 +738,10 @@ impl<'t> Expr<'t> {
           .iter()
           .map(|e| match e {
             Self::Var(Var { name }) => match name.as_str() {
-              "__FILE__" => quote! { file!() },
+              "__FILE__" => {
+                let trait_prefix = ctx.trait_prefix().into_iter();
+                quote! { #(#trait_prefix::)*file!() }
+              },
               _ => e.to_token_stream(ctx),
             },
             Self::Stringify(stringify) => stringify.to_token_stream_inner(ctx),

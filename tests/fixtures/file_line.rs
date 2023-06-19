@@ -54,12 +54,12 @@ macro_rules! __cmacro__LINE_AND_FILE {
 }
 pub use __cmacro__LINE_AND_FILE as LINE_AND_FILE;
 
-
-#[allow(non_snake_case, unused_mut, unsafe_code)]
-#[inline(always)]
-pub unsafe extern "C" fn STRINGIFY_FILE() -> *const c_char {
-  {
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cmacro__STRINGIFY_FILE {
+  () => {{
     const BYTES: &[u8] = concat!(format!("{:?}", file!()), '\0').as_bytes();
     BYTES.as_ptr() as *const c_char
-  }
+  }};
 }
+pub use __cmacro__STRINGIFY_FILE as STRINGIFY_FILE;
