@@ -217,7 +217,7 @@ impl<'t> BinaryExpr<'t> {
     }
 
     // Must export as a macro in order to be able to assign to a macro argument.
-    if self.op.is_assignment() && matches!(&*self.lhs, Expr::Arg(arg)) {
+    if self.op.is_assignment() && matches!(&*self.lhs, Expr::Arg(_)) {
       ctx.export_as_macro = true;
     }
 
