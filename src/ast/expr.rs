@@ -29,6 +29,7 @@ pub enum Expr<'t> {
   Stringify(Stringify<'t>),
   ConcatIdent(Vec<Self>),
   ConcatString(Vec<Self>),
+  SizeOf(Type<'t>),
   Unary(UnaryExpr<'t>),
   Binary(BinaryExpr<'t>),
   Ternary(TernaryExpr<'t>),
@@ -44,6 +45,7 @@ impl<'t> Expr<'t> {
       Self::Unary(expr) => expr.precedence(),
       Self::Binary(expr) => expr.precedence(),
       Self::Ternary(_) => (0, Associativity::None),
+      Self::SizeOf(_) => (0, Associativity::None),
     }
   }
 
@@ -134,6 +136,7 @@ impl<'t> Expr<'t> {
 
   fn parse_factor<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     alt((
+      map(preceded(keyword("sizeof"), parenthesized(Type::parse)), Self::SizeOf),
       map(LitChar::parse, |c| Self::Literal(Lit::Char(c))),
       Self::parse_concat_string,
       map(Lit::parse, Self::Literal),
@@ -690,6 +693,10 @@ impl<'t> Expr<'t> {
         }
       },
       Self::Ternary(expr) => expr.finish(ctx),
+      Self::SizeOf(ty) => {
+        ty.finish(ctx)?;
+        Ok(Some(Type::BuiltIn(BuiltInType::SizeT)))
+      },
     }
   }
 
@@ -749,6 +756,15 @@ impl<'t> Expr<'t> {
       Self::Unary(op) => op.to_tokens(ctx, tokens),
       Self::Binary(op) => op.to_tokens(ctx, tokens),
       Self::Ternary(ref expr) => expr.to_tokens(ctx, tokens),
+      Self::SizeOf(ty) => {
+        let trait_prefix = ctx.trait_prefix().into_iter();
+
+        let ty = ty.to_token_stream(ctx);
+
+        tokens.append_all(quote! {
+          #(#trait_prefix::)*mem::size_of::<#ty>()
+        })
+      },
     }
   }
 
