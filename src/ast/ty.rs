@@ -2,7 +2,7 @@ use std::{fmt::Debug, str::FromStr};
 
 use nom::{
   branch::{alt, permutation},
-  combinator::{map, opt},
+  combinator::{map, opt, value},
   multi::fold_many0,
   sequence::{delimited, pair, preceded, terminated},
   IResult,
@@ -210,7 +210,13 @@ fn int_ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], 
   alt((
     // [const] [(unsigned | signed)] long long [int]
     map(
-      permutation((const_qualifier, opt(int_signedness), keyword("long"), keyword("long"), opt(keyword("int")))),
+      permutation((
+        const_volatile_qualifier,
+        opt(int_signedness),
+        keyword("long"),
+        keyword("long"),
+        opt(keyword("int")),
+      )),
       |(_, s, _, _, _)| {
         if matches!(s, Some("unsigned")) {
           BuiltInType::ULongLong
@@ -220,18 +226,19 @@ fn int_ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], 
       },
     ),
     // [const] [(unsigned | signed)] (long | short) [int]
-    map(permutation((const_qualifier, opt(int_signedness), int_length, opt(keyword("int")))), |(_, s, i, _)| {
-      match (s, i) {
+    map(
+      permutation((const_volatile_qualifier, opt(int_signedness), int_length, opt(keyword("int")))),
+      |(_, s, i, _)| match (s, i) {
         (Some("unsigned"), "short") => BuiltInType::UShort,
         (_, "short") => BuiltInType::Short,
         (Some("unsigned"), "long") => BuiltInType::ULong,
         (_, "long") => BuiltInType::Long,
         _ => unreachable!(),
-      }
-    }),
+      },
+    ),
     // [const] [(unsigned | signed)] (char | int)
     map(
-      permutation((const_qualifier, opt(int_signedness), alt((keyword("char"), keyword("int"))))),
+      permutation((const_volatile_qualifier, opt(int_signedness), alt((keyword("char"), keyword("int"))))),
       |(_, s, i)| match (s, i) {
         (Some("unsigned"), "int") => BuiltInType::UInt,
         (_, "int") => BuiltInType::Int,
@@ -249,12 +256,12 @@ fn ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Type
     // [const] (float | [long] double | bool | void)
     map(
       delimited(
-        const_qualifier,
+        const_volatile_qualifier,
         alt((
           map(keyword("void"), |_| BuiltInType::Void),
           map(keyword("bool"), |_| BuiltInType::Bool),
           map(keyword("float"), |_| BuiltInType::Float),
-          map(pair(terminated(opt(keyword("long")), const_qualifier), keyword("double")), |(long, _)| {
+          map(pair(terminated(opt(keyword("long")), const_volatile_qualifier), keyword("double")), |(long, _)| {
             if long.is_some() {
               BuiltInType::LongDouble
             } else {
@@ -262,21 +269,41 @@ fn ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Type
             }
           }),
         )),
-        const_qualifier,
+        const_volatile_qualifier,
       ),
       Type::BuiltIn,
     ),
     map(int_ty, Type::BuiltIn),
     // [const] <identifier>
     map(
-      delimited(const_qualifier, pair(opt(keyword("struct")), Expr::parse_concat_ident), const_qualifier),
+      delimited(
+        const_volatile_qualifier,
+        pair(opt(keyword("struct")), Expr::parse_concat_ident),
+        const_volatile_qualifier,
+      ),
       |(s, id)| Type::Identifier { name: Box::new(id), is_struct: s.is_some() },
     ),
   ))(input)
 }
 
-fn const_qualifier<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], bool> {
-  fold_many0(keyword("const"), || false, |_, _| true)(input)
+#[derive(Debug, Clone, Copy)]
+enum Qualifier {
+  Const,
+  Volatile,
+  ConstVolatile,
+}
+
+fn const_volatile_qualifier<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Option<Qualifier>> {
+  fold_many0(
+    alt((value(Qualifier::Const, keyword("const")), value(Qualifier::Volatile, keyword("volatile")))),
+    || None,
+    |acc, qualifier| match (acc, qualifier) {
+      (None, qualifier) => Some(qualifier),
+      (Some(Qualifier::Const), Qualifier::Const) => Some(Qualifier::Const),
+      (Some(Qualifier::Volatile), Qualifier::Const) => Some(Qualifier::Volatile),
+      (Some(_), _) => Some(Qualifier::ConstVolatile),
+    },
+  )(input)
 }
 
 /// A type.
@@ -298,12 +325,15 @@ pub enum Type<'t> {
 impl<'t> Type<'t> {
   /// Parse a type.
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, ty) = delimited(const_qualifier, ty, const_qualifier)(tokens)?;
+    let (tokens, ty) = delimited(const_volatile_qualifier, ty, const_volatile_qualifier)(tokens)?;
 
     fold_many0(
-      preceded(pair(punct("*"), meta), const_qualifier),
+      preceded(pair(punct("*"), meta), const_volatile_qualifier),
       move || ty.clone(),
-      |acc, is_const| Self::Ptr { ty: Box::new(acc), mutable: !is_const },
+      |acc, qualifier| Self::Ptr {
+        ty: Box::new(acc),
+        mutable: !matches!(qualifier, Some(Qualifier::Const | Qualifier::ConstVolatile)),
+      },
     )(tokens)
   }
 
