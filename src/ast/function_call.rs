@@ -92,20 +92,6 @@ impl<'t> FunctionCall<'t> {
     };
 
     let args = self.args.iter().map(|arg| match arg {
-      Expr::Cast(Cast { ty, expr }) if matches!(**expr, Expr::Literal(Lit::Int(LitInt { value: 0, .. }))) => match ty {
-        Type::Ptr {  .. } => {
-          let prefix = ctx.trait_prefix().into_iter();
-          quote! { #(#prefix::)*ptr::null_mut() }
-        },
-        Type::Qualified { ty, qualifier } if matches!(**ty, Type::Ptr {  .. }) && qualifier.is_const() => {
-          let prefix = ctx.trait_prefix().into_iter();
-          quote! { #(#prefix::)*ptr::null() }
-        },
-        arg => {
-          let arg = arg.to_token_stream(ctx);
-          quote! { (#arg).cast() }
-        },
-      },
       arg @ Expr::Literal(_) => {
         let arg = arg.to_token_stream(ctx);
         quote! { #arg }
