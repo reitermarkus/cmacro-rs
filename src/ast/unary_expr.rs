@@ -221,7 +221,7 @@ impl<'t> UnaryExpr<'t> {
       UnaryOp::Minus => format!("-{expr}").parse::<TokenStream>().unwrap(),
       UnaryOp::Deref => {
         match &*self.expr {
-          Expr::Cast(Cast { ty, expr }) => {
+          Expr::Cast(Cast { ty, .. }) => {
             if let Type::Ptr { ty } = &*ty {
               if matches!(&**ty, Type::Qualified { qualifier, .. } if qualifier.is_volatile()) {
                 let prefix = ctx.trait_prefix().into_iter();

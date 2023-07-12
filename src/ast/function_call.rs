@@ -93,7 +93,9 @@ impl<'t> FunctionCall<'t> {
 
     let args = self.args.iter().map(|arg| match arg {
       // Calling `.into()` on a null-pointer doesn't work.
-      arg @ Expr::Cast(Cast { ty, expr }) if ty.is_ptr() && matches!(&**expr, Expr::Literal(Lit::Int(LitInt { value: 0, .. }))) => {
+      arg @ Expr::Cast(Cast { ty, expr })
+        if ty.is_ptr() && matches!(&**expr, Expr::Literal(Lit::Int(LitInt { value: 0, .. }))) =>
+      {
         let arg = arg.to_token_stream(ctx);
         quote! { #arg }
       },

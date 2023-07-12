@@ -4,7 +4,7 @@ use nom::{
   branch::{alt, permutation},
   combinator::{map, opt, value},
   multi::fold_many0,
-  sequence::{delimited, pair, preceded, terminated, tuple},
+  sequence::{pair, preceded, terminated, tuple},
   IResult,
 };
 use proc_macro2::{Ident, Span, TokenStream};
@@ -402,7 +402,7 @@ impl<'t> Type<'t> {
     )(tokens)
   }
 
-  pub fn qualify(self, qualifier: TypeQualifier) -> Self {
+  pub(crate) fn qualify(self, qualifier: TypeQualifier) -> Self {
     match self {
       Self::Qualified { ty, qualifier: existing_qualifier } => {
         Self::Qualified { ty, qualifier: existing_qualifier.or(qualifier) }
