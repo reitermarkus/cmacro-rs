@@ -418,7 +418,11 @@ impl<'t> Type<'t> {
 
   /// Check if this is a pointer type.
   pub fn is_ptr(&self) -> bool {
-    matches!(self, Self::Ptr { .. })
+    match self {
+      Self::Ptr { .. } => true,
+      Self::Qualified { ty, .. } => ty.is_ptr(),
+      _ => false,
+    }
   }
 
   pub(crate) fn finish<C>(&mut self, ctx: &mut LocalContext<'_, 't, C>) -> Result<Option<Type<'t>>, crate::CodegenError>
