@@ -381,8 +381,7 @@ pub enum Type<'t> {
 impl<'t> Type<'t> {
   /// Parse a type.
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, (mut ty, post_qualifier)) =
-      pair(ty, opt(const_volatile_qualifier))(tokens)?;
+    let (tokens, (mut ty, post_qualifier)) = pair(ty, opt(const_volatile_qualifier))(tokens)?;
 
     if let Some(qualifier) = post_qualifier {
       ty = ty.qualify(qualifier);

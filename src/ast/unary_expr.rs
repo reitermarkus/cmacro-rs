@@ -108,15 +108,111 @@ impl<'t> UnaryExpr<'t> {
 
     match self.op {
       UnaryOp::Inc => {
+        if let Expr::Unary(UnaryExpr { op: UnaryOp::Deref, expr }) = &*self.expr {
+          if let Expr::Cast(Cast { ty, .. }) = &**expr {
+            if let Type::Ptr { ty } = &*ty {
+              if matches!(&**ty, Type::Qualified { qualifier, .. } if qualifier.is_volatile()) {
+                let lhs_ptr = expr.to_token_stream(ctx);
+
+                let prefix = ctx.trait_prefix().into_iter();
+                let value = {
+                  quote! { #(#prefix::)*ptr::read_volatile(#lhs_ptr) + 1 }
+                };
+
+                let prefix = ctx.trait_prefix().into_iter();
+                return quote! {
+                  {
+                    let value = #value;
+                    #(#prefix::)*ptr::write_volatile(#lhs_ptr, value);
+                    value
+                  }
+                }
+              }
+            }
+          }
+        }
+
         quote! { { #raw_expr += 1; #raw_expr } }
       },
       UnaryOp::Dec => {
+        if let Expr::Unary(UnaryExpr { op: UnaryOp::Deref, expr }) = &*self.expr {
+          if let Expr::Cast(Cast { ty, .. }) = &**expr {
+            if let Type::Ptr { ty } = &*ty {
+              if matches!(&**ty, Type::Qualified { qualifier, .. } if qualifier.is_volatile()) {
+                let lhs_ptr = expr.to_token_stream(ctx);
+
+                let prefix = ctx.trait_prefix().into_iter();
+                let value = {
+                  quote! { #(#prefix::)*ptr::read_volatile(#lhs_ptr) - 1 }
+                };
+
+                let prefix = ctx.trait_prefix().into_iter();
+                return quote! {
+                  {
+                    let value = #value;
+                    #(#prefix::)*ptr::write_volatile(#lhs_ptr, value);
+                    value
+                  }
+                }
+              }
+            }
+          }
+        }
+
         quote! { { #raw_expr -= 1; #raw_expr } }
       },
       UnaryOp::PostInc => {
+        if let Expr::Unary(UnaryExpr { op: UnaryOp::Deref, expr }) = &*self.expr {
+          if let Expr::Cast(Cast { ty, .. }) = &**expr {
+            if let Type::Ptr { ty } = &*ty {
+              if matches!(&**ty, Type::Qualified { qualifier, .. } if qualifier.is_volatile()) {
+                let lhs_ptr = expr.to_token_stream(ctx);
+
+                let prefix = ctx.trait_prefix().into_iter();
+                let value = {
+                  quote! { #(#prefix::)*ptr::read_volatile(#lhs_ptr) }
+                };
+
+                let prefix = ctx.trait_prefix().into_iter();
+                return quote! {
+                  {
+                    let value = #value;
+                    #(#prefix::)*ptr::write_volatile(#lhs_ptr, value + 1);
+                    value
+                  }
+                }
+              }
+            }
+          }
+        }
+
         quote! { { let prev = #raw_expr; #raw_expr += 1; prev } }
       },
       UnaryOp::PostDec => {
+        if let Expr::Unary(UnaryExpr { op: UnaryOp::Deref, expr }) = &*self.expr {
+          if let Expr::Cast(Cast { ty, .. }) = &**expr {
+            if let Type::Ptr { ty } = &*ty {
+              if matches!(&**ty, Type::Qualified { qualifier, .. } if qualifier.is_volatile()) {
+                let lhs_ptr = expr.to_token_stream(ctx);
+
+                let prefix = ctx.trait_prefix().into_iter();
+                let value = {
+                  quote! { #(#prefix::)*ptr::read_volatile(#lhs_ptr) }
+                };
+
+                let prefix = ctx.trait_prefix().into_iter();
+                return quote! {
+                  {
+                    let value = #value;
+                    #(#prefix::)*ptr::write_volatile(#lhs_ptr, value - 1);
+                    value
+                  }
+                }
+              }
+            }
+          }
+        }
+
         quote! { { let prev = #raw_expr; #raw_expr -= 1; prev } }
       },
       UnaryOp::Not => format!("!{expr}").parse::<TokenStream>().unwrap(),
@@ -125,6 +221,14 @@ impl<'t> UnaryExpr<'t> {
       UnaryOp::Minus => format!("-{expr}").parse::<TokenStream>().unwrap(),
       UnaryOp::Deref => {
         match &*self.expr {
+          Expr::Cast(Cast { ty, expr }) => {
+            if let Type::Ptr { ty } = &*ty {
+              if matches!(&**ty, Type::Qualified { qualifier, .. } if qualifier.is_volatile()) {
+                let prefix = ctx.trait_prefix().into_iter();
+                return quote! { #(#prefix::)*ptr::read_volatile(#raw_expr) }
+              }
+            }
+          },
           Expr::Binary(BinaryExpr { lhs, op, rhs }) => {
             let raw_lhs = lhs.to_token_stream(ctx);
             let raw_rhs = rhs.to_token_stream(ctx);
