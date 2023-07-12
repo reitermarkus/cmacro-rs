@@ -71,7 +71,7 @@ mod tests {
     parse_tokens!(
       VarDecl => [id!(int), punct!("*"), id!(abc), punct!("="), lit_int!(123)],
       VarDecl {
-        ty: Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Int)), mutable: true },
+        ty: Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Int)) },
         name: var!(abc),
         rhs: Expr::Literal(Lit::Int(LitInt { value: 123, suffix: None })),
         is_static: false,

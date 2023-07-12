@@ -11,7 +11,7 @@ use quote::{quote, TokenStreamExt};
 
 use super::{
   tokens::{macro_arg, macro_id, meta, punct},
-  BuiltInType, Expr, Type, Var,
+  BuiltInType, Expr, Type, TypeQualifier, Var,
 };
 use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken};
 
@@ -54,7 +54,10 @@ impl<'t> Stringify<'t> {
       _ => return Err(crate::CodegenError::UnsupportedExpression),
     }
 
-    Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
+    Ok(Some(Type::Qualified {
+      ty: Box::new(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)) }),
+      qualifier: TypeQualifier::Const,
+    }))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>, tokens: &mut TokenStream) {

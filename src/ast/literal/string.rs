@@ -18,7 +18,7 @@ use nom::{
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::{BuiltInType, CodegenContext, Expr, Lit, LocalContext, MacroToken, Type, Var};
+use crate::{BuiltInType, CodegenContext, Expr, Lit, LocalContext, MacroToken, Type, TypeQualifier, Var};
 
 use crate::ast::{
   tokens::{id, take_one},
@@ -353,7 +353,7 @@ impl<'t> LitString<'t> {
       },
     };
 
-    Ok(Some(Type::Ptr { ty: Box::new(ty), mutable: false }))
+    Ok(Some(Type::Qualified { ty: Box::new(Type::Ptr { ty: Box::new(ty) }), qualifier: TypeQualifier::Const }))
   }
 
   pub(crate) fn to_token_stream<C: CodegenContext>(

@@ -228,9 +228,10 @@ impl<'t> Asm<'t> {
   }
 
   fn is_global(&self) -> bool {
-    self.template.iter().any(|line| {
-      line.starts_with(".globl") || line.starts_with(".global") || line.starts_with(".section")
-    })
+    self
+      .template
+      .iter()
+      .any(|line| line.starts_with(".globl") || line.starts_with(".global") || line.starts_with(".section"))
   }
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {

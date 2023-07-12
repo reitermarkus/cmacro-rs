@@ -35,14 +35,15 @@ impl<'t> Cast<'t> {
 
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     tokens.append_all(match (&self.ty, &*self.expr) {
-      (Type::Ptr { mutable, .. }, Expr::Literal(Lit::Int(LitInt { value: 0, .. }))) => {
+      (Type::Qualified { ty, qualifier }, Expr::Literal(Lit::Int(LitInt { value: 0, .. })))
+        if matches!(**ty, Type::Ptr { .. }) && qualifier.is_const() =>
+      {
         let prefix = ctx.trait_prefix().into_iter();
-
-        if *mutable {
-          quote! { #(#prefix::)*ptr::null_mut() }
-        } else {
-          quote! { #(#prefix::)*ptr::null() }
-        }
+        quote! { #(#prefix::)*ptr::null() }
+      },
+      (Type::Ptr { .. }, Expr::Literal(Lit::Int(LitInt { value: 0, .. }))) => {
+        let prefix = ctx.trait_prefix().into_iter();
+        quote! { #(#prefix::)*ptr::null_mut() }
       },
       (ty, expr) => {
         if ty.is_void() {

@@ -85,7 +85,7 @@ impl<'t> UnaryExpr<'t> {
           _ => Err(crate::CodegenError::UnsupportedExpression),
         }
       },
-      UnaryOp::AddrOf => Ok(ty.map(|ty| Type::Ptr { ty: Box::new(ty), mutable: true })),
+      UnaryOp::AddrOf => Ok(ty.map(|ty| Type::Ptr { ty: Box::new(ty) })),
       _ => Ok(ty),
     }
   }
@@ -181,7 +181,6 @@ mod tests {
       expr: Box::new(Expr::Cast(Cast {
         ty: Type::Ptr {
           ty: Box::new(Type::Identifier { name: Box::new(var!(MyType)), is_struct: false }),
-          mutable: true,
         },
         expr: Box::new(lit!(1)),
       })),

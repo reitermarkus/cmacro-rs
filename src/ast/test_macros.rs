@@ -111,8 +111,8 @@ macro_rules! lit {
 pub(crate) use lit;
 
 macro_rules! ty {
-  (*mut $($ty:tt)*) => { Type::Ptr { ty: Box::new($crate::ast::ty!($($ty)*)), mutable: true } };
-  (*const $($ty:tt)*) => { Type::Ptr { ty: Box::new($crate::ast::ty!($($ty)*)), mutable: false } };
+  (*mut $($ty:tt)*) => { Type::Ptr { ty: Box::new($crate::ast::ty!($($ty)*)) } };
+  (*const $($ty:tt)*) => { Type::Qualified { ty: Box::new(Type::Ptr { ty: Box::new($crate::ast::ty!($($ty)*)) }), qualifier: $crate::ast::TypeQualifier::Const } };
   (struct $ty:ident) => { Type::Identifier { name: Box::new($crate::ast::var!($ty)), is_struct: true } };
   ($ty:ident) => { Type::Identifier { name: Box::new($crate::ast::var!($ty)), is_struct: false } };
   ($ty:path) => { Type::BuiltIn($ty) };

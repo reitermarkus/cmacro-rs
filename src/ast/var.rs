@@ -3,7 +3,7 @@ use quote::{quote, TokenStreamExt};
 
 use crate::{CodegenContext, LocalContext};
 
-use super::{BuiltInType, Identifier, Type};
+use super::{BuiltInType, Identifier, Type, TypeQualifier};
 
 /// A variable.
 ///
@@ -28,7 +28,10 @@ impl<'t> Var<'t> {
       },
       "__FILE__" => {
         ctx.export_as_macro = true;
-        Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
+        Ok(Some(Type::Qualified {
+          ty: Box::new(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)) }),
+          qualifier: TypeQualifier::Const,
+        }))
       },
       "__SCHAR_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::SChar))),
       "__SHRT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Short))),

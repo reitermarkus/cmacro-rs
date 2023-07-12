@@ -176,12 +176,10 @@ impl BuiltInType {
       Self::SizeT => {
         if let Some(ty) = ctx.resolve_ty("size_t") {
           ty
+        } else if ctx.rust_target().map(|t| t.contains("nightly")).unwrap_or(true) {
+          syn::parse_quote! { #(#ffi_prefix::)*c_size_t }
         } else {
-          if ctx.rust_target().map(|t| t.contains("nightly")).unwrap_or(true) {
-            syn::parse_quote! { #(#ffi_prefix::)*c_size_t }
-          } else {
-            syn::parse_quote! { usize }
-          }
+          syn::parse_quote! { usize }
         }
       },
       Self::SSizeT => syn::parse_quote! { #(#ffi_prefix::)*ssize_t },
@@ -286,22 +284,40 @@ fn ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Type
   ))(input)
 }
 
-#[derive(Debug, Clone, Copy)]
-enum Qualifier {
+/// A type qualifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeQualifier {
+  /// `const`
   Const,
+  /// `volatile`
   Volatile,
+  /// `const volatile`
   ConstVolatile,
 }
 
-fn const_volatile_qualifier<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Option<Qualifier>> {
+impl TypeQualifier {
+  /// Check if the type qualifier contains `const`.
+  pub const fn is_const(self) -> bool {
+    matches!(self, Self::Const | Self::ConstVolatile)
+  }
+
+  /// Check if the type qualifier contains `volatile`.
+  pub const fn is_volatile(self) -> bool {
+    matches!(self, Self::Volatile | Self::ConstVolatile)
+  }
+}
+
+fn const_volatile_qualifier<'i, 't>(
+  input: &'i [MacroToken<'t>],
+) -> IResult<&'i [MacroToken<'t>], Option<TypeQualifier>> {
   fold_many0(
-    alt((value(Qualifier::Const, keyword("const")), value(Qualifier::Volatile, keyword("volatile")))),
+    alt((value(TypeQualifier::Const, keyword("const")), value(TypeQualifier::Volatile, keyword("volatile")))),
     || None,
     |acc, qualifier| match (acc, qualifier) {
       (None, qualifier) => Some(qualifier),
-      (Some(Qualifier::Const), Qualifier::Const) => Some(Qualifier::Const),
-      (Some(Qualifier::Volatile), Qualifier::Const) => Some(Qualifier::Volatile),
-      (Some(_), _) => Some(Qualifier::ConstVolatile),
+      (Some(TypeQualifier::Const), TypeQualifier::Const) => Some(TypeQualifier::Const),
+      (Some(TypeQualifier::Volatile), TypeQualifier::Const) => Some(TypeQualifier::Volatile),
+      (Some(_), _) => Some(TypeQualifier::ConstVolatile),
     },
   )(input)
 }
@@ -313,13 +329,27 @@ pub enum Type<'t> {
   BuiltIn(BuiltInType),
   /// A type identifier.
   #[allow(missing_docs)]
-  Identifier { name: Box<Expr<'t>>, is_struct: bool },
+  Identifier {
+    name: Box<Expr<'t>>,
+    is_struct: bool,
+  },
   /// A type path.
   #[allow(missing_docs)]
-  Path { leading_colon: bool, segments: Vec<Identifier<'t>> },
+  Path {
+    leading_colon: bool,
+    segments: Vec<Identifier<'t>>,
+  },
   /// A pointer type.
   #[allow(missing_docs)]
-  Ptr { ty: Box<Self>, mutable: bool },
+  Ptr {
+    ty: Box<Self>,
+  },
+  /// A type with a type qualifier.
+  #[allow(missing_docs)]
+  Qualified {
+    ty: Box<Self>,
+    qualifier: TypeQualifier,
+  },
 }
 
 impl<'t> Type<'t> {
@@ -330,9 +360,19 @@ impl<'t> Type<'t> {
     fold_many0(
       preceded(pair(punct("*"), meta), const_volatile_qualifier),
       move || ty.clone(),
-      |acc, qualifier| Self::Ptr {
-        ty: Box::new(acc),
-        mutable: !matches!(qualifier, Some(Qualifier::Const | Qualifier::ConstVolatile)),
+      |acc, qualifier| {
+        if let Some(qualifier) = qualifier {
+          Self::Qualified {
+            ty: Box::new(Self::Ptr {
+              ty: Box::new(acc),
+            }),
+            qualifier,
+          }
+        } else {
+          Self::Ptr {
+            ty: Box::new(acc),
+          }
+        }
       },
     )(tokens)
   }
@@ -366,6 +406,7 @@ impl<'t> Type<'t> {
       },
       Self::Path { .. } => Ok(None),
       Self::Ptr { ty, .. } => ty.finish(ctx),
+      Self::Qualified { ty, .. } => ty.finish(ctx),
     }
   }
 
@@ -378,14 +419,19 @@ impl<'t> Type<'t> {
         let ids = segments.iter().map(|id| Ident::new(id.as_str(), Span::call_site()));
         tokens.append_all(quote! { #leading_colon #(#ids)::* })
       },
-      Self::Ptr { ty, mutable } => {
+      Self::Ptr { ty } => {
         let ty = ty.to_token_stream(ctx);
-
-        tokens.append_all(if *mutable {
-          quote! { *mut #ty }
-        } else {
-          quote! { *const #ty }
-        })
+        tokens.append_all(quote! { *mut #ty })
+      },
+      Self::Qualified { ty, qualifier } => {
+        let ty = match &**ty {
+          Self::Ptr { ty, .. } if qualifier.is_const() => {
+            let ty = ty.to_token_stream(ctx);
+            quote! { *const #ty }
+          },
+          ty => ty.to_token_stream(ctx),
+        };
+        tokens.append_all(ty)
       },
     }
   }
@@ -398,10 +444,20 @@ impl<'t> Type<'t> {
 
   pub(crate) fn from_rust_ty(ty: &syn::Type, ffi_prefix: Option<&syn::Path>) -> Result<Self, crate::CodegenError> {
     match ty {
-      syn::Type::Ptr(ptr_ty) => Ok(Self::Ptr {
-        ty: Box::new(Self::from_rust_ty(&ptr_ty.elem, ffi_prefix)?),
-        mutable: ptr_ty.mutability.is_some(),
-      }),
+      syn::Type::Ptr(ptr_ty) => {
+        let ty = Self::Ptr {
+                ty: Box::new(Self::from_rust_ty(&ptr_ty.elem, ffi_prefix)?),
+              };
+
+
+
+        if ptr_ty.mutability.is_some() {
+          Ok(ty)
+          } else {
+            Ok(Self::Qualified { ty: Box::new(ty), qualifier: TypeQualifier::Const })
+          }
+
+      },
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
       syn::Type::Verbatim(ty) => Ok(Self::Identifier {
         name: Box::new(Expr::Var(Var { name: Identifier { id: ty.to_string().into() } })),
@@ -446,15 +502,16 @@ impl<'t> Type<'t> {
 
         syn::parse_quote! { #(#colon)* #(#segments)::*  }
       },
-      Self::Ptr { ty, mutable } => {
-        let constness = if *mutable {
-          quote! { *mut }
-        } else {
-          quote! { *const }
-        };
-
+      Self::Ptr { ty } => {
         let ty = ty.to_rust_ty(ctx)?;
-        syn::parse_quote! { #constness #ty }
+        syn::parse_quote! { *mut #ty }
+      },
+      Self::Qualified { ty, qualifier } => match &**ty {
+        Self::Ptr { ty, .. } if matches!(qualifier, TypeQualifier::Const | TypeQualifier::ConstVolatile) => {
+          let ty = ty.to_rust_ty(ctx)?;
+          syn::parse_quote! { *const #ty }
+        },
+        ty => return ty.to_rust_ty(ctx),
       },
     })
   }
@@ -473,7 +530,10 @@ impl<'t> Type<'t> {
       Self::Path { leading_colon, segments } => {
         Some(Type::Path { leading_colon: *leading_colon, segments: segments.iter().map(|ty| ty.to_static()).collect() })
       },
-      Self::Ptr { ty, mutable } => Some(Type::Ptr { ty: Box::new(ty.to_static()?), mutable: *mutable }),
+      Self::Ptr { ty } => Some(Type::Ptr { ty: Box::new(ty.to_static()?) }),
+      Self::Qualified { ty, qualifier } => {
+        Some(Type::Qualified { ty: Box::new(ty.to_static()?), qualifier: *qualifier })
+      },
     }
   }
 }

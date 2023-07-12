@@ -469,8 +469,8 @@ impl<'t> Expr<'t> {
 
         // Remove redundant casts from string literals, e.g. `(char*)"adsf"`.
         if matches!(
-          (&*cast.expr, &cast.ty), (Expr::Literal(Lit::String(LitString::Ordinary(_))), Type::Ptr { ty, .. })
-          if matches!(**ty, Type::BuiltIn(BuiltInType::Char))
+          (&*cast.expr, &cast.ty), (Expr::Literal(Lit::String(LitString::Ordinary(_))), Type::Qualified { ty, qualifier })
+          if matches!(&**ty, Type::Ptr { ty, .. } if matches!(**ty, Type::BuiltIn(BuiltInType::Char))) && qualifier.is_const()
         ) {
           *self = (*cast.expr).clone();
           return self.finish(ctx)
@@ -555,7 +555,10 @@ impl<'t> Expr<'t> {
           self.finish(ctx)
         } else {
           *self = Self::ConcatString(new_names);
-          Ok(Some(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)), mutable: false }))
+          Ok(Some(Type::Qualified {
+            ty: Box::new(Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Char)) }),
+            qualifier: TypeQualifier::Const,
+          }))
         }
       },
       Self::Unary(op) => {
