@@ -4,7 +4,7 @@ use nom::{
   branch::{alt, permutation},
   combinator::{map, opt, value},
   multi::fold_many0,
-  sequence::{delimited, pair, preceded, terminated},
+  sequence::{delimited, pair, preceded, terminated, tuple},
   IResult,
 };
 use proc_macro2::{Ident, Span, TokenStream};
@@ -196,7 +196,7 @@ impl BuiltInType {
   }
 }
 
-fn int_ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], BuiltInType> {
+fn int_ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Type<'t>> {
   fn int_signedness<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], &'static str> {
     alt((keyword("unsigned"), keyword("signed")))(input)
   }
@@ -209,41 +209,62 @@ fn int_ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], 
     // [const] [(unsigned | signed)] long long [int]
     map(
       permutation((
-        const_volatile_qualifier,
+        opt(const_volatile_qualifier),
         opt(int_signedness),
         keyword("long"),
         keyword("long"),
         opt(keyword("int")),
       )),
-      |(_, s, _, _, _)| {
-        if matches!(s, Some("unsigned")) {
-          BuiltInType::ULongLong
+      |(qualifier, s, _, _, _)| {
+        let ty = if matches!(s, Some("unsigned")) { BuiltInType::ULongLong } else { BuiltInType::LongLong };
+        let ty = Type::BuiltIn(ty);
+
+        if let Some(qualifier) = qualifier {
+          ty.qualify(qualifier)
         } else {
-          BuiltInType::LongLong
+          ty
         }
       },
     ),
     // [const] [(unsigned | signed)] (long | short) [int]
     map(
-      permutation((const_volatile_qualifier, opt(int_signedness), int_length, opt(keyword("int")))),
-      |(_, s, i, _)| match (s, i) {
-        (Some("unsigned"), "short") => BuiltInType::UShort,
-        (_, "short") => BuiltInType::Short,
-        (Some("unsigned"), "long") => BuiltInType::ULong,
-        (_, "long") => BuiltInType::Long,
-        _ => unreachable!(),
+      permutation((opt(const_volatile_qualifier), opt(int_signedness), int_length, opt(keyword("int")))),
+      |(qualifier, s, i, _)| {
+        let ty = match (s, i) {
+          (Some("unsigned"), "short") => BuiltInType::UShort,
+          (_, "short") => BuiltInType::Short,
+          (Some("unsigned"), "long") => BuiltInType::ULong,
+          (_, "long") => BuiltInType::Long,
+          _ => unreachable!(),
+        };
+        let ty = Type::BuiltIn(ty);
+
+        if let Some(qualifier) = qualifier {
+          ty.qualify(qualifier)
+        } else {
+          ty
+        }
       },
     ),
     // [const] [(unsigned | signed)] (char | int)
     map(
-      permutation((const_volatile_qualifier, opt(int_signedness), alt((keyword("char"), keyword("int"))))),
-      |(_, s, i)| match (s, i) {
-        (Some("unsigned"), "int") => BuiltInType::UInt,
-        (_, "int") => BuiltInType::Int,
-        (Some("unsigned"), "char") => BuiltInType::UChar,
-        (Some("signed"), "char") => BuiltInType::SChar,
-        (_, "char") => BuiltInType::Char,
-        _ => unreachable!(),
+      permutation((opt(const_volatile_qualifier), opt(int_signedness), alt((keyword("char"), keyword("int"))))),
+      |(qualifier, s, i)| {
+        let ty = match (s, i) {
+          (Some("unsigned"), "int") => BuiltInType::UInt,
+          (_, "int") => BuiltInType::Int,
+          (Some("unsigned"), "char") => BuiltInType::UChar,
+          (Some("signed"), "char") => BuiltInType::SChar,
+          (_, "char") => BuiltInType::Char,
+          _ => unreachable!(),
+        };
+        let ty = Type::BuiltIn(ty);
+
+        if let Some(qualifier) = qualifier {
+          ty.qualify(qualifier)
+        } else {
+          ty
+        }
       },
     ),
   ))(input)
@@ -253,33 +274,48 @@ fn ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Type
   alt((
     // [const] (float | [long] double | bool | void)
     map(
-      delimited(
-        const_volatile_qualifier,
+      pair(
+        opt(const_volatile_qualifier),
         alt((
-          map(keyword("void"), |_| BuiltInType::Void),
-          map(keyword("bool"), |_| BuiltInType::Bool),
-          map(keyword("float"), |_| BuiltInType::Float),
-          map(pair(terminated(opt(keyword("long")), const_volatile_qualifier), keyword("double")), |(long, _)| {
-            if long.is_some() {
-              BuiltInType::LongDouble
-            } else {
-              BuiltInType::Double
-            }
-          }),
+          map(keyword("void"), |_| Type::BuiltIn(BuiltInType::Void)),
+          map(keyword("bool"), |_| Type::BuiltIn(BuiltInType::Bool)),
+          map(keyword("float"), |_| Type::BuiltIn(BuiltInType::Float)),
+          map(
+            terminated(pair(opt(keyword("long")), opt(const_volatile_qualifier)), keyword("double")),
+            |(long, qualifier)| {
+              let ty = if long.is_some() { BuiltInType::LongDouble } else { BuiltInType::Double };
+              let ty = Type::BuiltIn(ty);
+
+              if let Some(qualifier) = qualifier {
+                ty.qualify(qualifier)
+              } else {
+                ty
+              }
+            },
+          ),
         )),
-        const_volatile_qualifier,
       ),
-      Type::BuiltIn,
+      |(qualifier, ty)| {
+        if let Some(qualifier) = qualifier {
+          ty.qualify(qualifier)
+        } else {
+          ty
+        }
+      },
     ),
-    map(int_ty, Type::BuiltIn),
+    int_ty,
     // [const] <identifier>
     map(
-      delimited(
-        const_volatile_qualifier,
-        pair(opt(keyword("struct")), Expr::parse_concat_ident),
-        const_volatile_qualifier,
-      ),
-      |(s, id)| Type::Identifier { name: Box::new(id), is_struct: s.is_some() },
+      tuple((opt(const_volatile_qualifier), opt(keyword("struct")), Expr::parse_concat_ident)),
+      |(qualifier, s, id)| {
+        let ty = Type::Identifier { name: Box::new(id), is_struct: s.is_some() };
+
+        if let Some(qualifier) = qualifier {
+          ty.qualify(qualifier)
+        } else {
+          ty
+        }
+      },
     ),
   ))(input)
 }
@@ -305,21 +341,22 @@ impl TypeQualifier {
   pub const fn is_volatile(self) -> bool {
     matches!(self, Self::Volatile | Self::ConstVolatile)
   }
+
+  const fn or(self, other: Self) -> Self {
+    match (self, other) {
+      (Self::Const, Self::Const) => Self::Const,
+      (Self::Volatile, Self::Volatile) => Self::Const,
+      _ => Self::ConstVolatile,
+    }
+  }
 }
 
-fn const_volatile_qualifier<'i, 't>(
-  input: &'i [MacroToken<'t>],
-) -> IResult<&'i [MacroToken<'t>], Option<TypeQualifier>> {
-  fold_many0(
-    alt((value(TypeQualifier::Const, keyword("const")), value(TypeQualifier::Volatile, keyword("volatile")))),
-    || None,
-    |acc, qualifier| match (acc, qualifier) {
-      (None, qualifier) => Some(qualifier),
-      (Some(TypeQualifier::Const), TypeQualifier::Const) => Some(TypeQualifier::Const),
-      (Some(TypeQualifier::Volatile), TypeQualifier::Const) => Some(TypeQualifier::Volatile),
-      (Some(_), _) => Some(TypeQualifier::ConstVolatile),
-    },
-  )(input)
+fn const_volatile_qualifier<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], TypeQualifier> {
+  alt((
+    value(TypeQualifier::ConstVolatile, permutation((keyword("const"), keyword("volatile")))),
+    value(TypeQualifier::Const, keyword("const")),
+    value(TypeQualifier::Volatile, keyword("volatile")),
+  ))(input)
 }
 
 /// A type.
@@ -329,52 +366,50 @@ pub enum Type<'t> {
   BuiltIn(BuiltInType),
   /// A type identifier.
   #[allow(missing_docs)]
-  Identifier {
-    name: Box<Expr<'t>>,
-    is_struct: bool,
-  },
+  Identifier { name: Box<Expr<'t>>, is_struct: bool },
   /// A type path.
   #[allow(missing_docs)]
-  Path {
-    leading_colon: bool,
-    segments: Vec<Identifier<'t>>,
-  },
+  Path { leading_colon: bool, segments: Vec<Identifier<'t>> },
   /// A pointer type.
   #[allow(missing_docs)]
-  Ptr {
-    ty: Box<Self>,
-  },
+  Ptr { ty: Box<Self> },
   /// A type with a type qualifier.
   #[allow(missing_docs)]
-  Qualified {
-    ty: Box<Self>,
-    qualifier: TypeQualifier,
-  },
+  Qualified { ty: Box<Self>, qualifier: TypeQualifier },
 }
 
 impl<'t> Type<'t> {
   /// Parse a type.
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, ty) = delimited(const_volatile_qualifier, ty, const_volatile_qualifier)(tokens)?;
+    let (tokens, (mut ty, post_qualifier)) =
+      pair(ty, opt(const_volatile_qualifier))(tokens)?;
+
+    if let Some(qualifier) = post_qualifier {
+      ty = ty.qualify(qualifier);
+    }
 
     fold_many0(
-      preceded(pair(punct("*"), meta), const_volatile_qualifier),
+      preceded(pair(punct("*"), meta), opt(const_volatile_qualifier)),
       move || ty.clone(),
       |acc, qualifier| {
+        let ty = Self::Ptr { ty: Box::new(acc) };
+
         if let Some(qualifier) = qualifier {
-          Self::Qualified {
-            ty: Box::new(Self::Ptr {
-              ty: Box::new(acc),
-            }),
-            qualifier,
-          }
+          ty.qualify(qualifier)
         } else {
-          Self::Ptr {
-            ty: Box::new(acc),
-          }
+          ty
         }
       },
     )(tokens)
+  }
+
+  pub fn qualify(self, qualifier: TypeQualifier) -> Self {
+    match self {
+      Self::Qualified { ty, qualifier: existing_qualifier } => {
+        Self::Qualified { ty, qualifier: existing_qualifier.or(qualifier) }
+      },
+      ty => Self::Qualified { ty: Box::new(ty), qualifier },
+    }
   }
 
   /// Check if this type is `void`.
@@ -445,18 +480,13 @@ impl<'t> Type<'t> {
   pub(crate) fn from_rust_ty(ty: &syn::Type, ffi_prefix: Option<&syn::Path>) -> Result<Self, crate::CodegenError> {
     match ty {
       syn::Type::Ptr(ptr_ty) => {
-        let ty = Self::Ptr {
-                ty: Box::new(Self::from_rust_ty(&ptr_ty.elem, ffi_prefix)?),
-              };
-
-
+        let ty = Self::Ptr { ty: Box::new(Self::from_rust_ty(&ptr_ty.elem, ffi_prefix)?) };
 
         if ptr_ty.mutability.is_some() {
           Ok(ty)
-          } else {
-            Ok(Self::Qualified { ty: Box::new(ty), qualifier: TypeQualifier::Const })
-          }
-
+        } else {
+          Ok(Self::Qualified { ty: Box::new(ty), qualifier: TypeQualifier::Const })
+        }
       },
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
       syn::Type::Verbatim(ty) => Ok(Self::Identifier {
@@ -507,7 +537,7 @@ impl<'t> Type<'t> {
         syn::parse_quote! { *mut #ty }
       },
       Self::Qualified { ty, qualifier } => match &**ty {
-        Self::Ptr { ty, .. } if matches!(qualifier, TypeQualifier::Const | TypeQualifier::ConstVolatile) => {
+        Self::Ptr { ty, .. } if qualifier.is_const() => {
           let ty = ty.to_rust_ty(ctx)?;
           syn::parse_quote! { *const #ty }
         },
@@ -751,22 +781,25 @@ mod tests {
   fn parse_const() {
     parse_tokens!(
       Type => [id!(const), id!(int)],
-      ty!(BuiltInType::Int),
+      ty!(const BuiltInType::Int),
     );
 
     parse_tokens!(
       Type => [id!(int), id!(const)],
-      ty!(BuiltInType::Int),
+      ty!(const BuiltInType::Int),
     );
 
     parse_tokens!(
       Type => [id!(const), id!(int), id!(const)],
-      ty!(BuiltInType::Int),
+      ty!(const BuiltInType::Int),
     );
+  }
 
+  #[test]
+  fn parse_const_ptr() {
     parse_tokens!(
       Type => [id!(const), id!(int), punct!("*"), id!(const)],
-      ty!(*const BuiltInType::Int),
+      ty!(*const const BuiltInType::Int),
     );
   }
 

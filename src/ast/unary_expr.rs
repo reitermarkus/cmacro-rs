@@ -1,9 +1,9 @@
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
-use crate::{CodegenContext, Expr, LocalContext};
+use crate::{CodegenContext, LocalContext};
 
-use super::{Associativity, BinaryExpr, BinaryOp, BuiltInType, Type};
+use super::{Associativity, BinaryExpr, BinaryOp, BuiltInType, Cast, Expr, Type};
 
 /// A unary expression operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -179,9 +179,7 @@ mod tests {
     let expr1 = UnaryExpr {
       op: UnaryOp::Deref,
       expr: Box::new(Expr::Cast(Cast {
-        ty: Type::Ptr {
-          ty: Box::new(Type::Identifier { name: Box::new(var!(MyType)), is_struct: false }),
-        },
+        ty: Type::Ptr { ty: Box::new(Type::Identifier { name: Box::new(var!(MyType)), is_struct: false }) },
         expr: Box::new(lit!(1)),
       })),
     };
