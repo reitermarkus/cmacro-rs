@@ -525,18 +525,25 @@ impl<'t> Expr<'t> {
         for name in &mut *names {
           name.finish(ctx)?;
 
-          if let Self::Literal(Lit::String(lit)) = name {
-            if let Some(lit_bytes) = lit.as_bytes() {
-              if let Some(ref mut current_name) = current_name {
-                current_name.extend_from_slice(lit_bytes);
+          match name {
+            Self::Literal(Lit::String(lit)) => {
+              if let Some(lit_bytes) = lit.as_bytes() {
+                if let Some(ref mut current_name) = current_name {
+                  current_name.extend_from_slice(lit_bytes);
+                } else {
+                  current_name = Some(lit_bytes.to_vec());
+                }
+                continue
               } else {
-                current_name = Some(lit_bytes.to_vec());
+                // FIXME: Cannot concatenate wide strings due to unknown size of `wchar_t`.
+                return Err(crate::CodegenError::UnsupportedExpression)
               }
-              continue
-            } else {
-              // FIXME: Cannot concatenate wide strings due to unknown size of `wchar_t`.
+            },
+            Self::Var { .. } => {
+              // Can only concatenate literals.
               return Err(crate::CodegenError::UnsupportedExpression)
-            }
+            },
+            _ => (),
           }
 
           if let Some(current_name) = current_name.take() {
