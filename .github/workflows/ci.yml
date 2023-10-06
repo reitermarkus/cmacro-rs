@@ -6,6 +6,6 @@ jobs:
   ci:
     uses: reitermarkus/.github/.github/workflows/cargo-build-publish.yml@main
     with:
-      toolchain: '1.60'
+      toolchain: '1.61'
     secrets:
       CRATESIO_TOKEN: ${{ secrets.CRATESIO_TOKEN }}
