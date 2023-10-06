@@ -539,9 +539,14 @@ impl<'t> Expr<'t> {
                 return Err(crate::CodegenError::UnsupportedExpression)
               }
             },
-            Self::Var { .. } => {
-              // Can only concatenate literals.
-              return Err(crate::CodegenError::UnsupportedExpression)
+            Self::Var(var) => {
+              match var.name.as_str() {
+                "__FILE__" => (),
+                _ => {
+                  // Can only concatenate literals.
+                  return Err(crate::CodegenError::UnsupportedExpression)
+                }
+              }
             },
             _ => (),
           }
