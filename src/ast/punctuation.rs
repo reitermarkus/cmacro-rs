@@ -54,11 +54,11 @@ macro_rules! impl_punct {
       fn try_from(s: &'t str) -> Result<Self, Self::Error> {
         if matches!(s, $($p)|*) {
           Ok(Self { punctuation: s })
-        } else if s == "\\\n{" {
-          Ok(Self { punctuation: "{" })
-        } else if s == "\\\n}" {
-          Ok(Self { punctuation: "}" })
         } else {
+          if let Some(s) = s.strip_prefix("\\\n").or_else(|| s.strip_prefix("\\\r\n")) {
+            return Self::try_from(s)
+          }
+
           Err(s)
         }
       }
