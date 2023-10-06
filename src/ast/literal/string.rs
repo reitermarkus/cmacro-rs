@@ -18,7 +18,9 @@ use nom::{
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::{BuiltInType, CodegenContext, Expr, Lit, LocalContext, MacroToken, Type, TypeQualifier, Var};
+use crate::{
+  codegen::quote_static_ref, BuiltInType, CodegenContext, Expr, Lit, LocalContext, MacroToken, Type, TypeQualifier, Var,
+};
 
 use crate::ast::{
   tokens::{id, take_one},
@@ -379,7 +381,7 @@ impl<'t> LitString<'t> {
 
         let byte_count = proc_macro2::Literal::usize_unsuffixed(bytes.len());
         let byte_string = proc_macro2::Literal::byte_string(&bytes);
-        let array_ty = quote! { &[u8; #byte_count] };
+        let array_ty = quote_static_ref(ctx, quote! { [u8; #byte_count] });
 
         match method {
           GenerationMethod::Array => {

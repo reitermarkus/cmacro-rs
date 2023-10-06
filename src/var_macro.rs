@@ -54,6 +54,15 @@ impl<'t> VarMacro<'t> {
     let mut ctx = LocalContext::new(&cx);
     ctx.is_variable_macro = true;
 
+    ctx.static_lifetime_elision = ctx
+      .rust_target()
+      .and_then(|v| {
+        let version = Version::parse(&v).ok()?;
+        let req = VersionReq::parse(">=1.17").unwrap();
+        Some(req.matches(&version))
+      })
+      .unwrap_or(true);
+
     ctx.generate_cstr = ctx
       .rust_target()
       .and_then(|v| {

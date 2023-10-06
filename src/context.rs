@@ -25,6 +25,7 @@ pub(crate) struct LocalContext<'g, 't, C> {
   pub(crate) export_as_macro: bool,
   pub(crate) global_context: &'g C,
   pub(crate) generate_cstr: bool,
+  pub(crate) static_lifetime_elision: bool,
   pub(crate) is_variable_macro: bool,
 }
 
@@ -39,6 +40,7 @@ where
       export_as_macro: false,
       global_context: cx,
       generate_cstr: true,
+      static_lifetime_elision: true,
       is_variable_macro: false,
     }
   }

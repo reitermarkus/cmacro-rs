@@ -30,3 +30,5 @@ pub use macro_set::{ExpansionError, MacroSet};
 
 pub(crate) mod macro_token;
 pub use macro_token::MacroToken;
+
+pub(crate) mod codegen;

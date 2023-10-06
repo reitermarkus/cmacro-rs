@@ -145,6 +145,7 @@ macro_rules! assert_eq_tokens {
       export_as_macro: false,
       global_context: &(),
       generate_cstr: true,
+      static_lifetime_elision: true,
       is_variable_macro: true,
     };
 

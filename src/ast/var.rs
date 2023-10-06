@@ -1,7 +1,7 @@
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
-use crate::{CodegenContext, LocalContext};
+use crate::{codegen::quote_c_char_ptr, CodegenContext, LocalContext};
 
 use super::{BuiltInType, Identifier, Type, TypeQualifier};
 
@@ -57,12 +57,7 @@ impl<'t> Var<'t> {
         };
 
         let trait_prefix = ctx.trait_prefix().into_iter();
-        quote! {
-          {
-            const BYTES: &[u8] = #(#trait_prefix::)*concat!(#file, '\0').as_bytes();
-            BYTES.as_ptr() as *const #(#ffi_prefix::)*c_char
-          }
-        }
+        quote_c_char_ptr(ctx, quote! { #(#trait_prefix::)*concat!(#file, '\0') })
       },
       "__SCHAR_MAX__" => quote! { #(#ffi_prefix::)*c_schar::MAX },
       "__SHRT_MAX__" => quote! { #(#ffi_prefix::)*c_short::MAX },

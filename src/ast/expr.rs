@@ -15,7 +15,7 @@ use super::{
   tokens::{macro_arg, macro_id, parenthesized},
   *,
 };
-use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken, UnaryOp};
+use crate::{codegen::quote_c_char_ptr, CodegenContext, LocalContext, MacroArgType, MacroToken, UnaryOp};
 
 /// An expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -746,9 +746,6 @@ impl<'t> Expr<'t> {
         tokens.append_all(quote! { #(#trait_prefix::)*concat_idents!(#(#ids),*) })
       },
       Self::ConcatString(ref names) => {
-        let ffi_prefix = ctx.ffi_prefix().into_iter();
-        let trait_prefix = ctx.trait_prefix().into_iter();
-
         let names = names
           .iter()
           .map(|e| match e {
@@ -764,12 +761,8 @@ impl<'t> Expr<'t> {
           })
           .collect::<Vec<_>>();
 
-        tokens.append_all(quote! {
-          {
-            const BYTES: &[u8] = #(#trait_prefix::)*concat!(#(#names),*, '\0').as_bytes();
-            BYTES.as_ptr() as *const #(#ffi_prefix::)*c_char
-          }
-        })
+        let trait_prefix = ctx.trait_prefix().into_iter();
+        tokens.append_all(quote_c_char_ptr(ctx, quote! { #(#trait_prefix::)*concat!(#(#names),*, '\0') }))
       },
       Self::Unary(op) => op.to_tokens(ctx, tokens),
       Self::Binary(op) => op.to_tokens(ctx, tokens),

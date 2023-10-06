@@ -13,7 +13,7 @@ use super::{
   tokens::{macro_arg, macro_id, meta, punct},
   BuiltInType, Expr, Type, TypeQualifier, Var,
 };
-use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken};
+use crate::{codegen::quote_c_char_ptr, CodegenContext, LocalContext, MacroArgType, MacroToken};
 
 /// Stringification of a macro argument.
 ///
@@ -92,17 +92,11 @@ impl<'t> Stringify<'t> {
   }
 
   pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>) -> TokenStream {
-    let ffi_prefix = ctx.ffi_prefix().into_iter();
     let trait_prefix = ctx.trait_prefix().into_iter();
 
     let stringify = self.to_token_stream_inner(ctx);
 
-    quote! {
-      {
-        const BYTES: &[u8] = #(#trait_prefix::)*concat!(#stringify, '\0').as_bytes();
-        BYTES.as_ptr() as *const #(#ffi_prefix::)*c_char
-      }
-    }
+    quote_c_char_ptr(ctx, quote! { #(#trait_prefix::)*concat!(#stringify, '\0') })
   }
 }
 
