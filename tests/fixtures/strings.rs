@@ -119,3 +119,5 @@ pub const UTF32_BANANA2: &[u32; 4] = &[97u32, 29483u32, 127820u32, 0u32];
 
 pub const WIDE_BANANA1: &[wchar_t; 4] = &[97 as wchar_t, 29483 as wchar_t, 127820 as wchar_t, 0 as wchar_t];
 pub const WIDE_BANANA2: &[wchar_t; 4] = &[97 as wchar_t, 29483 as wchar_t, 127820 as wchar_t, 0 as wchar_t];
+
+pub const INTERIOR_NULL_BYTE: &[u8; 4] = b"a\0b\0";

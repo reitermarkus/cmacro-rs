@@ -66,3 +66,6 @@
 // Wide string with and without escape sequences.
 #define WIDE_BANANA1 L"a猫🍌"
 #define WIDE_BANANA2 L"a\u732B\U0001F34C"
+
+// Ordinary string with interior NULL byte.
+#define INTERIOR_NULL_BYTE "a\0b"

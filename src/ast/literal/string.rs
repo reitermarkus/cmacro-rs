@@ -372,6 +372,8 @@ impl<'t> LitString<'t> {
 
     match self {
       Self::Ordinary(bytes) => {
+        let has_interior_null = bytes.contains(&0);
+
         let mut bytes = bytes.clone().into_owned();
         bytes.push(0);
 
@@ -381,7 +383,7 @@ impl<'t> LitString<'t> {
 
         match method {
           GenerationMethod::Array => {
-            if ctx.generate_cstr {
+            if ctx.generate_cstr && !has_interior_null {
               let ffi_prefix = ctx.trait_prefix().map(|trait_prefix| quote! { #trait_prefix::ffi }).into_iter();
               let ty = quote! { #(#ffi_prefix::)*CStr };
               (
