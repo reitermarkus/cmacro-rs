@@ -60,7 +60,7 @@ pub enum ExpansionError {
   /// Macro not found.
   MacroNotFound,
   /// Invalid token.
-  InvalidToken,
+  InvalidToken(String),
   /// Function-like macro called with wrong number of arguments.
   FnMacroArgumentError {
     /// The macro name.
@@ -90,7 +90,7 @@ impl fmt::Display for ExpansionError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       Self::MacroNotFound => "macro not found".fmt(f),
-      Self::InvalidToken => "macro contains an invalid token".fmt(f),
+      Self::InvalidToken(token) => write!(f, "macro contains an invalid token: {:?}", token),
       Self::FnMacroArgumentError { name, required, given } => {
         write!(f, "macro {name} requires {required} arguments, {given} given")
       },
@@ -238,7 +238,7 @@ impl<'t> Token<'t> {
       Self::Identifier(id) => MacroToken::Identifier(id),
       Self::IdentifierContinue(id_cont) => MacroToken::IdentifierContinue(id_cont),
       Self::Literal(lit, _) => MacroToken::Lit(lit),
-      Self::Plain(_) => return Err(ExpansionError::InvalidToken),
+      Self::Plain(t) => return Err(ExpansionError::InvalidToken(t.into_owned())),
       Self::Punctuation(t) => MacroToken::Punctuation(t),
       Self::Comment(t) => MacroToken::Comment(t),
       Self::NonReplacable(t) => return t.detokenize(arg_names),
