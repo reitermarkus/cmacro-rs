@@ -309,25 +309,23 @@ impl<'t> BinaryExpr<'t> {
       | BinaryOp::BitXorAssign
       | BinaryOp::BitOrAssign => {
         if let Expr::Unary(UnaryExpr { op: UnaryOp::Deref, expr }) = &*self.lhs {
-          if let Expr::Cast(Cast { ty, .. }) = &**expr {
-            if let Type::Ptr { ty } = &*ty {
-              if matches!(&**ty, Type::Qualified { qualifier, .. } if qualifier.is_volatile()) {
-                let lhs_ptr = expr.to_token_stream(ctx);
+          if let Expr::Cast(Cast { ty: Type::Ptr { ty }, .. }) = &**expr {
+            if matches!(&**ty, Type::Qualified { qualifier, .. } if qualifier.is_volatile()) {
+              let lhs_ptr = expr.to_token_stream(ctx);
 
-                let value = if self.op == BinaryOp::Assign {
-                  quote! { #rhs }
-                } else {
-                  let prefix = ctx.trait_prefix().into_iter();
-                  quote! { #(#prefix::)*ptr::read_volatile(#lhs_ptr) + #rhs }
-                };
-
+              let value = if self.op == BinaryOp::Assign {
+                quote! { #rhs }
+              } else {
                 let prefix = ctx.trait_prefix().into_iter();
-                return quote! {
-                  {
-                    let value = #value;
-                    #(#prefix::)*ptr::write_volatile(#lhs_ptr, value);
-                    value
-                  }
+                quote! { #(#prefix::)*ptr::read_volatile(#lhs_ptr) + #rhs }
+              };
+
+              let prefix = ctx.trait_prefix().into_iter();
+              return quote! {
+                {
+                  let value = #value;
+                  #(#prefix::)*ptr::write_volatile(#lhs_ptr, value);
+                  value
                 }
               }
             }

@@ -545,7 +545,7 @@ impl<'t> Expr<'t> {
                 _ => {
                   // Can only concatenate literals.
                   return Err(crate::CodegenError::UnsupportedExpression)
-                }
+                },
               }
             },
             _ => (),
