@@ -74,7 +74,11 @@ impl<'t> Statement<'t> {
         Self::DoWhile { block, condition }
       }),
       map(
-        delimited(terminated(punct("{"), meta), many0(preceded(meta, Self::parse_single)), preceded(meta, punct("}"))),
+        delimited(
+          terminated(punct("{"), meta),
+          many0(preceded(meta, Self::parse_single)),
+          terminated(preceded(meta, punct("}")), opt(punct(";"))),
+        ),
         Self::Block,
       ),
       map(terminated(FunctionDecl::parse, semicolon_or_eof), Self::FunctionDecl),
@@ -235,6 +239,29 @@ mod tests {
         rhs: lit!(0),
         is_static: false
       })]),
+    );
+  }
+
+  #[test]
+  fn parse_block_empty() {
+    parse_tokens!(
+      Statement => [
+        punct!("{"),
+        punct!("}")
+      ],
+      Statement::Block(vec![])
+    );
+  }
+
+  #[test]
+  fn parse_block_empty_semicolon() {
+    parse_tokens!(
+      Statement => [
+        punct!("{"),
+        punct!("}"),
+        punct!(";")
+      ],
+      Statement::Block(vec![])
     );
   }
 
