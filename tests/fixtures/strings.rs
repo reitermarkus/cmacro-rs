@@ -1,30 +1,25 @@
 pub const s1: &CStr = {
-  const BYTES: &[u8; 2] = b"\xFF\0";
   #[allow(unsafe_code)]
-  unsafe { CStr::from_bytes_with_nul_unchecked(BYTES) }
+  unsafe { CStr::from_bytes_with_nul_unchecked(b"\xFF\0") }
 };
 
 pub const s2: &CStr = {
-  const BYTES: &[u8; 3] = b"\xFF\xFF\0";
   #[allow(unsafe_code)]
-  unsafe { CStr::from_bytes_with_nul_unchecked(BYTES) }
+  unsafe { CStr::from_bytes_with_nul_unchecked(b"\xFF\xFF\0") }
 };
 
 pub const s3: &CStr = {
-  const BYTES: &[u8; 3] = b"\xFF\xFF\0";
   #[allow(unsafe_code)]
-  unsafe { CStr::from_bytes_with_nul_unchecked(BYTES) }
+  unsafe { CStr::from_bytes_with_nul_unchecked(b"\xFF\xFF\0") }
 };
 
 pub const HELLO1: &CStr = {
-  const BYTES: &[u8; 6] = b"WORLD\0";
   #[allow(unsafe_code)]
-  unsafe { CStr::from_bytes_with_nul_unchecked(BYTES) }
+  unsafe { CStr::from_bytes_with_nul_unchecked(b"WORLD\0") }
 };
 pub const HELLO2: &CStr = {
-  const BYTES: &[u8; 6] = b"WORLD\0";
   #[allow(unsafe_code)]
-  unsafe { CStr::from_bytes_with_nul_unchecked(BYTES) }
+  unsafe { CStr::from_bytes_with_nul_unchecked(b"WORLD\0") }
 };
 #[allow(non_snake_case, unused_mut, unsafe_code)]
 #[inline(always)]
@@ -105,12 +100,12 @@ pub const WIDE_CONCAT_WIDE: &[wchar_t; 18] = &[
 ];
 
 pub const ORDINARY_BANANA1: &CStr = {
-  const BYTES: &[u8; 9] = b"a\xE7\x8C\xAB\xF0\x9F\x8D\x8C\0";
-  #[allow(unsafe_code)] unsafe { CStr::from_bytes_with_nul_unchecked(BYTES) }
+  #[allow(unsafe_code)]
+  unsafe { CStr::from_bytes_with_nul_unchecked(b"a\xE7\x8C\xAB\xF0\x9F\x8D\x8C\0") }
 };
 pub const ORDINARY_BANANA2: &CStr = {
-  const BYTES: &[u8; 9] = b"a\xE7\x8C\xAB\xF0\x9F\x8D\x8C\0";
-  #[allow(unsafe_code)] unsafe { CStr::from_bytes_with_nul_unchecked(BYTES) }
+  #[allow(unsafe_code)]
+  unsafe { CStr::from_bytes_with_nul_unchecked(b"a\xE7\x8C\xAB\xF0\x9F\x8D\x8C\0") }
 };
 
 pub const UTF8_BANANA1: &[u8; 9] = b"a\xE7\x8C\xAB\xF0\x9F\x8D\x8C\0";

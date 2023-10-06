@@ -388,9 +388,8 @@ impl<'t> LitString<'t> {
                 quote! { &#ty },
                 quote! {
                   {
-                    const BYTES: #array_ty = #byte_string;
                     #[allow(unsafe_code)]
-                    unsafe { #ty::from_bytes_with_nul_unchecked(BYTES) }
+                    unsafe { #ty::from_bytes_with_nul_unchecked(#byte_string) }
                   }
                 },
               )
