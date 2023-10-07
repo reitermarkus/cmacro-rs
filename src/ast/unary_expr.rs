@@ -75,14 +75,14 @@ impl<'t> UnaryExpr<'t> {
       UnaryOp::Deref => {
         // Cannot dereference pointers in variable macros, i.e. constants.
         if ctx.is_variable_macro() {
-          return Err(crate::CodegenError::UnsupportedExpression)
+          return Err(crate::CodegenError::UnsupportedExpression("dereference in variable-like macro".to_owned()))
         }
 
         match ty {
           Some(Type::Ptr { ty, .. }) => Ok(Some(*ty)),
           None => Ok(None),
           // Type can only be either a pointer-type or unknown.
-          _ => Err(crate::CodegenError::UnsupportedExpression),
+          _ => Err(crate::CodegenError::UnsupportedExpression("dereference of non-pointer".to_owned())),
         }
       },
       UnaryOp::AddrOf => Ok(ty.map(|ty| Type::Ptr { ty: Box::new(ty) })),

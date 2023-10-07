@@ -28,8 +28,8 @@ impl<'t> Cast<'t> {
   where
     C: CodegenContext,
   {
-    self.expr.finish(ctx)?;
     self.ty.finish(ctx)?;
+    self.expr.finish(ctx)?;
     Ok(Some(self.ty.clone()))
   }
 

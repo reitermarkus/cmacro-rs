@@ -432,7 +432,36 @@ impl<'t> Expr<'t> {
   {
     match self {
       Self::Cast(cast) => {
-        let ty = cast.finish(ctx)?;
+        let ty = match cast.finish(ctx) {
+          Ok(ty) => ty,
+          Err(err) => {
+            // If this expression is unsupported, check if is a nested cast of a dereference, in which case it is a multiplication
+            // rather than a dereference, e.g. `(my_t)(var) * (my_t)42` should be the same as `(my_t)var * (my_t)42`.
+            if matches!(err, crate::CodegenError::UnsupportedExpression(_)) {
+              let cast1 = cast;
+
+              if let Expr::Cast(cast2) = &*cast1.expr {
+                if let Type::Identifier { name, is_struct: false } = &cast2.ty {
+                  if let Expr::Unary(UnaryExpr { op: UnaryOp::Deref, expr }) = &*cast2.expr {
+                    if let Expr::Cast(cast3) = &**expr {
+                      if cast1.ty == cast3.ty {
+                        *self = Expr::Binary(BinaryExpr {
+                          lhs: Box::new(Expr::Cast(Cast { ty: cast1.ty.clone(), expr: name.clone() })),
+                          op: BinaryOp::Mul,
+                          rhs: Box::new(Expr::Cast(Cast { ty: cast3.ty.clone(), expr: cast3.expr.clone() })),
+                        });
+
+                        return self.finish(ctx)
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            return Err(err)
+          },
+        };
 
         // Handle ambiguous cast vs. binary operation, e.g. `(ty)&var` vs `(var1) & var2`.
         if let (Self::Unary(expr), Type::Identifier { name, is_struct: false }) = (&*cast.expr, &cast.ty) {
@@ -507,7 +536,9 @@ impl<'t> Expr<'t> {
             Self::Var(_) => (),
             Self::Literal(Lit::Int(LitInt { suffix: None, value })) if *value >= 0 => {
               // NOTE: Not yet supported by the `concat_idents!` macro.
-              return Err(crate::CodegenError::UnsupportedExpression)
+              return Err(crate::CodegenError::UnsupportedExpression(
+                "concatenation of identifiers and literals".to_owned(),
+              ))
             },
             _ => {
               // Only `Arg`, `Variable`, and `Literal` are ever added to `ConcatIdent`.
@@ -536,7 +567,7 @@ impl<'t> Expr<'t> {
                 continue
               } else {
                 // FIXME: Cannot concatenate wide strings due to unknown size of `wchar_t`.
-                return Err(crate::CodegenError::UnsupportedExpression)
+                return Err(crate::CodegenError::UnsupportedExpression("concatenation of wide strings".to_owned()))
               }
             },
             Self::Var(var) => {
@@ -544,7 +575,7 @@ impl<'t> Expr<'t> {
                 "__FILE__" => (),
                 _ => {
                   // Can only concatenate literals.
-                  return Err(crate::CodegenError::UnsupportedExpression)
+                  return Err(crate::CodegenError::UnsupportedExpression("concatenation of variables".to_owned()))
                 },
               }
             },
@@ -624,7 +655,7 @@ impl<'t> Expr<'t> {
             }
           },
           (UnaryOp::Comp, Self::Literal(Lit::Float(_) | Lit::String(_))) => {
-            return Err(crate::CodegenError::UnsupportedExpression)
+            return Err(crate::CodegenError::UnsupportedExpression("complement of float or string".to_owned()))
           },
           _ => (),
         }

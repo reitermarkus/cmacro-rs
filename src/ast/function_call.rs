@@ -26,7 +26,7 @@ impl<'t> FunctionCall<'t> {
   {
     // Cannot call functions in `const` context.
     if ctx.is_variable_macro() {
-      return Err(crate::CodegenError::UnsupportedExpression)
+      return Err(crate::CodegenError::UnsupportedExpression("function call in variable-like macro".to_owned()))
     }
 
     self.name.finish(ctx)?;

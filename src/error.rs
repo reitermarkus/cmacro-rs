@@ -31,7 +31,7 @@ pub enum CodegenError {
   /// Variable-like macro is not an expression.
   NonExpressionVarMacro,
   /// Expression is not supported in Rust.
-  UnsupportedExpression,
+  UnsupportedExpression(String),
   /// Type is not supported.
   UnsupportedType(String),
   /// Variable is unknown.
@@ -43,7 +43,7 @@ impl fmt::Display for CodegenError {
     match self {
       Self::RecursiveDefinition(macro_name) => write!(f, "recursive macro definition {}", macro_name),
       Self::NonExpressionVarMacro => write!(f, "non-expression variable-like macro"),
-      Self::UnsupportedExpression => write!(f, "unsupported expression"),
+      Self::UnsupportedExpression(expr) => write!(f, "unsupported expression: {}", expr),
       Self::UnsupportedType(ty) => write!(f, "unsupported type {}", ty),
       Self::UnknownVariable(var_name) => write!(f, "unknown variable {}", var_name),
     }

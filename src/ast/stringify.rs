@@ -51,7 +51,7 @@ impl<'t> Stringify<'t> {
       Expr::Var(Var { name }) if matches!(name.as_str(), "__LINE__" | "__FILE__") => {
         ctx.export_as_macro = true;
       },
-      _ => return Err(crate::CodegenError::UnsupportedExpression),
+      _ => return Err(crate::CodegenError::UnsupportedExpression("stringification".to_owned())),
     }
 
     Ok(Some(Type::Qualified {
