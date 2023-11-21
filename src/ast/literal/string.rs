@@ -19,7 +19,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::{
-  codegen::quote_static_ref, BuiltInType, CodegenContext, Expr, Lit, LocalContext, MacroToken, Type, TypeQualifier, Var,
+  codegen::quote_static_ref, BuiltInType, CodegenContext, IdentifierExpr, Lit, LocalContext, MacroToken, Type,
+  TypeQualifier,
 };
 
 use crate::ast::{
@@ -347,7 +348,7 @@ impl<'t> LitString<'t> {
       Self::Utf32(_) => Type::BuiltIn(BuiltInType::Char32T),
       Self::Wide(_) => {
         let mut ty = Type::Identifier {
-          name: Box::new(Expr::Var(Var { name: Identifier { id: "wchar_t".to_owned().into() } })),
+          name: IdentifierExpr::Plain(Identifier { id: "wchar_t".to_owned().into() }),
           is_struct: false,
         };
         ty.finish(ctx)?;

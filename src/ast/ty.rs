@@ -306,9 +306,9 @@ fn ty<'i, 't>(input: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Type
     int_ty,
     // [const] <identifier>
     map(
-      tuple((opt(const_volatile_qualifier), opt(keyword("struct")), Expr::parse_concat_ident)),
+      tuple((opt(const_volatile_qualifier), opt(keyword("struct")), IdentifierExpr::parse_concat_ident)),
       |(qualifier, s, id)| {
-        let ty = Type::Identifier { name: Box::new(id), is_struct: s.is_some() };
+        let ty = Type::Identifier { name: id, is_struct: s.is_some() };
 
         if let Some(qualifier) = qualifier {
           ty.qualify(qualifier)
@@ -366,7 +366,7 @@ pub enum Type<'t> {
   BuiltIn(BuiltInType),
   /// A type identifier.
   #[allow(missing_docs)]
-  Identifier { name: Box<Expr<'t>>, is_struct: bool },
+  Identifier { name: IdentifierExpr<'t>, is_struct: bool },
   /// A type path.
   #[allow(missing_docs)]
   Path { leading_colon: bool, segments: Vec<Identifier<'t>> },
@@ -434,7 +434,7 @@ impl<'t> Type<'t> {
       Self::Identifier { name, .. } => {
         name.finish(ctx)?;
 
-        if let Expr::Var(Var { name: ref id }) = **name {
+        if let IdentifierExpr::Plain(ref id) = name {
           if let Some(ty) = ctx.resolve_ty(id.as_str()) {
             *self = Self::from_rust_ty(&ty, ctx.ffi_prefix().as_ref())?;
           } else {
@@ -494,10 +494,9 @@ impl<'t> Type<'t> {
         }
       },
       syn::Type::Tuple(tuple_ty) if tuple_ty.elems.is_empty() => Ok(Type::BuiltIn(BuiltInType::Void)),
-      syn::Type::Verbatim(ty) => Ok(Self::Identifier {
-        name: Box::new(Expr::Var(Var { name: Identifier { id: ty.to_string().into() } })),
-        is_struct: false,
-      }),
+      syn::Type::Verbatim(ty) => {
+        Ok(Self::Identifier { name: IdentifierExpr::Plain(Identifier { id: ty.to_string().into() }), is_struct: false })
+      },
       syn::Type::Path(path_ty) => {
         if let Some(ty) = BuiltInType::from_rust_ty(path_ty, ffi_prefix) {
           return Ok(Self::BuiltIn(ty))
@@ -508,7 +507,7 @@ impl<'t> Type<'t> {
           path_ty.path.segments.iter().map(|s| Identifier { id: s.ident.to_string().into() }).collect::<Vec<_>>();
 
         if !leading_colon && segments.len() == 1 {
-          Ok(Self::Identifier { name: Box::new(Expr::Var(Var { name: segments.remove(0) })), is_struct: false })
+          Ok(Self::Identifier { name: IdentifierExpr::Plain(segments.remove(0)), is_struct: false })
         } else {
           Ok(Self::Path { leading_colon, segments })
         }
@@ -523,7 +522,7 @@ impl<'t> Type<'t> {
     Some(match self {
       Self::BuiltIn(ty) => ty.to_rust_ty(ctx),
       Self::Identifier { name, .. } => {
-        if let Expr::Var(Var { name }) = &**name {
+        if let IdentifierExpr::Plain(name) = name {
           let name = Ident::new(name.as_str(), Span::call_site());
           syn::parse_quote! { #name }
         } else {
@@ -555,8 +554,8 @@ impl<'t> Type<'t> {
     match self {
       Self::BuiltIn(ty) => Some(Type::BuiltIn(*ty)),
       Self::Identifier { name, is_struct } => {
-        if let Expr::Var(Var { name }) = &**name {
-          Some(Type::Identifier { name: Box::new(Expr::Var(Var { name: name.to_static() })), is_struct: *is_struct })
+        if let IdentifierExpr::Plain(name) = name {
+          Some(Type::Identifier { name: IdentifierExpr::Plain(name.to_static()), is_struct: *is_struct })
         } else {
           // TODO: Implement `to_static` for `Expr`.
           None

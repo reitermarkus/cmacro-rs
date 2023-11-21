@@ -34,8 +34,6 @@ macro_rules! __cmacro__access_inc_pointer_field {
 }
 pub use __cmacro__access_inc_pointer_field as access_inc_pointer_field;
 
-pub const old_name: _ = new_name;
-
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cmacro__access_renamed_field {

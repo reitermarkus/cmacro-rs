@@ -1,5 +1,3 @@
-pub const LINE_VAR: c_uint = line!() as c_uint;
-
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cmacro__LINE {
@@ -8,11 +6,6 @@ macro_rules! __cmacro__LINE {
   };
 }
 pub use __cmacro__LINE as LINE;
-
-pub const FILE_VAR: *const c_char = {
-  const BYTES: &[u8] = concat!(file!(), '\0').as_bytes();
-  BYTES.as_ptr() as *const c_char
-};
 
 #[doc(hidden)]
 #[macro_export]

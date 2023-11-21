@@ -7,8 +7,6 @@ macro_rules! __cmacro__MULTILINE {
 }
 pub use __cmacro__MULTILINE as MULTILINE;
 
-pub const MULTILINE_OP: _ = a + 3;
-
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cmacro__MULTILINE_BRACES {

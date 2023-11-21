@@ -13,7 +13,7 @@ use quote::{quote, TokenStreamExt};
 
 use crate::{CodegenContext, LocalContext};
 
-use super::{literal::universal_char};
+use super::literal::universal_char;
 
 fn is_identifier_start(c: char) -> bool {
   unicode_ident::is_xid_start(c) || c == '_'
@@ -71,9 +71,13 @@ impl<'t> Identifier<'t> {
     Identifier { id: Cow::Owned(self.id.clone().into_owned()) }
   }
 
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, _ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
+  pub(crate) fn to_token_stream<C: CodegenContext>(&self, _ctx: &mut LocalContext<'_, 't, C>) -> TokenStream {
     let id = Ident::new(&self.id, Span::call_site());
-    tokens.append_all(quote! { #id })
+    quote! { #id }
+  }
+
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
+    tokens.append_all(self.to_token_stream(ctx))
   }
 }
 

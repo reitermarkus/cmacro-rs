@@ -264,7 +264,7 @@ impl<'t> UnaryExpr<'t> {
 #[cfg(test)]
 mod tests {
   use super::{
-    super::{assert_eq_tokens, lit, var, Cast},
+    super::{assert_eq_tokens, id, lit, var, Cast, IdentifierExpr},
     *,
   };
 
@@ -273,7 +273,7 @@ mod tests {
     let expr1 = UnaryExpr {
       op: UnaryOp::Deref,
       expr: Box::new(Expr::Cast(Cast {
-        ty: Type::Ptr { ty: Box::new(Type::Identifier { name: Box::new(var!(MyType)), is_struct: false }) },
+        ty: Type::Ptr { ty: Box::new(Type::Identifier { name: IdentifierExpr::Plain(id!(MyType)), is_struct: false }) },
         expr: Box::new(lit!(1)),
       })),
     };

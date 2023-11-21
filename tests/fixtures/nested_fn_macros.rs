@@ -16,8 +16,6 @@ macro_rules! __cmacro__f2 {
 }
 pub use __cmacro__f2 as f2;
 
-pub const y: _ = x;
-
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cmacro__f3 {

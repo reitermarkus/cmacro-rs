@@ -11,7 +11,7 @@ use quote::{quote, TokenStreamExt};
 
 use super::{
   tokens::{macro_arg, macro_id, meta, punct},
-  BuiltInType, Expr, Type, TypeQualifier, Var,
+  BuiltInType, Expr, IdentifierExpr, Type, TypeQualifier, Var,
 };
 use crate::{codegen::quote_c_char_ptr, CodegenContext, LocalContext, MacroArgType, MacroToken};
 
@@ -31,8 +31,8 @@ impl<'t> Stringify<'t> {
     preceded(
       terminated(punct("#"), meta),
       alt((
-        map(macro_arg, |arg| Self { arg: Box::new(Expr::Arg(arg)) }),
-        map(macro_id, |id| Self { arg: Box::new(Expr::Var(Var { name: id })) }),
+        map(macro_arg, |arg| Self { arg: Box::new(Expr::Var(Var { name: IdentifierExpr::Arg(arg) })) }),
+        map(macro_id, |id| Self { arg: Box::new(Expr::Var(Var { name: IdentifierExpr::Plain(id) })) }),
       )),
     )(tokens)
   }
@@ -42,13 +42,13 @@ impl<'t> Stringify<'t> {
     C: CodegenContext,
   {
     match &mut *self.arg {
-      Expr::Arg(arg) => {
+      Expr::Var(Var { name: IdentifierExpr::Arg(arg) }) => {
         let arg_ty = ctx.arg_type_mut(arg.index());
         if *arg_ty != MacroArgType::Ident {
           *arg_ty = MacroArgType::Expr;
         }
       },
-      Expr::Var(Var { name }) if matches!(name.as_str(), "__LINE__" | "__FILE__") => {
+      Expr::Var(Var { name: IdentifierExpr::Plain(name) }) if matches!(name.as_str(), "__LINE__" | "__FILE__") => {
         ctx.export_as_macro = true;
       },
       _ => return Err(crate::CodegenError::UnsupportedExpression("stringification".to_owned())),
@@ -66,11 +66,11 @@ impl<'t> Stringify<'t> {
 
   pub(crate) fn to_token_stream_inner<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, '_, C>) -> TokenStream {
     let expr = match &*self.arg {
-      Expr::Arg(arg) => {
+      Expr::Var(Var { name: IdentifierExpr::Arg(arg) }) => {
         let id = Ident::new(ctx.arg_name(arg.index()), Span::call_site());
         Some(quote! { $#id })
       },
-      Expr::Var(Var { name }) => match name.as_str() {
+      Expr::Var(Var { name: IdentifierExpr::Plain(name) }) => match name.as_str() {
         "__LINE__" => {
           let trait_prefix = ctx.trait_prefix().into_iter();
           Some(quote! { #(#trait_prefix::)*line!() })
@@ -110,7 +110,7 @@ mod tests {
   fn parse_stringify() {
     parse_tokens!(
       Stringify => [punct!("#"), arg!(0)],
-      Stringify { arg: Box::new(Expr::Arg(arg!(0))) },
+      Stringify { arg: Box::new(Expr::Var(Var { name: IdentifierExpr::Arg(arg!(0)) })) },
     );
   }
 }

@@ -1,7 +1,6 @@
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, TokenStreamExt};
 
-
 use crate::{CodegenContext, LocalContext};
 
 /// A macro argument.

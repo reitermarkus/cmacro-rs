@@ -16,7 +16,7 @@ use crate::{CodegenContext, LocalContext, MacroToken};
 #[allow(missing_docs)]
 pub struct VarDecl<'t> {
   pub ty: Type<'t>,
-  pub name: Expr<'t>,
+  pub name: IdentifierExpr<'t>,
   pub rhs: Expr<'t>,
   pub is_static: bool,
 }
@@ -24,10 +24,12 @@ pub struct VarDecl<'t> {
 impl<'t> VarDecl<'t> {
   /// Parse a variable declaration.
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, ((static_storage, ty), name, _, rhs)) =
-      tuple((permutation((opt(id("static")), Type::parse)), Expr::parse_concat_ident, punct("="), Expr::parse))(
-        tokens,
-      )?;
+    let (tokens, ((static_storage, ty), name, _, rhs)) = tuple((
+      permutation((opt(id("static")), Type::parse)),
+      IdentifierExpr::parse_concat_ident,
+      punct("="),
+      Expr::parse,
+    ))(tokens)?;
 
     Ok((tokens, Self { ty, name, rhs, is_static: static_storage.is_some() }))
   }
@@ -72,7 +74,7 @@ mod tests {
       VarDecl => [id!(int), punct!("*"), id!(abc), punct!("="), lit_int!(123)],
       VarDecl {
         ty: Type::Ptr { ty: Box::new(Type::BuiltIn(BuiltInType::Int)) },
-        name: var!(abc),
+        name: IdentifierExpr::Plain(id!(abc)),
         rhs: Expr::Literal(Lit::Int(LitInt { value: 123, suffix: None })),
         is_static: false,
       },

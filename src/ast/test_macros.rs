@@ -14,7 +14,7 @@ pub(crate) use arg;
 
 macro_rules! var {
   ($name:ident) => {
-    $crate::ast::Expr::Var($crate::ast::Var { name: $crate::ast::id!($name) })
+    $crate::ast::Expr::Var($crate::ast::Var { name: $crate::ast::IdentifierExpr::Plain($crate::ast::id!($name)) })
   };
 }
 pub(crate) use var;
@@ -114,8 +114,8 @@ macro_rules! ty {
   (const $($ty:tt)*) => { Type::Qualified { ty: Box::new($crate::ast::ty!($($ty)*)), qualifier: $crate::ast::TypeQualifier::Const } };
   (*mut $($ty:tt)*) => { Type::Ptr { ty: Box::new($crate::ast::ty!($($ty)*)) } };
   (*const $($ty:tt)*) => { Type::Qualified { ty: Box::new(Type::Ptr { ty: Box::new($crate::ast::ty!($($ty)*)) }), qualifier: $crate::ast::TypeQualifier::Const } };
-  (struct $ty:ident) => { Type::Identifier { name: Box::new($crate::ast::var!($ty)), is_struct: true } };
-  ($ty:ident) => { Type::Identifier { name: Box::new($crate::ast::var!($ty)), is_struct: false } };
+  (struct $ty:ident) => { Type::Identifier { name: $crate::ast::IdentifierExpr::Plain($crate::ast::id!($ty)), is_struct: true } };
+  ($ty:ident) => { Type::Identifier { name: $crate::ast::IdentifierExpr::Plain($crate::ast::id!($ty)), is_struct: false } };
   ($ty:path) => { Type::BuiltIn($ty) };
 }
 pub(crate) use ty;

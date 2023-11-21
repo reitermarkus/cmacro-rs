@@ -2,143 +2,26 @@ use std::{borrow::Cow, fmt::Debug};
 
 use nom::{
   branch::alt,
-  character::complete::char,
-  combinator::{map, map_opt, map_res, value},
-  multi::{fold_many0, many1, separated_list0},
+  combinator::{map, map_res, value},
+  multi::{fold_many0, separated_list0},
   sequence::{delimited, pair, preceded, terminated, tuple},
   IResult,
 };
-use proc_macro2::{TokenStream};
+use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 
-use super::{
-  tokens::{macro_arg, macro_id, parenthesized},
-  *,
-};
-use crate::{codegen::quote_c_char_ptr, CodegenContext, LocalContext, MacroArgType, MacroToken, UnaryOp};
-
-/// An identifier expression.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(missing_docs)]
-pub enum IdentifierExpr<'t> {
-  /// A macro argument in identifier position.
-  Arg(MacroArg),
-  /// A plain identifier.
-  Plain(Identifier<'t>),
-  /// Concatenation of identifiers.
-  Concat(Vec<IdentifierContinuationExpr<'t>>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(missing_docs)]
-pub enum IdentifierContinuationExpr<'t> {
-  /// A macro argument in identifier position.
-  Arg(MacroArg),
-  /// A plain identifier.
-  Plain(Identifier<'t>),
-  /// An integer.
-  Int(LitInt),
-}
-
-impl<'t> IdentifierExpr<'t> {
-  /// Parse identifier concatenation, e.g. `arg ## 2`.
-  pub(crate) fn parse_concat_ident<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, id) = alt((map(macro_arg, Self::Arg), map(macro_id, Self::Plain)))(tokens)?;
-
-    fold_many0(
-      preceded(
-        delimited(meta, punct("##"), meta),
-        alt((
-          map(macro_arg, |arg| vec![IdentifierContinuationExpr::Arg(arg)]),
-          map(macro_id, |id| vec![IdentifierContinuationExpr::Plain(id)]),
-          // Split non-identifiers, e.g. `123def` into integer literals and identifiers.
-          map_opt(take_one, |token| {
-            fn unsuffixed_int<'e>(input: &str) -> IResult<&str, IdentifierContinuationExpr<'e>> {
-              let map_lit_int = |i: u64| (IdentifierContinuationExpr::Int(LitInt { value: i.into(), suffix: None }));
-              alt((
-                // Keep leading zeros.
-                map(value(0, char('0')), map_lit_int),
-                map(nom::character::complete::u64, map_lit_int),
-              ))(input)
-            }
-
-            let (_, ids) = match token {
-              MacroToken::IdentifierContinue(IdentifierContinue { id_cont: Cow::Borrowed(token2) }) => {
-                many1(alt((
-                  unsuffixed_int,
-                  map_opt(Identifier::parse_str, |id| Some(IdentifierContinuationExpr::Plain(id))),
-                )))(token2)
-                .ok()?
-              },
-              MacroToken::IdentifierContinue(IdentifierContinue { id_cont: Cow::Owned(token2) }) => {
-                many1(alt((
-                  unsuffixed_int,
-                  map_opt(Identifier::parse_str, |id| Some(IdentifierContinuationExpr::Plain(id.to_static()))),
-                )))(token2.as_ref())
-                .ok()?
-              },
-              _ => return None,
-            };
-
-            Some(ids)
-          }),
-        )),
-      ),
-      move || id.clone(),
-      |acc, mut item| match acc {
-        Self::Arg(arg) => {
-          item.insert(0, IdentifierContinuationExpr::Arg(arg));
-          Self::Concat(item)
-        },
-        Self::Plain(id) => {
-          item.insert(0, IdentifierContinuationExpr::Plain(id));
-          Self::Concat(item)
-        },
-        Self::Concat(mut ids) => {
-          ids.extend(item);
-          Self::Concat(ids)
-        },
-      },
-    )(tokens)
-  }
-
-  pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
-    match self {
-      Self::Arg(arg) => arg.to_tokens(ctx, tokens),
-      Self::Plain(id) => id.to_tokens(ctx, tokens),
-      Self::Concat(ids) => {
-        let trait_prefix = ctx.trait_prefix().into_iter();
-        let ids = ids.iter().map(|id| id.to_token_stream(ctx));
-        tokens.append_all(quote! { #(#trait_prefix::)*concat_idents!(#(#ids),*) })
-      },
-    }
-  }
-}
-
-impl<'t> IdentifierContinuationExpr<'t> {
-  pub(crate) fn to_token_stream<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>) -> TokenStream {
-    let mut tokens = TokenStream::new();
-
-    match self {
-      Self::Arg(arg) => arg.to_tokens(ctx, &mut tokens),
-      Self::Plain(id) => id.to_tokens(ctx, &mut tokens),
-      Self::Int(int) => int.to_tokens(ctx, &mut tokens),
-    }
-    tokens
-  }
-}
+use super::{tokens::parenthesized, *};
+use crate::{codegen::quote_c_char_ptr, CodegenContext, LocalContext, MacroToken};
 
 /// An expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum Expr<'t> {
-  Arg(MacroArg),
   Var(Var<'t>),
   FunctionCall(FunctionCall<'t>),
   Cast(Cast<'t>),
   Literal(Lit<'t>),
   Stringify(Stringify<'t>),
-  ConcatIdent(Vec<Self>),
   ConcatString(Vec<Self>),
   SizeOf(Type<'t>),
   Unary(UnaryExpr<'t>),
@@ -149,7 +32,7 @@ pub enum Expr<'t> {
 impl<'t> Expr<'t> {
   pub(crate) const fn precedence(&self) -> (u8, Associativity) {
     match self {
-      Self::Literal(_) | Self::Arg(_) | Self::Var(_) | Self::ConcatIdent(_) => (0, Associativity::None),
+      Self::Literal(_) | Self::Var(_) => (0, Associativity::None),
       Self::FunctionCall(_) => (1, Associativity::Left),
       Self::Stringify(_) | Self::ConcatString(_) => (3, Associativity::Left),
       Self::Cast(cast) => cast.precedence(),
@@ -160,72 +43,9 @@ impl<'t> Expr<'t> {
     }
   }
 
-  /// Parse identifier concatenation, e.g. `arg ## 2`.
-  pub(crate) fn parse_concat_ident<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let (tokens, id) = alt((map(macro_arg, Self::Arg), map(macro_id, |id| Self::Var(Var { name: id }))))(tokens)?;
-
-    fold_many0(
-      preceded(
-        delimited(meta, punct("##"), meta),
-        alt((
-          map(macro_arg, Self::Arg),
-          map(macro_id, |id| Self::Var(Var { name: id })),
-          // Split non-identifiers, e.g. `123def` into integer literals and identifiers.
-          map_opt(take_one, |token| {
-            fn unsuffixed_int<'e>(input: &str) -> IResult<&str, Expr<'e>> {
-              let map_lit_int = |i: u64| Expr::Literal(Lit::Int(LitInt { value: i.into(), suffix: None }));
-              alt((
-                // Keep leading zeros.
-                map(value(0, char('0')), map_lit_int),
-                map(nom::character::complete::u64, map_lit_int),
-              ))(input)
-            }
-
-            let (_, ids) = match token {
-              MacroToken::IdentifierContinue(IdentifierContinue { id_cont: Cow::Borrowed(token2) }) => {
-                many1(alt((unsuffixed_int, map_opt(Identifier::parse_str, |id| Some(Self::Var(Var { name: id }))))))(
-                  token2,
-                )
-                .ok()?
-              },
-              MacroToken::IdentifierContinue(IdentifierContinue { id_cont: Cow::Owned(token2) }) => {
-                many1(alt((
-                  unsuffixed_int,
-                  map_opt(Identifier::parse_str, |id| Some(Self::Var(Var { name: id.to_static() }))),
-                )))(token2.as_ref())
-                .ok()?
-              },
-              _ => return None,
-            };
-
-            Some(Self::ConcatIdent(ids))
-          }),
-        )),
-      ),
-      move || id.clone(),
-      |acc, item| match (acc, item) {
-        (Self::ConcatIdent(mut ids), Self::ConcatIdent(ids2)) => {
-          ids.extend(ids2);
-          Self::ConcatIdent(ids)
-        },
-        (Self::ConcatIdent(mut ids), item) => {
-          ids.push(item);
-          Self::ConcatIdent(ids)
-        },
-        (expr, item) => match item {
-          Self::ConcatIdent(mut ids) => {
-            ids.insert(0, expr);
-            Self::ConcatIdent(ids)
-          },
-          item => Self::ConcatIdent(vec![expr, item]),
-        },
-      },
-    )(tokens)
-  }
-
   /// Parse string concatenation, e.g. `arg "333"`.
   fn parse_concat_string<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
-    let parse_var = Self::parse_concat_ident;
+    let parse_var = map(IdentifierExpr::parse_concat_ident, |id| Self::Var(Var { name: id }));
     let parse_string =
       alt((map(LitString::parse, |s| Self::Literal(Lit::String(s))), map(Stringify::parse, Self::Stringify)));
     let mut parse_part = alt((parse_string, parse_var));
@@ -261,7 +81,7 @@ impl<'t> Expr<'t> {
     #[derive(Debug)]
     enum Access<'t> {
       Fn(Vec<Expr<'t>>),
-      Field { field: Box<Expr<'t>>, deref: bool },
+      Field { field: IdentifierExpr<'t>, deref: bool },
       Array { index: Box<Expr<'t>> },
       UnaryOp(UnaryOp),
     }
@@ -272,15 +92,15 @@ impl<'t> Expr<'t> {
           meta,
           alt((
             map(parenthesized(separated_list0(tuple((meta, punct(","), meta)), Self::parse)), Access::Fn),
-            map(preceded(terminated(punct("."), meta), Self::parse_concat_ident), |field| Access::Field {
-              field: Box::new(field),
+            map(preceded(terminated(punct("."), meta), IdentifierExpr::parse_concat_ident), |field| Access::Field {
+              field,
               deref: false,
             }),
             map(delimited(terminated(punct("["), meta), Self::parse, preceded(meta, punct("]"))), |index| {
               Access::Array { index: Box::new(index) }
             }),
-            map(preceded(terminated(punct("->"), meta), Self::parse_concat_ident), |field| Access::Field {
-              field: Box::new(field),
+            map(preceded(terminated(punct("->"), meta), IdentifierExpr::parse_concat_ident), |field| Access::Field {
+              field,
               deref: true,
             }),
             map(alt((value(UnaryOp::PostInc, punct("++")), value(UnaryOp::PostDec, punct("--")))), |op| {
@@ -300,13 +120,15 @@ impl<'t> Expr<'t> {
                 Self::Unary(UnaryExpr { op, expr: Box::new(expr) })
               },
               // TODO: Support calling expressions as functions.
-              (name @ Self::Arg(_) | name @ Self::Var(_), Access::Fn(args)) => {
-                Self::FunctionCall(FunctionCall { name: Box::new(name), args })
-              },
+              (Self::Var(Var { name }), Access::Fn(args)) => Self::FunctionCall(FunctionCall { name, args }),
               // Field access cannot be chained after postfix `++`/`--`.
               (acc, Access::Field { field, deref }) if !was_unary_postfix_op || deref => {
                 let acc = if deref { Self::Unary(UnaryExpr { op: UnaryOp::Deref, expr: Box::new(acc) }) } else { acc };
-                Self::Binary(BinaryExpr { lhs: Box::new(acc), op: BinaryOp::MemberAccess, rhs: field })
+                Self::Binary(BinaryExpr {
+                  lhs: Box::new(acc),
+                  op: BinaryOp::MemberAccess,
+                  rhs: Box::new(Self::Var(Var { name: field })),
+                }) // TODO: Separate expression type for field access.
               },
               // Array access cannot be chained after postfix `++`/`--`.
               (acc, Access::Array { index }) if !was_unary_postfix_op => {
@@ -557,7 +379,10 @@ impl<'t> Expr<'t> {
                     if let Expr::Cast(cast3) = &**expr {
                       if cast1.ty == cast3.ty {
                         *self = Expr::Binary(BinaryExpr {
-                          lhs: Box::new(Expr::Cast(Cast { ty: cast1.ty.clone(), expr: name.clone() })),
+                          lhs: Box::new(Expr::Cast(Cast {
+                            ty: cast1.ty.clone(),
+                            expr: Box::new(Expr::Var(Var { name: name.clone() })),
+                          })),
                           op: BinaryOp::Mul,
                           rhs: Box::new(Expr::Cast(Cast { ty: cast3.ty.clone(), expr: cast3.expr.clone() })),
                         });
@@ -576,16 +401,16 @@ impl<'t> Expr<'t> {
 
         // Handle ambiguous cast vs. binary operation, e.g. `(ty)&var` vs `(var1) & var2`.
         if let (Self::Unary(expr), Type::Identifier { name, is_struct: false }) = (&*cast.expr, &cast.ty) {
-          let treat_as_binop = match **name {
-            Self::Arg(_) => {
+          let treat_as_binop = match name {
+            IdentifierExpr::Arg(_) => {
               // Arguments cannot be resolved as a type.
               true
             },
-            Self::Var(Var { ref name }) => {
+            IdentifierExpr::Plain(name) => {
               // Cannot resolve type.
               ctx.resolve_ty(name.as_str()).is_none()
             },
-            _ => true,
+            IdentifierExpr::Concat(_) => true,
           };
 
           if treat_as_binop {
@@ -598,10 +423,10 @@ impl<'t> Expr<'t> {
             };
 
             if let Some(op) = op {
-              let lhs = (**name).clone();
+              let lhs = name.clone();
               let rhs = expr.expr.clone();
 
-              *self = Self::Binary(BinaryExpr { lhs: Box::new(lhs), op, rhs });
+              *self = Self::Binary(BinaryExpr { lhs: Box::new(Expr::Var(Var { name: lhs })), op, rhs });
               return self.finish(ctx)
             }
           }
@@ -618,13 +443,6 @@ impl<'t> Expr<'t> {
 
         Ok(ty)
       },
-      Self::Arg(arg) => {
-        if let MacroArgType::Known(arg_ty) = ctx.arg_type_mut(arg.index()) {
-          return Ok(Some(arg_ty.clone()))
-        }
-
-        Ok(None)
-      },
       Self::Var(var) => var.finish(ctx),
       Self::FunctionCall(call) => call.finish(ctx),
       // Convert character literals to casts.
@@ -635,31 +453,6 @@ impl<'t> Expr<'t> {
       },
       Self::Literal(lit) => lit.finish(ctx),
       Self::Stringify(stringify) => stringify.finish(ctx),
-      Self::ConcatIdent(ref mut ids) => {
-        for id in ids {
-          id.finish(ctx)?;
-
-          match id {
-            Self::Arg(arg) => {
-              // `concat_idents!` arguments must be `ident`.
-              *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
-            },
-            Self::Var(_) => (),
-            Self::Literal(Lit::Int(LitInt { suffix: None, value })) if *value >= 0 => {
-              // NOTE: Not yet supported by the `concat_idents!` macro.
-              return Err(crate::CodegenError::UnsupportedExpression(
-                "concatenation of identifiers and literals".to_owned(),
-              ))
-            },
-            _ => {
-              // Only `Arg`, `Variable`, and `Literal` are ever added to `ConcatIdent`.
-              unreachable!()
-            },
-          }
-        }
-
-        Ok(None)
-      },
       Self::ConcatString(names) => {
         let mut new_names = vec![];
         let mut current_name: Option<Vec<u8>> = None;
@@ -681,13 +474,19 @@ impl<'t> Expr<'t> {
                 return Err(crate::CodegenError::UnsupportedExpression("concatenation of wide strings".to_owned()))
               }
             },
-            Self::Var(var) => {
-              match var.name.as_str() {
-                "__FILE__" => (),
-                _ => {
-                  // Can only concatenate literals.
-                  return Err(crate::CodegenError::UnsupportedExpression("concatenation of variables".to_owned()))
+            Self::Var(Var { name }) => {
+              match name {
+                IdentifierExpr::Arg(_) => (),
+                IdentifierExpr::Plain(name) => {
+                  match name.as_str() {
+                    "__FILE__" => (),
+                    _ => {
+                      // Can only concatenate literals.
+                      return Err(crate::CodegenError::UnsupportedExpression("concatenation of variables".to_owned()))
+                    },
+                  }
                 },
+                IdentifierExpr::Concat(_) => (),
               }
             },
             _ => (),
@@ -860,7 +659,6 @@ impl<'t> Expr<'t> {
   pub(crate) fn to_tokens<C: CodegenContext>(&self, ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
     match self {
       Self::Cast(cast) => cast.to_tokens(ctx, tokens),
-      Self::Arg(arg) => arg.to_tokens(ctx, tokens),
       Self::Var(var) => var.to_tokens(ctx, tokens),
       Self::FunctionCall(ref call) => {
         call.to_tokens(ctx, tokens);
@@ -869,21 +667,13 @@ impl<'t> Expr<'t> {
       Self::Stringify(stringify) => {
         stringify.to_tokens(ctx, tokens);
       },
-      Self::ConcatIdent(ids) => {
-        let trait_prefix = ctx.trait_prefix().into_iter();
-        let ids = ids.iter().map(|id| id.to_token_stream(ctx));
-        tokens.append_all(quote! { #(#trait_prefix::)*concat_idents!(#(#ids),*) })
-      },
       Self::ConcatString(ref names) => {
         let names = names
           .iter()
           .map(|e| match e {
-            Self::Var(Var { name }) => match name.as_str() {
-              "__FILE__" => {
-                let trait_prefix = ctx.trait_prefix().into_iter();
-                quote! { #(#trait_prefix::)*file!() }
-              },
-              _ => e.to_token_stream(ctx),
+            Self::Var(Var { name: IdentifierExpr::Plain(name) }) if name.as_str() == "__FILE__" => {
+              let trait_prefix = ctx.trait_prefix().into_iter();
+              quote! { #(#trait_prefix::)*file!() }
             },
             Self::Stringify(stringify) => stringify.to_token_stream_inner(ctx),
             e => e.to_token_stream(ctx),
@@ -928,7 +718,7 @@ mod tests {
 
   #[test]
   fn parse_stringify() {
-    parse_tokens!(Expr => [punct!("#"), arg!(0)], Expr::Stringify(Stringify { arg: Box::new(Expr::Arg(arg!(0))) }));
+    parse_tokens!(Expr => [punct!("#"), arg!(0)], Expr::Stringify(Stringify { arg: Box::new(Expr::Var(Var { name: IdentifierExpr::Arg(arg!(0)) })) }));
   }
 
   #[test]
@@ -942,38 +732,70 @@ mod tests {
       Expr => [lit_string!("def"), punct!("#"), arg!(0)],
       Expr::ConcatString(vec![
         Expr::Literal(Lit::String(LitString::Ordinary("def".as_bytes().into()))),
-        Expr::Stringify(Stringify { arg: Box::new(Expr::Arg(arg!(0))) }),
+        Expr::Stringify(Stringify { arg: Box::new(Expr::Var(Var { name: IdentifierExpr::Arg(arg!(0)) })) }),
       ])
     );
   }
 
   #[test]
   fn parse_concat_ident() {
-    parse_tokens!(Expr => [arg!(0), punct!("##"), id!(def)], Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), var!(def)]));
+    parse_tokens!(
+      Expr => [arg!(0), punct!("##"), id!(def)],
+      Expr::Var(Var { name: IdentifierExpr::Concat(vec![
+        IdentifierContinuationExpr::Arg(arg!(0)),
+        IdentifierContinuationExpr::Plain(id!(def)),
+      ])}),
+    );
 
     parse_tokens!(
       Expr => [arg!(0), punct!("##"), id!(def), punct!("##"), id!(ghi)],
-      Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), var!(def), var!(ghi)])
+      Expr::Var(Var { name: IdentifierExpr::Concat(vec![
+        IdentifierContinuationExpr::Arg(arg!(0)),
+        IdentifierContinuationExpr::Plain(id!(def)),
+        IdentifierContinuationExpr::Plain(id!(ghi)),
+      ])}),
     );
 
-    parse_tokens!(Expr => [arg!(0), punct!("##"), id!(_def)], Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), var!(_def)]));
+    parse_tokens!(
+      Expr => [arg!(0), punct!("##"), id!(_def)],
+      Expr::Var(Var { name: IdentifierExpr::Concat(vec![
+        IdentifierContinuationExpr::Arg(arg!(0)),
+        IdentifierContinuationExpr::Plain(id!(_def)),
+      ])}),
+    );
 
     parse_tokens!(
       Expr => [arg!(0), punct!("##"), id_cont!("123")],
-      Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), lit!(123)])
+      Expr::Var(Var { name: IdentifierExpr::Concat(vec![
+        IdentifierContinuationExpr::Arg(arg!(0)),
+        IdentifierContinuationExpr::Int(LitInt { value: 123, suffix: None })]) }),
     );
 
     parse_tokens!(
       Expr => [arg!(0), punct!("##"), id_cont!("123def")],
-      Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), lit!(123), var!(def)])
+      Expr::Var(Var { name: IdentifierExpr::Concat(vec![
+        IdentifierContinuationExpr::Arg(arg!(0)),
+        IdentifierContinuationExpr::Int(LitInt { value: 123, suffix: None }),
+        IdentifierContinuationExpr::Plain(id!(def)),
+      ])}),
     );
 
     parse_tokens!(
       Expr => [arg!(0), punct!("##"), id_cont!("123def456ghi")],
-      Expr::ConcatIdent(vec![Expr::Arg(arg!(0)), lit!(123), var!(def456ghi)])
+      Expr::Var(Var { name: IdentifierExpr::Concat(vec![
+        IdentifierContinuationExpr::Arg(arg!(0)),
+        IdentifierContinuationExpr::Int(LitInt { value: 123, suffix: None }),
+        IdentifierContinuationExpr::Plain(id!(def456ghi)),
+      ])}),
     );
 
-    parse_tokens!(Expr => [id!(__INT), punct!("##"), id!(_MAX__)], Expr::ConcatIdent(vec![var!(__INT), var!(_MAX__)]));
+    parse_tokens!(
+      Expr => [id!(__INT), punct!("##"), id!(_MAX__)],
+      Expr::Var(Var { name: IdentifierExpr::Concat(vec![
+        IdentifierContinuationExpr::Plain(id!(__INT)),
+        IdentifierContinuationExpr::Plain(id!(_MAX__)),
+      ])}),
+    );
   }
 
   #[test]
@@ -1054,7 +876,7 @@ mod tests {
   fn parse_function_call() {
     parse_tokens!(
       Expr => [id!(my_function), punct!("("), id!(arg1), punct!(","), id!(arg2), punct!(")")],
-      Expr::FunctionCall(FunctionCall { name: Box::new(var!(my_function)), args: vec![var!(arg1), var!(arg2)] })
+      Expr::FunctionCall(FunctionCall { name: IdentifierExpr::Plain(id!(my_function)), args: vec![var!(arg1), var!(arg2)] })
     );
   }
 

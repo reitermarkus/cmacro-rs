@@ -235,7 +235,7 @@ mod tests {
       Statement => [punct!("{"), id!(int), id!(a), punct!("="), lit_int!(0), punct!(";"), punct!("}")],
       Statement::Block(vec![Statement::VarDecl(VarDecl {
         ty: ty!(BuiltInType::Int),
-        name: var!(a),
+        name: IdentifierExpr::Plain(id!(a)),
         rhs: lit!(0),
         is_static: false
       })]),

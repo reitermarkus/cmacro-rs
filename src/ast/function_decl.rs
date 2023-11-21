@@ -24,8 +24,8 @@ use crate::{CodegenContext, LocalContext, MacroArgType, MacroToken};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionDecl<'t> {
   ret_ty: Type<'t>,
-  name: Expr<'t>,
-  args: Vec<(Type<'t>, Expr<'t>)>,
+  name: IdentifierExpr<'t>,
+  args: Vec<(Type<'t>, IdentifierExpr<'t>)>,
 }
 
 impl<'t> FunctionDecl<'t> {
@@ -33,8 +33,8 @@ impl<'t> FunctionDecl<'t> {
   pub(crate) fn parse<'i>(tokens: &'i [MacroToken<'t>]) -> IResult<&'i [MacroToken<'t>], Self> {
     let (tokens, ((_, ret_ty), name, args)) = tuple((
       permutation((opt(id("static")), Type::parse)),
-      Expr::parse_concat_ident,
-      parenthesized(separated_list0(pair(meta, punct(",")), pair(Type::parse, Expr::parse_concat_ident))),
+      IdentifierExpr::parse_concat_ident,
+      parenthesized(separated_list0(pair(meta, punct(",")), pair(Type::parse, IdentifierExpr::parse_concat_ident))),
     ))(tokens)?;
 
     Ok((tokens, Self { ret_ty, name, args }))
@@ -45,15 +45,13 @@ impl<'t> FunctionDecl<'t> {
     C: CodegenContext,
   {
     self.ret_ty.finish(ctx)?;
-    self.name.finish(ctx)?;
 
-    if let Expr::Arg(arg) = &self.name {
+    if let IdentifierExpr::Arg(arg) = &self.name {
       *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
     }
 
-    for (ty, arg) in self.args.iter_mut() {
+    for (ty, _arg) in self.args.iter_mut() {
       ty.finish(ctx)?;
-      arg.finish(ctx)?;
     }
 
     // A declaration has no type.

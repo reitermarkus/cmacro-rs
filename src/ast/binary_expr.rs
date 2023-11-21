@@ -5,7 +5,7 @@ use quote::{quote, ToTokens, TokenStreamExt};
 
 use crate::{CodegenContext, LocalContext, MacroArgType};
 
-use super::{BuiltInType, Cast, Expr, Lit, LitFloat, LitInt, Type, UnaryExpr, UnaryOp, Var};
+use super::{BuiltInType, Cast, Expr, IdentifierExpr, Lit, LitFloat, LitInt, Type, UnaryExpr, UnaryOp, Var};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Associativity {
@@ -192,7 +192,7 @@ impl<'t> BinaryExpr<'t> {
     C: CodegenContext,
   {
     let max_ty_cast = |expr: &Expr| {
-      if let Expr::Var(Var { name }) = expr {
+      if let Expr::Var(Var { name: IdentifierExpr::Plain(name) }) = expr {
         return Some(Type::BuiltIn(match name.as_str() {
           "__SCHAR_MAX__" => BuiltInType::UChar,
           "__SHRT_MAX__" => BuiltInType::UShort,
@@ -211,13 +211,13 @@ impl<'t> BinaryExpr<'t> {
 
     // Arg must be an identifier for use as a member name.
     if self.op == BinaryOp::MemberAccess {
-      if let Expr::Arg(arg) = &*self.rhs {
+      if let Expr::Var(Var { name: IdentifierExpr::Arg(arg) }) = &*self.rhs {
         *ctx.arg_type_mut(arg.index()) = MacroArgType::Ident;
       }
     }
 
     // Must export as a macro in order to be able to assign to a macro argument.
-    if self.op.is_assignment() && matches!(&*self.lhs, Expr::Arg(_)) {
+    if self.op.is_assignment() && matches!(&*self.lhs, Expr::Var(Var { name: IdentifierExpr::Arg(_) })) {
       ctx.export_as_macro = true;
     }
 
@@ -257,16 +257,14 @@ impl<'t> BinaryExpr<'t> {
     }
 
     if self.op == BinaryOp::MemberAccess {
-      if let Some(Type::Identifier { name: ty_name, .. }) = lhs_ty {
-        if let Expr::Var(Var { name: ty_name }) = &*ty_name {
-          let ty = ty_name.as_str();
+      if let Some(Type::Identifier { name: IdentifierExpr::Plain(ty_name), .. }) = lhs_ty {
+        let ty = ty_name.as_str();
 
-          if let Expr::Var(Var { name: field_name }) = &*self.rhs {
-            let field = field_name.as_str();
+        if let Expr::Var(Var { name: IdentifierExpr::Plain(field_name) }) = &*self.rhs {
+          let field = field_name.as_str();
 
-            if let Some(ty) = ctx.resolve_field_ty(ty, field) {
-              return Ok(Some(Type::from_rust_ty(&ty, ctx.ffi_prefix().as_ref())?))
-            }
+          if let Some(ty) = ctx.resolve_field_ty(ty, field) {
+            return Ok(Some(Type::from_rust_ty(&ty, ctx.ffi_prefix().as_ref())?))
           }
         }
       };

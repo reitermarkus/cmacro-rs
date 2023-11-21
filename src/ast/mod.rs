@@ -28,6 +28,9 @@ pub use ty::*;
 mod identifier;
 pub use identifier::*;
 
+mod identifier_expr;
+pub use identifier_expr::*;
+
 mod expr;
 pub use expr::*;
 
