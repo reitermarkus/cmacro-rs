@@ -138,9 +138,9 @@ impl BuiltInType {
           Self::LongLong
         } else if id == "c_ulonglong" {
           Self::ULongLong
-        } else if id == "size_t" {
+        } else if id == "c_size_t" {
           Self::SizeT
-        } else if id == "ssize_t" {
+        } else if id == "c_ssize_t" {
           Self::SSizeT
         } else if id == "c_void" {
           Self::Void
@@ -182,7 +182,7 @@ impl BuiltInType {
           syn::parse_quote! { usize }
         }
       },
-      Self::SSizeT => syn::parse_quote! { #(#ffi_prefix::)*ssize_t },
+      Self::SSizeT => syn::parse_quote! { #(#ffi_prefix::)*c_ssize_t },
       Self::Void => syn::parse_quote! { #(#ffi_prefix::)*c_void },
     }
   }
@@ -437,6 +437,8 @@ impl<'t> Type<'t> {
         if let Expr::Var(Var { name: ref id }) = **name {
           if let Some(ty) = ctx.resolve_ty(id.as_str()) {
             *self = Self::from_rust_ty(&ty, ctx.ffi_prefix().as_ref())?;
+          } else {
+            return Err(crate::CodegenError::UnsupportedType(id.as_str().to_owned()))
           }
         }
 

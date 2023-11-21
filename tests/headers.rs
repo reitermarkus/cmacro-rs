@@ -102,6 +102,15 @@ struct TestContext {
 }
 
 impl CodegenContext for TestContext {
+  fn resolve_ty(&self, name: &str) -> Option<syn::Type> {
+    if name == "size_t" {
+      return None
+    }
+
+    let ty = proc_macro2::Ident::new(name, proc_macro2::Span::call_site());
+    Some(syn::parse_quote! { #ty })
+  }
+
   fn function(&self, name: &str) -> Option<(Vec<syn::Type>, syn::Type)> {
     let (arg_tys, ret_ty) = self.functions.get(name)?;
 
