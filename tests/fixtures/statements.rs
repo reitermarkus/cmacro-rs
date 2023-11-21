@@ -47,7 +47,7 @@ pub use __cmacro__JSVAL_TYPE_TO_TAG as JSVAL_TYPE_TO_TAG;
 #[macro_export]
 macro_rules! __cmacro__JSVAL_TYPE_TO_SHIFTED_TAG {
   ($type:expr) => {
-    (131056u32 as uint32_t | $type) as JSValueTag as uint64_t << 47
+    ((131056u32 as uint32_t | $type) as JSValueTag as uint64_t) << 47
   };
 }
 pub use __cmacro__JSVAL_TYPE_TO_SHIFTED_TAG as JSVAL_TYPE_TO_SHIFTED_TAG;
