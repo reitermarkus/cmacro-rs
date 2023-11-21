@@ -8,8 +8,12 @@ use nom::{
   sequence::{pair, preceded},
   IResult,
 };
+use proc_macro2::{Ident, Span, TokenStream};
+use quote::{quote, TokenStreamExt};
 
-use super::literal::universal_char;
+use crate::{CodegenContext, LocalContext};
+
+use super::{literal::universal_char};
 
 fn is_identifier_start(c: char) -> bool {
   unicode_ident::is_xid_start(c) || c == '_'
@@ -65,6 +69,11 @@ impl<'t> Identifier<'t> {
 
   pub(crate) fn to_static(&self) -> Identifier<'static> {
     Identifier { id: Cow::Owned(self.id.clone().into_owned()) }
+  }
+
+  pub(crate) fn to_tokens<C: CodegenContext>(&self, _ctx: &mut LocalContext<'_, 't, C>, tokens: &mut TokenStream) {
+    let id = Ident::new(&self.id, Span::call_site());
+    tokens.append_all(quote! { #id })
   }
 }
 

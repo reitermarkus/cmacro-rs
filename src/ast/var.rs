@@ -1,4 +1,4 @@
-use proc_macro2::{Ident, Span, TokenStream};
+use proc_macro2::{TokenStream};
 use quote::{quote, TokenStreamExt};
 
 use crate::{codegen::quote_c_char_ptr, CodegenContext, LocalContext};
@@ -68,8 +68,7 @@ impl<'t> Var<'t> {
         if let Some(enum_variant) = ctx.resolve_enum_variant(name) {
           quote! { #enum_variant }
         } else {
-          let name = Ident::new(name, Span::call_site());
-          quote! { #name }
+          return self.name.to_tokens(ctx, tokens)
         }
       },
     })
