@@ -295,11 +295,17 @@ impl<'t> BinaryExpr<'t> {
     let (prec, assoc) = self.precedence();
     let (rhs_prec, _) = self.rhs.precedence();
 
-    let (lhs_parens, rhs_parens) = match (prec, assoc) {
+    let (mut lhs_parens, rhs_parens) = match (prec, assoc) {
       (_, Associativity::None) => (lhs_prec >= prec, rhs_prec >= prec),
       (_, Associativity::Left) => (lhs_prec > prec, rhs_prec >= prec),
       (_, Associativity::Right) => (lhs_prec <= prec, rhs_prec < prec),
     };
+
+    // Ensure that a cast on the left side is quoted when shifting
+    // left to avoid ambiguous type parameter errors.
+    if matches!(&*self.lhs, Expr::Cast(..) | Expr::SizeOf(..)) && matches!(op, BinaryOp::Shl) {
+      lhs_parens = true;
+    }
 
     match self.op {
       BinaryOp::Assign
