@@ -163,57 +163,93 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
       _ => (),
     });
 
-    let mut f = TokenStream::new();
+    let mut generated_code = TokenStream::new();
 
     for name in &context.macros {
       match context.macro_set.expand_fn_macro(name) {
         Ok((arg_names, fn_macro)) => match FnMacro::parse(name.as_str(), &arg_names, &fn_macro) {
-          Ok(mut fn_macro) => {
-            if let Ok(tokens) = fn_macro.generate(&context) {
-              f.append_all(tokens);
-            }
+          Ok(mut fn_macro) => match fn_macro.generate(&context) {
+            Ok(tokens) => generated_code.append_all(tokens),
+            Err(err) => eprintln!("Error generating function-like macro `{name}`: {err}"),
           },
-          Err(err) => eprintln!("Error parsing function-like macro {name}: {err}"),
+          Err(err) => eprintln!("Error parsing function-like macro `{name}`: {err}"),
         },
         Err(ExpansionError::MacroNotFound) => (),
-        Err(err) => eprintln!("Error for {name}: {err:?}"),
+        Err(err) => eprintln!("Error for `{name}`: {err:?}"),
       }
 
       match context.macro_set.expand_var_macro(name) {
         Ok(var_macro) => match VarMacro::parse(name.as_str(), &var_macro) {
-          Ok(mut var_macro) => {
-            if let Ok((value, ty)) = var_macro.generate(&context) {
+          Ok(mut var_macro) => match var_macro.generate(&context) {
+            Ok((value, ty)) => {
               let name = Ident::new(name, Span::call_site());
               let ty = ty.unwrap_or(quote! { _ });
-              f.append_all(quote! {
+              generated_code.append_all(quote! {
                 pub const #name: #ty = #value;
               })
-            }
+            },
+            Err(err) => eprintln!("Error generating variable-like macro `{name}`: {err}"),
           },
-          Err(err) => eprintln!("Error parsing variable-like macro {name}: {err}"),
+          Err(err) => eprintln!("Error parsing variable-like macro `{name}`: {err}"),
         },
         Err(ExpansionError::MacroNotFound) => (),
-        Err(err) => eprintln!("Error for {name}: {err:?}"),
+        Err(err) => eprintln!("Error for `{name}`: {err:?}"),
       }
     }
 
-    let expected = prettyplease::unparse(&syn::parse2::<syn::File>(f)?);
-    let actual = prettyplease::unparse(&syn::parse_str::<syn::File>(&fs::read_to_string(output_path)?)?);
+    let expected = prettyplease::unparse(&syn::parse_str::<syn::File>(&fs::read_to_string(output_path)?)?);
+
+    let f = match syn::parse2::<syn::File>(generated_code.clone()) {
+      Ok(f) => f,
+      Err(err) => {
+        use annotate_snippets::snippet::*;
+
+        let span = err.span();
+
+        let source = generated_code.to_string();
+
+        let err_string = err.to_string();
+        let snippet = Snippet {
+          title: Some(Annotation { label: Some(&err_string), id: None, annotation_type: AnnotationType::Error }),
+          footer: vec![],
+          slices: vec![Slice {
+            source: &source,
+            line_start: span.start().line,
+            origin: None,
+            fold: false,
+            annotations: vec![],
+          }],
+          opt: Default::default(),
+        };
+
+        let snippet = annotate_snippets::display_list::DisplayList::from(snippet).to_string();
+
+        println!(" {}", Style::new(Red).paint("FAILED"));
+        errors.insert(header_name.to_owned(), (String::new(), expected, Some(snippet)));
+        continue;
+      },
+    };
+
+    let actual = prettyplease::unparse(&f);
 
     if actual == expected {
       println!(" {}", Style::new(Green).paint("ok"));
     } else {
       println!(" {}", Style::new(Red).paint("FAILED"));
-      errors.insert(header_name.to_owned(), (actual, expected));
+      errors.insert(header_name.to_owned(), (actual, expected, None));
     }
   }
 
   if !errors.is_empty() {
     println!("\nfailures:\n");
 
-    for (header_name, (actual, expected)) in &errors {
+    for (header_name, (actual, expected, snippet)) in &errors {
       let diff = StrComparison::new(expected, actual);
       print!("---- {} diff ----\n{}", header_name, diff);
+
+      if let Some(snippet) = snippet {
+        print!("---- {} parse ----\n{}", header_name, snippet);
+      }
     }
 
     println!("\nfailures:");
