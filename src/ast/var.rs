@@ -49,10 +49,14 @@ impl<'t> Var<'t> {
           "__INT_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Int))),
           "__LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::Long))),
           "__LONG_LONG_MAX__" => Ok(Some(Type::BuiltIn(BuiltInType::LongLong))),
-          _ => {
-            // Variable is not defined, so we need to export this as a macro.
-            ctx.export_as_macro = true;
-            Ok(None)
+          name => {
+            if let Some((enum_ty, _)) = ctx.resolve_enum_variant(name) {
+              Ok(Some(Type::from_rust_ty(&enum_ty, ctx.ffi_prefix().as_ref())?))
+            } else {
+              // Variable is not defined, so we need to export this as a macro.
+              ctx.export_as_macro = true;
+              Ok(None)
+            }
           },
         }
       },
@@ -84,7 +88,7 @@ impl<'t> Var<'t> {
         "__LONG_MAX__" => quote! { #(#ffi_prefix::)*c_long::MAX },
         "__LONG_LONG_MAX__" => quote! { #(#ffi_prefix::)*c_longlong::MAX },
         name => {
-          if let Some(enum_variant) = ctx.resolve_enum_variant(name) {
+          if let Some((_, enum_variant)) = ctx.resolve_enum_variant(name) {
             quote! { #enum_variant }
           } else {
             self.name.to_token_stream(ctx)
