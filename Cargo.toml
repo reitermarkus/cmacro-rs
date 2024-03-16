@@ -29,7 +29,7 @@ pretty_assertions = "1"
 yansi = "0.5.1"
 syn = { version = "2", features = ["full"] }
 prettyplease = "0.2"
-annotate-snippets = "0.9"
+annotate-snippets = "0.11"
 
 [[test]]
 name = "headers"
