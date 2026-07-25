@@ -28,7 +28,7 @@ quote = "1"
 pretty_assertions = "1"
 yansi = "0.5.1"
 syn = { version = "2", features = ["full"] }
-prettyplease = "0.2"
+prettyplease = "0.3"
 annotate-snippets = "0.9"
 
 [[test]]
