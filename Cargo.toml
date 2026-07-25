@@ -14,7 +14,7 @@ homepage = "https://github.com/reitermarkus/cmacro-rs"
 
 [dependencies]
 nom = "7"
-syn = "2"
+syn = "3"
 proc-macro2 = "1"
 quote = "1"
 unicode-ident = "1"
@@ -27,7 +27,7 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
 pretty_assertions = "1"
 yansi = "0.5.1"
-syn = { version = "2", features = ["full"] }
+syn = { version = "3", features = ["full"] }
 prettyplease = "0.2"
 annotate-snippets = "0.9"
 
